@@ -1,0 +1,206 @@
+name: Update Beyond100
+on:
+  # Sem "schedule": quem dispara é o Worker da Cloudflare (7 e 37 de cada hora). O cron do GitHub falhava quase sempre
+  # e, quando corria, coincidia com o do Worker (duas execuções seguidas = pedidos à API gastos em dobro).
+  workflow_dispatch:
+    inputs:
+      checks:
+        description: "Jogos a confirmar nesta execução (normal: 2; manual: até 8)"
+        default: "2"
+      min_age:
+        description: "Minutos antes de confirmar um jogo (normal: 45; manual: 15)"
+        default: "45"
+      fast:
+        description: "1 = atualização rápida pedida pelo /api/kick (um jogo ATP/WTA acabou): só ESPN, 0 pedidos à API de ténis, sem padel"
+        default: "0"
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Fonts (open licence, for the cards)
+        run: |
+          mkdir -p fonts
+          [ -f fonts/BarlowCondensed-Bold.ttf ] || curl -sSfL -o fonts/BarlowCondensed-Bold.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf || echo "fonte não descarregada (usa a de recurso)"
+      - run: sudo apt-get install -y fonts-dejavu-core fonts-liberation fonts-inter
+      - name: Build results + site
+        env:
+          LIVETENNIS_KEY: ${{ secrets.LIVETENNIS_KEY }}
+          PADEL_API_KEY: ${{ secrets.PADEL_API_KEY }}
+          PADEL_MAX_REQ: ${{ vars.PADEL_MAX_REQ || '10' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CAPTION_WEB_CONTEXT: ${{ vars.CAPTION_WEB_CONTEXT }}
+          CAPTION_MODEL: ${{ vars.CAPTION_MODEL }}
+          CAPTION_WEB_MIN_SCORE: ${{ vars.CAPTION_WEB_MIN_SCORE }}
+          CARD_STYLE: ${{ vars.CARD_STYLE }}
+          PHOTO_GALLERY: ${{ vars.PHOTO_GALLERY }}
+          PHOTO_MAX_AGE_Y: ${{ vars.PHOTO_MAX_AGE_Y }}
+          CAPTION_LITE_BELOW: ${{ vars.CAPTION_LITE_BELOW }}
+          FETCH_PHOTOS: "1"
+          WEEKLY_HOUR: ${{ vars.WEEKLY_HOUR }}
+          WEEKLY_DAY: ${{ vars.WEEKLY_DAY }}
+          STORY_HOUR: ${{ vars.STORY_HOUR }}
+          HISTORY: ${{ vars.HISTORY }}
+          HISTORY_MIRROR: ${{ vars.HISTORY_MIRROR }}
+          ALLOW_SA: ${{ vars.ALLOW_SA }}
+          FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
+          NEWSLETTER_URL: ${{ vars.NEWSLETTER_URL }}
+          KEEP_ARCHIVE: ${{ vars.KEEP_ARCHIVE }}
+          TRACK_MAX_PRIO: ${{ vars.TRACK_MAX_PRIO }}
+          MIN_AGE_MIN: ${{ github.event.inputs.min_age }}
+          POST_MIN_SCORE: ${{ vars.POST_MIN_SCORE }}
+          STORY_PENALTY: ${{ vars.STORY_PENALTY }}
+          STORY_COMEBACK: ${{ vars.STORY_COMEBACK }}
+          TITLE_STYLE: ${{ vars.TITLE_STYLE }}
+          MAX_POSTS_PER_DAY: ${{ vars.MAX_POSTS_PER_DAY }}
+          NO_PHOTO_EXTRA: ${{ vars.NO_PHOTO_EXTRA }}
+          PHOTO_BONUS: ${{ vars.PHOTO_BONUS }}
+          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          NEWS_ENABLED: ${{ vars.NEWS_ENABLED }}
+          NEWS_MAX_PER_DAY: ${{ vars.NEWS_MAX_PER_DAY }}
+          NEWS_SCAN_HOURS: ${{ vars.NEWS_SCAN_HOURS }}
+          CF_BEACON_TOKEN: ${{ vars.CF_BEACON_TOKEN }}
+          PREVIEW_ENABLED: ${{ vars.PREVIEW_ENABLED }}
+          PREVIEW_MAX_PER_DAY: ${{ vars.PREVIEW_MAX_PER_DAY }}
+          PREVIEW_H2H: ${{ vars.PREVIEW_H2H }}
+          NEWSLETTER_USER: ${{ vars.NEWSLETTER_USER }}
+          RISING_ENABLED: ${{ vars.RISING_ENABLED }}
+          RISING_DAY: ${{ vars.RISING_DAY }}
+          RISING_HOUR: ${{ vars.RISING_HOUR }}
+          THROWBACK_ENABLED: ${{ vars.THROWBACK_ENABLED }}
+          THROWBACK_DAY: ${{ vars.THROWBACK_DAY }}
+          THROWBACK_HOUR: ${{ vars.THROWBACK_HOUR }}
+          ROAD_ENABLED: ${{ vars.ROAD_ENABLED }}
+          POWER_ENABLED: ${{ vars.POWER_ENABLED }}
+          RECORDS_ENABLED: ${{ vars.RECORDS_ENABLED }}
+          MEN_FIRST: ${{ vars.MEN_FIRST }}
+          PADEL_MIN_SCORE: ${{ vars.PADEL_MIN_SCORE }}
+          PADEL_QF: ${{ vars.PADEL_QF }}
+          PADEL_SURPRISE_GAP: ${{ vars.PADEL_SURPRISE_GAP }}
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+        run: |
+          FAST="${{ github.event.inputs.fast }}"
+          if [ "$FAST" = "1" ]; then export MIN_AGE_MIN=0; echo "Atualização rápida: um jogo ATP/WTA acabou (só ESPN, 0 pedidos à API)."; fi
+          if [ "$FAST" != "1" ]; then
+            python usage.py || echo "quota da API: falhou (ignorado)"
+            python popular.py || echo "popular: falhou (ignorado)"
+            python result_card.py --live --track-only --max 3 --out out
+          fi
+          # execuções da meia hora (:30-:59): jogos ao vivo (1 pedido) + confirmações pelo ESPN (grátis) + 1 confirmação paga só se houver folga
+          CHK="${{ github.event.inputs.checks }}"
+          if [ -z "$CHK" ]; then CHK=1; fi
+          # ATP/WTA confirmam-se pelo ESPN (grátis) em todas as execuções; na meia hora, 1 pedido à API só se o consumo do dia estiver abaixo do ritmo
+          PACED=""
+          if [ "$(date -u +%-M)" -ge 30 ] && [ "$CHK" = "2" -o "${{ github.event_name }}" = "schedule" ]; then CHK=1; PACED="--paced"; fi   # 2 = valor por omissão (Worker)
+          if [ "$FAST" = "1" ]; then CHK=0; PACED=""; fi
+          python result_card.py --results --max-checks "$CHK" $PACED --out out
+          python espn_sync.py || echo "ESPN: falhou (ignorado)"   # grátis: quadros ATP/WTA completos, ordem de jogo, rankings, perfis, tie-breaks
+          python weekly.py out
+          python rising.py out || echo "rising falhou (ignorado)"
+          true  # "This week in <ano>" desligado a 5/11/2026 (pedido do Afonso): python thisweek.py out
+          python features.py out || echo "road/power falharam (ignorado)"
+          python requeue.py || echo "requeue falhou (ignorado)"
+          python stories.py out
+          python news_scan.py out || echo "news_scan falhou (ignorado)"
+          python result_card.py --previews --out out || echo "antevisões falharam (ignorado)"
+          python publisher.py prepare out
+          python history.py
+          python result_card.py --upcoming
+          python tennis_videos.py || echo "vídeos do ténis falharam (ignorado)"
+          python result_card.py --page
+          python watch_list.py site || echo "watch list falhou (ignorado)"
+          if [ "$FAST" != "1" ]; then python -m padel.fetch || echo "padel: sincronização falhou (ignorado)"; fi
+          python -m padel.site site || echo "padel: site falhou (ignorado)"
+          python -m padel.posts make || echo "padel: posts falharam (ignorado)"
+          python clean_links.py site || echo "links: falhou (ignorado)"
+      - name: Keep new cards and captions (7 days)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cards
+          path: out/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Save state (public display data only)
+        run: |
+          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json posts photos padel/data
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=beyond100
+      - name: Tell search engines about changed pages (IndexNow)
+        continue-on-error: true
+        run: python indexnow.py
+      - name: Send new posts to Instagram (only if PUBLISH_AUTO=1)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CAPTION_WEB_CONTEXT: ${{ vars.CAPTION_WEB_CONTEXT }}
+          CAPTION_MODEL: ${{ vars.CAPTION_MODEL }}
+          CAPTION_WEB_MIN_SCORE: ${{ vars.CAPTION_WEB_MIN_SCORE }}
+          CAPTION_LITE_BELOW: ${{ vars.CAPTION_LITE_BELOW }}
+          PUBLISH_AUTO: ${{ vars.PUBLISH_AUTO }}
+          MAX_POSTS_PER_DAY: ${{ vars.MAX_POSTS_PER_DAY }}
+          EXTRA_POSTS: ${{ vars.EXTRA_POSTS }}
+          EXCEPTION_SCORE: ${{ vars.EXCEPTION_SCORE }}
+          SEND_FROM: ${{ vars.SEND_FROM }}
+          SEND_TO: ${{ vars.SEND_TO }}
+          SEND_GAP_MIN: ${{ vars.SEND_GAP_MIN }}
+          SEND_WEAK_FROM: ${{ vars.SEND_WEAK_FROM }}
+          SEND_STRONG_SCORE: ${{ vars.SEND_STRONG_SCORE }}
+          SEND_LATE_SCORE: ${{ vars.SEND_LATE_SCORE }}
+          MEN_FIRST: ${{ vars.MEN_FIRST }}
+          PADEL_PUBLISH: ${{ vars.PADEL_PUBLISH }}
+          PADEL_MAX_POSTS_PER_DAY: ${{ vars.PADEL_MAX_POSTS_PER_DAY }}
+          PADEL_FIP_MAX_PER_DAY: ${{ vars.PADEL_FIP_MAX_PER_DAY }}
+          PADEL_SEND_FROM: ${{ vars.PADEL_SEND_FROM }}
+          PADEL_SEND_TO: ${{ vars.PADEL_SEND_TO }}
+          PADEL_SEND_GAP_MIN: ${{ vars.PADEL_SEND_GAP_MIN }}
+          SEND_MORNING_UNTIL: ${{ vars.SEND_MORNING_UNTIL }}
+          SEND_MORNING_MAX: ${{ vars.SEND_MORNING_MAX }}
+          SEND_MORNING_EXC: ${{ vars.SEND_MORNING_EXC }}
+          SEND_MORNING_MIN: ${{ vars.SEND_MORNING_MIN }}
+          PUBLISH_BACKEND: ${{ vars.PUBLISH_BACKEND }}
+          GRAPH_HOST: ${{ vars.GRAPH_HOST }}
+          GRAPH_VERSION: ${{ vars.GRAPH_VERSION }}
+          IMAGE_BASE_URL: ${{ vars.IMAGE_BASE_URL }}
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_WEBHOOK_CAROUSEL_URL: ${{ secrets.MAKE_WEBHOOK_CAROUSEL_URL }}
+          MAKE_WEBHOOK_STORY_URL: ${{ secrets.MAKE_WEBHOOK_STORY_URL }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          python publisher.py send
+          python -m padel.posts send || echo "padel: envio falhou (ignorado)"
+      - name: Save sent flags
+        run: |
+          bash _engine/save_state.sh "Update posts" posts.json carousels.json stories.json spend.json padel/data/posts.json
+      - name: Credit check (estimated Anthropic balance)
+        env:
+          ANTHROPIC_CREDIT_USD: ${{ vars.ANTHROPIC_CREDIT_USD }}
+          ANTHROPIC_CREDIT_DATE: ${{ vars.ANTHROPIC_CREDIT_DATE }}
+          ANTHROPIC_ALERT_USD: ${{ vars.ANTHROPIC_ALERT_USD }}
+        run: |
+          python credit_alert.py && echo "CREDIT_ALERT=0" >> "$GITHUB_ENV" || echo "CREDIT_ALERT=1" >> "$GITHUB_ENV"
+          bash _engine/save_state.sh "Credit check" spend.json
+      - name: Fail on purpose to send the low-credit email
+        if: env.CREDIT_ALERT == '1'
+        run: |
+          echo "::error::Saldo da Anthropic a acabar. Carrega fundos em https://console.anthropic.com/settings/billing"
+          exit 1

@@ -1,0 +1,69 @@
+name: Remove photos
+on:
+  workflow_dispatch:
+    inputs:
+      names:
+        description: "Jogadores a apagar de photos/ (nomes de ficheiro sem .jpg, separados por virgula). Voltam a ser procurados na proxima atualizacao."
+        default: "rinky-hijikata,yannick-hanfmann,lorenzo-sonego,alexander-ritschard,filip-peliwo,alycia-parks,heather-watson,mai-hontama"
+      block:
+        description: "Bloquear a procura automatica de nova foto para estes jogadores (1=sim, 0=nao: voltam a ser procurados)"
+        default: "1"
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - name: Delete the listed photos
+        env:
+          NAMES: ${{ github.event.inputs.names }}
+          BLOCK: ${{ github.event.inputs.block }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          names = [n.strip() for n in os.environ["NAMES"].split(",") if n.strip()]
+          for n in names:
+              f = f"photos/{n}.jpg"
+              if os.path.exists(f):
+                  os.remove(f); print("apagada:", f)
+              else:
+                  print("nao existe:", f)
+          src = json.load(open("photos/sources.json", encoding="utf-8")) if os.path.exists("photos/sources.json") else {}
+          if os.environ.get("BLOCK", "1") == "1":     # fotos extra (alt/...) recusadas: guarda a página de origem para não voltarem
+              pages = [ (src.get(n + ".jpg") or {}).get("commons_page") for n in names if n.startswith("alt/") ]
+              pages = [x for x in pages if x]
+              if pages:
+                  bp2 = "photos/blocked_pages.json"
+                  cur2 = json.load(open(bp2, encoding="utf-8")) if os.path.exists(bp2) else []
+                  json.dump(sorted(set(cur2) | set(pages)), open(bp2, "w", encoding="utf-8"), indent=1)
+                  print("páginas bloqueadas:", len(pages))
+          for fn in ("credits.json", "sources.json", "refresh.json"):
+              p = f"photos/{fn}"
+              if not os.path.exists(p):
+                  continue
+              d = json.load(open(p, encoding="utf-8"))
+              for n in names:
+                  d.pop(n + ".jpg", None); d.pop(n, None)
+              json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+          if os.environ.get("BLOCK", "1") == "1":
+              bp = "photos/blocked.json"
+              cur = json.load(open(bp, encoding="utf-8")) if os.path.exists(bp) else []
+              cur = sorted(set(cur) | {n for n in names if not n.startswith("alt/")})
+              json.dump(cur, open(bp, "w", encoding="utf-8"), indent=1)
+              print("bloqueados:", ", ".join(names))
+          PY
+          git config user.name "beyond100-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A -f photos
+          if ! git diff --cached --quiet; then git commit -m "Remove photos"; git pull --rebase --autostash || true; git push; fi

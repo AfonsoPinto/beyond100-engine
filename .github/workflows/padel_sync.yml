@@ -1,0 +1,32 @@
+name: Padel sync (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      max_req:
+        description: "Máximo de pedidos à Padel API nesta execução (grátis: 2.000/dia, 10/min)"
+        default: "150"
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install requests
+      - name: Sync Padel API data
+        env:
+          PADEL_API_KEY: ${{ secrets.PADEL_API_KEY }}
+          PADEL_MAX_REQ: ${{ github.event.inputs.max_req }}
+        run: python -m padel.fetch
+      - name: Save
+        run: bash _engine/save_state.sh "Padel data" padel/data

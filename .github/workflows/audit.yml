@@ -1,0 +1,41 @@
+name: Audit results
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Opcional: ids a marcar como qualificacao, separados por virgula (deixa vazio so para ver o relatorio)"
+        default: ""
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Audit
+        env:
+          APPLY: ${{ github.event.inputs.apply }}
+        run: |
+          if [ -n "$APPLY" ]; then python audit.py --apply "$APPLY"; else python audit.py; fi
+          python audit.py > audit.txt || true
+          git config user.name "beyond100-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -f qualifying_ids.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then git commit -m "Mark qualifying"; git pull --rebase --autostash || true; git push; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit
+          path: audit.txt

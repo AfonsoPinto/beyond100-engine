@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Beyond100 Admin</title>
+<style>
+:root{--bg:#f6f3ea;--card:#fff;--ink:#12261f;--mut:#5c6b64;--line:#d9d4c4;--g:#0f3d2e;--v:#d9f23d;--bad:#b3261e;--ok:#1b7a43}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1f18;--card:#10291f;--ink:#f1ecdc;--mut:#9db0a7;--line:#254538;--g:#d9f23d;--v:#d9f23d;--bad:#ff8a80;--ok:#7be0a0}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}
+header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header b{font:700 18px Georgia,serif;letter-spacing:.12em}header small{color:var(--mut);margin-left:auto}
+nav{display:flex;gap:6px;padding:10px 16px;overflow:auto;border-bottom:1px solid var(--line)}
+nav button{white-space:nowrap}
+main{max-width:980px;margin:0 auto;padding:16px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.on,button.pri{background:var(--g);color:var(--bg);border-color:var(--g)}
+@media(prefers-color-scheme:dark){button.on,button.pri{color:#0b1f18}}
+button:disabled{opacity:.5}
+input,select,textarea{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 9px;max-width:100%}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 14px}
+.card h3{margin:0 0 6px;font-size:16px}.mut{color:var(--mut);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+#msg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--g);color:var(--bg);padding:10px 16px;border-radius:10px;display:none;max-width:90vw;z-index:9}
+@media(prefers-color-scheme:dark){#msg{color:#0b1f18}}
+.hide{display:none}
+.sport{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}.sport button{border:0;border-radius:999px;padding:5px 14px;background:none}.sport button.on{background:var(--g);color:var(--bg)}
+@media(prefers-color-scheme:dark){.sport button.on{color:#0b1f18}}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:12px}
+</style>
+</head>
+<body>
+<header><b>BEYOND100</b><span>Admin</span><span class="sport" id="sport"><button data-s="tenis">Ténis</button><button data-s="padel">Padel</button></span><small id="who">…</small></header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div id="msg"></div>
+<script>
+const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+try{localStorage.setItem("b100_owner","1")}catch(e){}
+// o mesmo molde nas duas vertentes: Estado · Posts · Visitas · Definições, e depois o que é só de uma delas
+const TABS_T=[["estado","Estado"],["posts","Posts"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"],["noticias","Notícias"],["jogos","Jogos"],["handles","Perfis"],["cats","Categorias"],["acoes","Ações"]];
+const TABS_P=[["estado","Estado"],["posts","Posts"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"]];
+let _h=(location.hash||"#tenis/estado").slice(1).split("/"), sport=(_h[0]==="padel"?"padel":"tenis"), tab=_h[1]||"estado", cache={};
+if(_h.length===1&&_h[0]==="padel"){sport="padel";tab="estado"}
+if(sport==="padel"&&tab==="padel")tab="estado";
+const TABS=()=>sport==="padel"?TABS_P:TABS_T;
+function toast(t,bad){const m=$("#msg");m.textContent=t;m.style.background=bad?"#b3261e":"";m.style.color=bad?"#fff":"";m.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display="none",bad?7000:3500)}
+async function api(path,opt={}){
+  const o={...opt,headers:{"X-Admin":"1","Content-Type":"application/json"}};
+  if(o.body&&typeof o.body!=="string")o.body=JSON.stringify(o.body);
+  const r=await fetch("/admin-api/"+path,o);let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(j.error||("Erro "+r.status));return j}
+async function readFile(n){const j=await api("file?name="+n);return{data:JSON.parse(j.content||"null"),sha:j.sha}}
+async function saveFile(n,data,sha){return api("file",{method:"PUT",body:{name:n,content:JSON.stringify(data),sha}})}
+async function run(workflow,inputs){await api("run",{method:"POST",body:{workflow,inputs:inputs||{}}});toast("Iniciado no GitHub ("+workflow+"). Demora 1–3 min.")}
+
+function nav(){ if(!TABS().some(([k])=>k===tab))tab=TABS()[0][0];
+  $("#nav").innerHTML=TABS().map(([k,l])=>`<button class="${k===tab?"on":""}" data-t="${k}">${l}</button>`).join("");
+  $("#sport").querySelectorAll("button").forEach(b=>b.className=b.dataset.s===sport?"on":"");
+  $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){tab=b.dataset.t;location.hash=sport+"/"+tab;show()}};
+  $("#sport").onclick=e=>{const b=e.target.closest("button");if(b&&b.dataset.s!==sport){sport=b.dataset.s;tab=TABS()[0][0];location.hash=sport+"/"+tab;show()}}}
+async function show(){nav();$("#main").innerHTML='<p class="mut">A carregar…</p>';
+  const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
+  try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
+
+setInterval(()=>{if(tab==="estado"&&sport!=="padel"&&!document.hidden){estado().catch(()=>{})}},15000);
+
+// ---------- peças comuns (ténis e padel) ----------
+const fmtTs=t=>t?new Date(t).toLocaleString("pt-PT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
+const stTag=p=>p.skipped?`<span class="tag">não saiu (${esc(p.skipped)})</span>`:p.sent?`<span class="tag ok">publicado ${esc(p.when||"")}</span>`:`<span class="tag" style="background:var(--v);color:#0e3a2d">na fila</span>`;
+function postsCard(title,items,note){   // items: {img, kind, label, sub, score, sent, skipped, when, link}
+  const rows=items.slice(0,80).map(p=>`<tr><td><a href="${esc(p.link||p.img)}" target="_blank" rel="noopener"><img src="${esc(p.img)}" alt="" width="54" height="68" style="border-radius:6px;object-fit:cover" loading="lazy"></a></td>
+    <td><b>${esc(p.kind)}</b>${p.score!=null&&p.score!==""?` <span class="mut">interesse ${esc(p.score)}</span>`:""}<br>${esc(p.label||"")}${p.sub?`<br><span class="mut">${p.sub}</span>`:""}</td><td>${stTag(p)}</td></tr>`).join("");
+  const q=items.filter(p=>!p.sent&&!p.skipped).length,sent=items.filter(p=>p.sent&&!p.skipped).length;
+  return `<div class="card"><h3>${esc(title)}</h3><p class="mut">${q} na fila · ${sent} publicados${note?" · "+note:""}</p>${rows?`<table>${rows}</table>`:'<p class="mut">Ainda sem posts.</p>'}</div>`}
+function nextCard(title,rows,head){   // rows: {img, kind, label, when, now(bool), why}
+  const r=rows.map((p,i)=>`<tr><td><img src="${esc(p.img)}" alt="" width="46" height="58" style="border-radius:6px;object-fit:cover" loading="lazy"></td>
+    <td>${p.now&&!rows.slice(0,i).some(x=>x.now)?'<span class="tag" style="background:var(--v);color:#0e3a2d">próximo</span> ':""}<b>${esc(p.kind)}</b>${p.score?` <span class="mut">interesse ${esc(p.score)}</span>`:""}<br>${esc(p.label||"")}<br><span class="${p.now?"ok":"mut"}">${esc(p.why)}</span></td></tr>`).join("");
+  return `<div class="card" style="border:2px solid var(--v)"><h3>${esc(title)}</h3><p class="mut">${head}</p>${r?`<table>${r}</table>`:'<p class="mut">Nada na fila neste momento.</p>'}</div>`}
+const lisbonNow=()=>{const p=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Lisbon",hour:"2-digit",minute:"2-digit",year:"numeric",month:"2-digit",day:"2-digit",hour12:false}).formatToParts(new Date());const g=t=>p.find(x=>x.type===t).value;return {day:`${g("year")}-${g("month")}-${g("day")}`,h:+g("hour")%24,m:+g("minute")}};
+const hm=t=>new Date(t).toLocaleTimeString("pt-PT",{timeZone:"Europe/Lisbon",hour:"2-digit",minute:"2-digit"});
+function runsCard(runs){return `<div class="card"><h3>Últimas execuções</h3><table>${runs.map(r=>`<tr><td>${esc(r.name)}</td><td class="${r.conclusion==="success"?"ok":r.conclusion?"bad":""}">${esc(r.conclusion||r.status)}</td><td class="mut">${new Date(r.at).toLocaleString("pt-PT")}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">ver</a></td></tr>`).join("")}</table></div>`}
+function pubCard(name,handle,on,how,site){return `<div class="card"><h3>Publicação no ${esc(handle)}: ${on?'<span class="ok">ligada</span>':'<span class="bad">desligada</span>'}</h3><p class="mut">${how}</p><p><a href="${esc(site)}" target="_blank" rel="noopener">Abrir o site ↗</a> · <a href="https://www.instagram.com/${esc(handle.replace("@",""))}/" target="_blank" rel="noopener">Instagram ↗</a></p></div>`}
+
+async function tenisPosts(){
+  const [pf,cf,rf]=await Promise.all([readFile("posts.json").catch(()=>({data:{}})),readFile("carousels.json").catch(()=>({data:[]})),readFile("results.json").catch(()=>({data:[]}))]);
+  const R={};(rf.data||[]).forEach(r=>{R[String(r.id)]=r});
+  const KIND={news:"Notícia",preview:"Antevisão",final:"Resultado"};
+  const items=[];
+  Object.keys(pf.data||{}).sort().reverse().forEach(d=>(pf.data[d]||[]).slice().reverse().forEach(e=>{
+    const id=String(e.id),r=R[id],rs=e.reasons||[];
+    const SP={"news-road":"Road to the Top 100","news-power":"Power Ranking","news-records":"Recordes do mês","news-hist":"This week in history","news-rising":"Rising"};
+    const spk=Object.keys(SP).find(p=>id.startsWith(p+"-"));
+    const k=spk?"Lista semanal":id.startsWith("news-")?"Notícia":id.startsWith("preview-")?"Antevisão":rs.includes("final")?"Título":rs.includes("upset")?"Surpresa":"Resultado";
+    let label="",sub="";
+    if(r){const w=r["p"+r.winner]||{},l=r["p"+(3-r.winner)]||{},g=r.games||[[],[]],sc=(g[r.winner-1]||[]).map((x,i)=>x+"-"+(g[2-r.winner]||[])[i]).join(" ");
+      const why=rs.filter(x=>!["tour","challenger","itf","no-story"].includes(x)).join(", ");
+      label=`${w.name||""} d. ${l.name||""} ${sc}`;sub=[esc(r.tournament||""),esc(r.round||""),esc(why)].filter(Boolean).join(" · ")}
+    else if(spk){label=SP[spk]+" · "+id.slice(spk.length+1);sub=esc(d)}
+    else{label=id.replace(/^(news|preview)-\d{4}-\d{2}-\d{2}-?/,"").replace(/-/g," ");label=label.replace(/\b\w/g,c=>c.toUpperCase());sub=esc(d)}
+    const img=e.image?"/posts/"+e.image:"";
+    items.push({img,link:img,kind:k,label,sub:sub+(e.image?` · <a href="/posts/${esc(e.image.replace(/\.jpg$/,".txt"))}" target="_blank" rel="noopener">legenda</a>`:""),score:e.score===99?"":e.score,sent:e.sent,skipped:e.skipped,when:e.sent_at?e.sent_at.slice(5).replace("-","/"):""})}));
+  const car=(cf.data||[]).slice().reverse().map(c=>({img:"/posts/"+(c.images||[])[0],link:"/posts/"+(c.images||[])[0],kind:"Carrossel ("+(c.images||[]).length+")",label:(c.caption||"").split("\n")[0].slice(0,110),sub:esc(c.id||""),sent:c.sent,when:(c.sent_at||"").slice(5)}));
+  if(!cache.vars){cache.vars=await api("vars").catch(()=>({}))}
+  const V=cache.vars||{},on=["1","true","yes","on"].includes(String(V.PUBLISH_AUTO||"").toLowerCase());
+  // ---- a seguir: as mesmas regras do publisher.py (mantém em sintonia)
+  const N=(k,d)=>{const x=parseFloat(V[k]);return isNaN(x)?d:x};
+  const sFrom=N("SEND_FROM",8),sTo=N("SEND_TO",23),weak=N("SEND_WEAK_FROM",20),mUntil=N("SEND_MORNING_UNTIL",16),mMax=N("SEND_MORNING_MAX",2),strong=N("SEND_STRONG_SCORE",8),exc=N("EXCEPTION_SCORE",9),late=N("SEND_LATE_SCORE",10),maxD=N("MAX_POSTS_PER_DAY",3),extra=N("EXTRA_POSTS",2);
+  const menFirst=String(V.MEN_FIRST||"1")!=="0",L=lisbonNow(),morning=L.h<mUntil,inWin=L.h>=sFrom&&L.h<sTo;
+  const all=[];Object.keys(pf.data||{}).forEach(d=>(pf.data[d]||[]).forEach(e=>all.push(e)));
+  const isRes=e=>{const id=String(e.id);return !id.startsWith("news-")&&!id.startsWith("preview-")};
+  const resToday=all.filter(e=>isRes(e)&&e.sent&&!e.skipped&&(e.sent_at||"").slice(0,10)===L.day).length;
+  const pend=all.filter(e=>!e.sent&&!e.skipped&&e.image&&!(isRes(e)&&e.created&&Date.now()/1000-e.created>20*3600));
+  const others=pend.filter(e=>!isRes(e)),res=pend.filter(isRes).sort((a,b)=>((menFirst&&a.gender==="women")-(menFirst&&b.gender==="women"))||((b.score||0)-(a.score||0)));
+  const lab=e=>{const r=R[String(e.id)];if(!r)return String(e.id).replace(/-/g," ");const w=r["p"+r.winner]||{},l=r["p"+(3-r.winner)]||{};return `${w.name} d. ${l.name} · ${r.tournament}`};
+  const why=e=>{const sc=e.score||0,exp=e.created?" · expira às "+hm((e.created+20*3600)*1000):"";
+    if(sc>=late)return "excecional: sai a qualquer hora, mesmo de noite"+exp;
+    if(!inWin)return `fora do horário: só a partir das ${sFrom}h`+exp;
+    if(sc>=exc&&resToday<maxD+extra)return "sai já (vale um lugar extra)"+exp;
+    if(morning)return (sc>=strong&&resToday<mMax?"pode sair já":`de manhã só ${mMax} e só fortes (${strong}+): espera pelas ${mUntil}h`)+exp;
+    if(resToday>=maxD)return `limite do dia cheio (${maxD}); extra só com ${exc}+`+exp;
+    return (sc>=strong||L.h>=weak?"pode sair já":`fraco (abaixo de ${strong}): só a partir das ${weak}h`)+exp};
+  const canNow=e=>{const sc=e.score||0;if(sc>=late)return true;if(!inWin)return false;if(sc>=exc&&resToday<maxD+extra)return true;if(morning)return resToday<mMax&&sc>=strong;return resToday<maxD&&(sc>=strong||L.h>=weak)};
+  const nxt=[...others.map(e=>({img:"/posts/"+e.image,kind:String(e.id).startsWith("preview-")?"Antevisão":"Especial",label:String(e.id).replace(/-/g," "),now:inWin,why:inWin?"especiais saem antes dos resultados":`fora do horário: só a partir das ${sFrom}h`})),
+             ...res.map(e=>({img:"/posts/"+e.image,kind:(e.reasons||[]).includes("final")?"Título":(e.reasons||[]).includes("upset")?"Surpresa":"Resultado",label:lab(e),score:e.score,now:canNow(e),why:why(e)}))];
+  const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · resultados publicados hoje: <b>${resToday}</b> (limite ${maxD}, mais ${extra} extra só para interesse ${exc}+) · horário ${sFrom}h–${sTo}h · sai no máximo 1 post a cada atualização (às :07), com pelo menos ${esc(V.SEND_GAP_MIN||"45")} min entre posts.`;
+  $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("ténis","@beyond100.tennis",on,`Muda em Definições (PUBLISH_AUTO). Máximo ${esc(V.MAX_POSTS_PER_DAY||"3")} resultados por dia; títulos, viragens e surpresas primeiro.`,"/index.html")
+    +postsCard("Todos os posts",items,"últimos 14 dias")+(car.length?postsCard("Carrosséis",car):"")}
+
+async function padelEstado(){
+  const [st,runs]=await Promise.all([readFile("padel/data/state.json").catch(()=>({data:{}})),api("runs").catch(()=>[])]);
+  if(!cache.vars){cache.vars=await api("vars").catch(()=>({}))}
+  const V=cache.vars||{},on=["1","true","yes","on"].includes(String(V.PADEL_PUBLISH||"").toLowerCase());
+  const S=st.data||{},rd=S.req_by_day||{},days=Object.keys(rd).sort().slice(-7);
+  const reqs=days.length?`<table>${days.map(d=>`<tr><td>${esc(d)}</td><td style="text-align:right">${rd[d]} pedidos</td></tr>`).join("")}</table>`:'<p class="mut">Sem dados.</p>';
+  const lastlog=(S.last_log||[]).map(x=>`<div class="mut">${esc(Array.isArray(x)?x.join(" → "):String(x))}</div>`).join("");
+  $("#main").innerHTML=pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Só saem jogos com foto livre de um dos vencedores: Premier Padel e FIP Platinum/Gold a partir dos quartos, FIP Silver a partir das meias, e surpresas. Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"4")} resultados por dia (${esc(V.PADEL_FIP_MAX_PER_DAY||"2")} nos dias só com FIP).`,"/padel/index.html")
+    +`<div class="card"><h3>Quota da Padel API (limite 2000/dia)</h3>${reqs}${lastlog?`<details><summary class="mut">Últimos pedidos</summary>${lastlog}</details>`:""}</div>`+runsCard(runs)}
+
+async function padelPosts(){
+  const q=await readFile("padel/data/posts.json").catch(()=>({data:null}));
+  const KIND={intro:"Apresentação",result:"Resultado",preview:"Antevisão",weekly:"Lista semanal"};
+  const label=e=>{const f=e.facts||{};if(e.kind==="intro")return "Post de apresentação "+e.n;if(f.finals)return f.finals.map(x=>x.category+": "+(x.winners||[]).map(p=>p.name).join(" / ")+" "+x.score).join(" · ");if(e.kind==="result")return (f.winners||[]).map(p=>p.name).join(" / ")+" d. "+(f.losers||[]).map(p=>p.name).join(" / ")+" "+(f.score||"");if(e.kind==="preview")return (f.pair_1||[]).join(" / ")+" vs "+(f.pair_2||[]).join(" / ");return (f.feature||"")+(f.category?" · "+f.category:"")};
+  const items=((q.data||{}).queue||[]).slice().reverse().map(e=>{const f=e.facts||{};return {img:"/posts/"+e.image,link:"/posts/"+e.image,kind:f.finals?"Campeões":(KIND[e.kind]||e.kind),label:label(e),
+    sub:f.tournament?esc(f.tournament)+" · "+esc(f.round||""):"",score:e.score||"",sent:e.sent,skipped:e.skipped,when:e.sent_ts?fmtTs(e.sent_ts*1000):""}});
+  if(!cache.vars){cache.vars=await api("vars").catch(()=>({}))}
+  const V=cache.vars||{},on=["1","true","yes","on"].includes(String(V.PADEL_PUBLISH||"").toLowerCase());
+  // ---- a seguir: as mesmas regras do padel/posts.py send()
+  const N=(k,d)=>{const x=parseFloat(V[k]);return isNaN(x)?d:x};
+  const sFrom=N("PADEL_SEND_FROM",9),sTo=N("PADEL_SEND_TO",23),maxD=N("PADEL_MAX_POSTS_PER_DAY",4),L=lisbonNow(),inWin=L.h>=sFrom&&L.h<sTo;
+  const Qa=(q.data||{}).queue||[],day0=new Date(L.day+"T00:00:00").getTime()/1000;
+  const resToday=Qa.filter(e=>e.kind==="result"&&e.sent&&!e.skipped&&(e.sent_ts||0)>=day0).length;
+  const pend=Qa.filter(e=>!e.sent&&!(e.kind==="result"&&Date.now()/1000-e.created>20*3600));
+  const ORD={intro:0,preview:1,weekly:2,result:3};
+  pend.sort((a,b)=>(ORD[a.kind]-ORD[b.kind])||(a.kind==="intro"?a.n-b.n:(b.score||0)-(a.score||0)));
+  const nxt=pend.map(e=>{const full=e.kind==="result"&&resToday>=maxD,exp=e.kind==="result"?" · expira às "+hm((e.created+20*3600)*1000):"";
+    return {img:"/posts/"+e.image,kind:(e.facts||{}).finals?"Campeões":(KIND[e.kind]||e.kind),label:label(e),score:e.score||"",now:inWin&&!full,
+      why:(!inWin?`fora do horário: só a partir das ${sFrom}h`:full?`limite do dia cheio (${maxD} resultados)`:"pode sair já")+exp}});
+  const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · resultados publicados hoje: <b>${resToday}</b> (limite ${maxD}) · horário ${sFrom}h–${sTo}h · 1 post por atualização (às :07), apresentação → antevisões → listas semanais → resultados (maior interesse primeiro).`;
+  $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"4")} resultados por dia.`,"/padel/index.html")+postsCard("Todos os posts",items)}
+
+// ---------- importar fotos com autorização (comum): cola o link, o robô identifica e guarda
+async function importCard(sp){
+  const lf=await readFile(sp==="padel"?"padel/photos/inbox_log.json":"photos/inbox_log.json").catch(()=>({data:[]}));
+  const L=(Array.isArray(lf.data)?lf.data:[]).slice().reverse();
+  const rep=L.slice(0,5).map(x=>`<details ${x===L[0]?"open":""}><summary><b>${new Date(x.ts*1000).toLocaleString("pt-PT")}</b> · ${x.dry?"simulação · ":""}${x.images} imagens · <span class="ok">${x.added.length} entraram</span> · ${x.had_photo.length} já tinham foto · ${x.skipped_n??x.skipped.length} de fora</summary>
+    ${x.added.length?`<p><b>Entraram:</b></p><table>${x.added.map(a=>`<tr><td>${a.key&&!x.dry?`<img src="${sp==="padel"?"/padel/img/"+esc(a.key)+"-s.jpg":"/img/"+esc(a.key)+".jpg"}" width="40" height="40" style="border-radius:50%;object-fit:cover" loading="lazy">`:""}</td><td>${esc(a.player)}<br><span class="mut">${esc(a.credit)} · ${esc(a.file)}</span></td></tr>`).join("")}</table>`:""}
+    ${x.had_photo.length?`<p class="mut"><b>Já tinham foto</b> (não troquei${x.had_photo.length?"; marca “Trocar fotos automáticas” para usar estas":""}): ${x.had_photo.map(a=>esc(a.player)).join(", ")}</p>`:""}
+    ${x.skipped.length?`<p class="mut"><b>De fora:</b></p><table>${Object.entries(x.skipped.reduce((m,s)=>{(m[s.why]=m[s.why]||[]).push(s.file);return m},{})).map(([w,fs])=>`<tr><td class="mut">${esc(w)}</td><td>${(x.reasons||{})[w]||fs.length}</td><td class="mut">${esc(fs.slice(0,4).join(", "))}${fs.length>4?"…":""}</td></tr>`).join("")}</table>`:""}</details>`).join("");
+  return `<div class="card"><h3>Importar fotos com autorização</h3>
+   <p class="mut">Cola o link de uma pasta ou ficheiro: Dropbox, Google Drive, WeTransfer, OneDrive/SharePoint (.zip) ou um link direto para um .zip. O robô descarrega, identifica cada jogador pelo <b>nome do ficheiro</b>, lê o fotógrafo dos dados da foto, escolhe a melhor de cada jogador e guarda-a para quem ainda não tem foto. Pastas grandes demoram 5–15 minutos; o progresso e o relatório aparecem aqui.</p>
+   <div style="display:grid;gap:8px">
+    <input id="im-url" placeholder="Link do Dropbox, Google Drive, WeTransfer, OneDrive…" style="width:100%">
+    <label class="mut">Formato do crédito <input id="im-cr" value="Foto: {fotógrafo}/FPT" style="width:100%"></label>
+    <label class="mut">Fotógrafo, se não vier nos dados da foto (opcional) <input id="im-fb" placeholder="ex.: Beatriz Ruivo" style="width:100%"></label>
+    <label><input type="checkbox" id="im-rep"> Trocar fotos automáticas (Wikimedia) por estas</label>
+    <label><input type="checkbox" id="im-dry"> Só simular (mostra o que faria, não guarda nada)</label>
+    <button id="im-go" style="justify-self:start">Importar</button></div>
+   <p class="mut">Só fotos de quem deu autorização (ex.: FPT, email de 2/11/2026). Fotos com dois jogadores no nome, sem nome reconhecido ou sem fotógrafo ficam de fora.</p></div>
+   <div id="im-prog"></div>${await photogCard(sp,L[0])}${await aliasCard(sp,L[0])}<div class="card"><h3>Últimas importações</h3>${rep||'<p class="mut">Ainda nenhuma.</p>'}</div>`}
+async function photogCard(sp,last){   // iniciais do fotógrafo ('_BR_') sem nome nos dados da foto: tu dizes quem é
+  if(!last)return "";
+  const cnt={};(last.skipped||[]).forEach(x=>{if(x.ini)cnt[x.ini]=1});Object.keys(last.reasons||{}).forEach(k=>{const m=/iniciais (\w+)\)/.exec(k);if(m)cnt[m[1]]=(last.reasons[k])});
+  const T=Object.entries(cnt);if(!T.length)return "";
+  const pf=await readFile(sp==="padel"?"padel/photos/photographers.json":"photos/photographers.json").catch(()=>({data:{},sha:null}));
+  photogCard.f=pf;const A=pf.data||{};
+  return `<div class="card"><h3>Fotógrafos por confirmar</h3><p class="mut">Estas fotos não trazem o nome do fotógrafo, só as iniciais no nome do ficheiro. O crédito tem de ter o nome certo (pedido da FPT): escreve-o só se tiveres a certeza (ex.: pergunta à FPT) e volta a importar.</p>
+   <table>${T.map(([t,n])=>`<tr><td><b>${esc(t)}</b><br><span class="mut">${n} foto${n>1?"s":""}</span></td><td><input data-ph="${esc(t)}" value="${esc(A[t]||"")}" placeholder="Nome Apelido" style="width:100%"></td></tr>`).join("")}</table>
+   <button id="ph-save">Guardar fotógrafos</button></div>`}
+async function aliasCard(sp,last){   // apelidos sozinhos no nome do ficheiro: tu dizes quem é, a próxima importação usa
+  if(!last)return "";
+  const cnt={};(last.skipped||[]).forEach(x=>{if(x.token)cnt[x.token]=(cnt[x.token]||0)+1});
+  const T=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);if(!T.length)return "";
+  const af=await readFile(sp==="padel"?"padel/photos/aliases.json":"photos/aliases.json").catch(()=>({data:{},sha:null}));
+  aliasCard.f=af;const A=af.data||{};
+  return `<div class="card"><h3>Nomes por confirmar</h3><p class="mut">Estas fotos só têm o apelido (ou um nome que não consigo ler com certeza). Se souberes quem é, escreve o nome completo e guarda; depois volta a importar a pasta. Deixa vazio se não tiveres a certeza: mais vale sem foto do que com a pessoa errada.</p>
+   <table>${T.map(([t,n])=>`<tr><td><b>${esc(t)}</b><br><span class="mut">${n} foto${n>1?"s":""}</span></td><td><input data-al="${esc(t)}" value="${esc(A[t]||A[t.toLowerCase()]||"")}" placeholder="Nome Apelido" style="width:100%"></td></tr>`).join("")}</table>
+   <button id="al-save">Guardar nomes</button></div>`}
+async function importProgress(sp,started){   // barra de progresso enquanto a importação corre no GitHub
+  const box=$("#im-prog");if(!box)return;clearTimeout(importProgress.t);
+  let j;try{j=await api("run_status?workflow=photo_inbox.yml")}catch(e){return}
+  const r=j.run;if(!r){box.innerHTML="";return}
+  const t0=new Date(r.started||r.at).getTime(),recent=Date.now()-t0<3*3600e3;
+  if(r.status==="completed"){
+    if(started||(recent&&Date.now()-new Date(r.at).getTime()<10*60e3)){box.innerHTML=`<div class="card" style="border:2px solid var(--v)"><h3>${r.conclusion==="success"?'<span class="ok">Importação terminada ✓</span>':'<span class="bad">A importação falhou</span>'}</h3><p class="mut">${r.conclusion==="success"?"O relatório está em baixo.":""} <a href="${esc(r.url)}" target="_blank" rel="noopener">ver no GitHub ↗</a></p></div>`;
+      if(started&&r.conclusion==="success")setTimeout(()=>show(),1500)}
+    else box.innerHTML="";return}
+  const ST={"Set up job":"A preparar","Run actions/checkout@v4":"A preparar","Run actions/setup-python@v5":"A preparar","Run pip install requests pillow":"A preparar","Classify photos":"A descarregar e a identificar as fotos","Save":"A guardar"};
+  const cur=(j.steps||[]).find(s=>s.status==="in_progress"),done=(j.steps||[]).filter(s=>s.status==="completed").length,tot=(j.steps||[]).length||6;
+  const min=Math.max(0,Math.floor((Date.now()-t0)/60e3)),pct=r.status==="queued"?3:Math.min(95,Math.round(100*done/tot));
+  box.innerHTML=`<div class="card" style="border:2px solid var(--v)"><h3>A importar… <span class="mut" style="font-weight:400">${min} min</span></h3>
+    <div style="height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin:8px 0"><div style="height:100%;width:${pct}%;background:var(--ok);transition:width .6s"></div></div>
+    <p>${esc(r.status==="queued"?"Na fila do GitHub (espera que acabe a atualização em curso)":(cur?(ST[cur.name]||cur.name):"A começar"))}</p>
+    <p class="mut">Pastas grandes demoram 5–15 min (a descarga é a parte mais lenta). Podes fechar esta página: o robô continua e o relatório fica aqui. <a href="${esc(r.url)}" target="_blank" rel="noopener">ver no GitHub ↗</a></p></div>`;
+  importProgress.t=setTimeout(()=>{if(tab==="fotos")importProgress(sp,true)},8000)}
+function importWire(sp){
+  importProgress(sp,false);
+  const ps=$("#ph-save");if(ps)ps.onclick=async()=>{const f=photogCard.f||{data:{}},A=Object.assign({},f.data||{});
+    document.querySelectorAll("[data-ph]").forEach(i=>{const v=i.value.trim();if(v)A[i.dataset.ph]=v;else delete A[i.dataset.ph]});
+    try{await saveFile(sp==="padel"?"padel/photos/photographers.json":"photos/photographers.json",A,f.sha);toast("Fotógrafos guardados. Volta a importar a pasta.")}catch(e){toast(e.message,true)}};
+  const as=$("#al-save");if(as)as.onclick=async()=>{const f=aliasCard.f||{data:{}},A=Object.assign({},f.data||{});
+    document.querySelectorAll("[data-al]").forEach(i=>{const v=i.value.trim();if(v)A[i.dataset.al]=v;else delete A[i.dataset.al]});
+    try{await saveFile(sp==="padel"?"padel/photos/aliases.json":"photos/aliases.json",A,f.sha);toast("Nomes guardados. Volta a importar a pasta para entrarem.")}catch(e){toast(e.message,true)}};
+  const go=$("#im-go");if(!go)return;
+  go.onclick=async()=>{const u=$("#im-url").value.trim();if(!/^https:\/\//.test(u)){toast("Cola um link que comece por https://",true);return}
+    const cr=$("#im-cr").value.trim();if(!cr.includes("{fotógrafo}")&&!cr.includes("{fotografo}")&&!$("#im-fb").value.trim()){toast("O crédito tem de ter {fotógrafo}, ou preenche o fotógrafo.",true);return}
+    try{await run("photo_inbox.yml",{sport:sp==="padel"?"padel":"tennis",url_b64:btoa(unescape(encodeURIComponent(u))).replace(/=+$/,""),credit:cr,fallback:$("#im-fb").value.trim(),dry:$("#im-dry").checked?"1":"0",replace:$("#im-rep").checked?"1":"0"});$("#im-prog").innerHTML=`<div class="card" style="border:2px solid var(--v)"><h3>A importar…</h3><p class="mut">A arrancar no GitHub…</p></div>`;setTimeout(()=>importProgress(sp,true),6000)}catch(e){toast(e.message,true)}}}
+async function tenisFotos(){$("#main").innerHTML=await importCard("tennis");importWire("tennis")}
+
+async function padelFotos(){
+  const sl=await readFile("padel/photos/scan_log.json").catch(()=>({data:[]}));
+  const SL=(Array.isArray(sl.data)?sl.data:[]).slice().reverse().slice(0,60);
+  $("#main").innerHTML=(await importCard("padel"))+`<div class="card"><h3>Fotos novas (busca semanal no Wikimedia)</h3>${SL.length?`<table>${SL.map(x=>`<tr><td><img src="/padel/img/${esc(x.id)}-s.jpg" width="48" height="48" style="border-radius:50%;object-fit:cover" loading="lazy"></td><td><b>${esc(x.name)}</b><br><span class="mut">${esc(x.date)} · ${esc(x.license)}</span></td><td><a href="${esc(x.page)}" target="_blank" rel="noopener">origem ↗</a></td></tr>`).join("")}</table>`:'<p class="mut">Ainda nenhuma.</p>'}<p class="mut">Corre à segunda de manhã. Só entra uma foto com o jogador identificado no Wikidata, o apelido no nome do ficheiro, uma só pessoa no título e licença livre. Se alguma estiver errada, diz-me e ponho o jogador na lista de bloqueados.</p></div>`;importWire("padel")}
+async function estado(){
+  const [runs,miss,spf,usg,calls]=await Promise.all([api("runs"),readFile("categorias_faltam.json").catch(()=>({data:[]})),readFile("spend.json").catch(()=>({data:{}})),readFile("usage.json").catch(()=>({data:null})),readFile("api_calls.json").catch(()=>({data:null}))]);
+  if(!cache.vars){cache.vars=await api("vars").catch(()=>({}))}
+  const m=miss.data||[], sp=spf.data||{}, V=cache.vars||{};
+  const days=sp.days||{}, cr=parseFloat(V.ANTHROPIC_CREDIT_USD), since=V.ANTHROPIC_CREDIT_DATE||"", al=parseFloat(V.ANTHROPIC_ALERT_USD)||1.5;
+  const last7=Object.keys(days).sort().slice(-7), avg=last7.length?last7.reduce((a,k)=>a+(days[k].usd||0),0)/last7.length:0;
+  const month=new Date().toISOString().slice(0,7), spentM=Object.keys(days).filter(k=>k.startsWith(month)).reduce((a,k)=>a+(days[k].usd||0),0);
+  let cred;
+  if(!isNaN(cr)&&since){const spent=Object.keys(days).filter(k=>k>=since).reduce((a,k)=>a+(days[k].usd||0),0),left=cr-spent,bad2=left<al||(sp.credit_error&&sp.credit_error.slice(0,10)>=since);
+    cred=`<p class="${bad2?"bad":"ok"}"><b>Saldo estimado: ${left.toFixed(2)} USD</b> ${bad2?"— a acabar! Carrega fundos.":""}</p><p class="mut">Gasto estimado desde ${esc(since)}: ${spent.toFixed(2)} USD · ritmo (7 dias): ${avg.toFixed(3)} USD/dia${avg>0?` · dura ~${Math.max(0,Math.floor(left/avg))} dias`:""} · alerta abaixo de ${al} USD</p>`}
+  else cred=`<p class="mut">Em Definições, preenche <b>ANTHROPIC_CREDIT_USD</b> (saldo que tens na Console) e <b>ANTHROPIC_CREDIT_DATE</b> (hoje, AAAA-MM-DD) para ver o saldo estimado e receber um aviso quando estiver a acabar.</p>`;
+  if(sp.credit_error&&(isNaN(cr)||!since||sp.credit_error.slice(0,10)>=since))cred=`<p class="bad"><b>A Anthropic recusou um pedido por falta de saldo (${esc(sp.credit_error.slice(0,10))}).</b></p>`+cred;
+  const FL={"caption-final":"Legendas de resultados","caption-news":"Legenda das notícias","caption-preview":"Legendas das antevisões","web-context":"Contexto web nas legendas","h2h":"H2H das antevisões","headline":"Títulos dos cartões","news-search":"Notícias: pesquisa","news-verify":"Notícias: verificação","news":"Notícias","other":"Outros"};
+  const byF={};last7.forEach(k=>Object.entries(days[k].by||{}).forEach(([f,v])=>{const l=FL[f]||(f.startsWith("caption-")?"Legendas: "+f.slice(8):f);byF[l]=(byF[l]||0)+v}));
+  const byH=Object.keys(byF).length?`<table style="margin-top:8px">${Object.entries(byF).sort((a,b)=>b[1]-a[1]).map(([l,v])=>`<tr><td>${esc(l)}</td><td style="text-align:right">${v.toFixed(2)} USD</td></tr>`).join("")}</table><p class="mut">Gasto por funcionalidade nos últimos 7 dias (só conta a partir de hoje).</p>`:"";
+  const credCard=`<div class="card"><h3>Crédito Anthropic (estimado)</h3>${cred}${byH}<p class="mut">Gasto estimado este mês: ${spentM.toFixed(2)} USD. É uma estimativa feita pelo robô; o valor real está na <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Console</a>.</p></div>`;
+  const C=calls.data||{},today=new Date(Date.now()+2*36e5).toISOString().slice(0,10),cn=C.day===today?C.n||0:0;   // dia da API: renova às 22h UTC
+  const KL={"matches":"jogos ao vivo/próximos","matches/id":"confirmar resultados","fixtures":"ordem de jogo","players/id":"fichas de jogadores"};
+  const cnt=`<p class="mut">Contagem do robô hoje: <b>${cn}</b> pedidos${C.day===today&&C.by?" ("+Object.entries(C.by).map(([k,v])=>esc(KL[k]||k)+" "+v).join(" · ")+")":""}.${C.day===today&&C.espn?` <b class="ok">Poupados pelo ESPN hoje: ${C.espn}</b> (jogos ATP/WTA confirmados sem gastar pedidos).`:""} A quota renova às 22h (UTC). Quando faltam menos de 30, o robô pausa a ordem de jogo e as fichas para guardar pedidos para os resultados.</p>`;
+  const quotaCard=(()=>{const u0=usg.data,apiDay=t=>new Date(t+2*36e5).toISOString().slice(0,10);const u=(u0&&u0.ts&&apiDay(u0.ts*1000)===apiDay(Date.now()))?u0:null;if(!u||!u.ts)return `<div class="card"><h3>Quota da API de ténis</h3>${cn?`<p><b>${cn} de 100 pedidos usados hoje</b> (contagem do robô)</p>`:""}${cnt}</div>`;
+    const F=Object.assign({},u.fields||{});   // os cabeçalhos x-ratelimit-* são o limite por minuto (30), não o diário: ficam só nos detalhes
+    const pick=re=>{const k=Object.keys(F).find(k=>!k.startsWith("por minuto")&&re.test(k)&&typeof F[k]==="number");return k?F[k]:null};
+    Object.entries(u.headers||{}).forEach(([k,v])=>{F["por minuto: "+k.replace("x-ratelimit-","")]=v});
+    let lim=F["limits.per_day"]??pick(/per_?day/i),rem=F["today.remaining_day"]??pick(/remaining/i),used=F["today.calls"]??pick(/used|calls|count/i);
+    if(used==null&&lim!=null&&rem!=null)used=lim-rem;if(used==null&&cn){used=cn;if(lim==null)lim=100}if(rem==null&&lim!=null&&used!=null)rem=lim-used;
+    const when=new Date(u.ts*1000).toLocaleString("pt-PT",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit"});
+    const pct=lim?Math.min(100,Math.round(100*(used||0)/lim)):null,bad=pct!=null&&pct>=85;
+    const bar=pct!=null?`<div style="height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin:8px 0"><div style="height:100%;width:${pct}%;background:${bad?"var(--bad)":"var(--ok)"}"></div></div>`:"";
+    const head=(used!=null&&lim!=null)?`<p class="${bad?"bad":"ok"}"><b>${used} de ${lim} pedidos usados hoje</b>${rem!=null?` · restam ${rem}`:""}</p>`:(u.status&&u.status!==200?`<p class="bad">A API respondeu ${u.status}.</p>`:"");
+    const raw=Object.keys(F).length?`<details><summary class="mut">Detalhes</summary><table>${Object.entries(F).map(([k,v])=>`<tr><td class="mut">${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join("")}</table></details>`:"";
+    return `<div class="card"><h3>Quota da API de ténis (plano gratuito)</h3>${head}${bar}<p class="mut">Atualizado ${esc(when)} · consultar a quota não gasta pedidos.</p>${cnt}${raw}</div>`})();
+  $("#main").innerHTML=quotaCard+credCard+runsCard(runs)+`
+  <div class="card"><h3>Torneios sem categoria (últimos 14 dias)</h3>${m.length?`<p class="mut">Acrescenta-os no separador Categorias.</p>`+m.map(x=>`<div>${esc(x.tournament)} <span class="mut">${esc(x.date)}</span></div>`).join(""):'<p class="ok">Todos têm categoria.</p>'}</div>`}
+
+async function noticias(){
+  const [lg,vv]=await Promise.all([readFile("news_log.json").catch(()=>({data:{}})),api("vars").catch(()=>({}))]);
+  const items=((lg.data||{}).items||[]).slice().reverse(), on=["1","true","yes","on"].includes(String(vv.NEWS_ENABLED||"").toLowerCase());
+  const row=i=>`<div style="padding:10px 0;border-bottom:1px solid #ddd"><b class="${i.status==="posted"?"ok":"bad"}">${i.status==="posted"?"Publicada":"Recusada"}</b> <span class="mut">${esc(i.date||"")} · ${esc(i.category||"")}</span><br>${esc(i.headline||"")}${i.summary?`<br><span class="mut">${esc(i.summary)}</span>`:""}${i.reason?`<br><span class="bad">${esc(i.reason)}</span>`:""}<br>${(i.sources||[]).map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener">${esc((u.split("/")[2]||u).replace("www.",""))}</a>`).join(" · ")}</div>`;
+  $("#main").innerHTML=`<div class="card"><h3>Notícias automáticas: ${on?'<span class="ok">ligadas</span>':'<span class="bad">desligadas</span>'}</h3><p class="mut">Para ligar ou desligar, muda NEWS_ENABLED em Definições. Cada notícia só sai com fonte oficial (ou 2 meios reconhecidos) e depois de uma segunda verificação. Aqui vês o que saiu e o que foi recusado, com as fontes.</p>${items.length?items.map(row).join(""):'<p class="mut">Ainda sem notícias.</p>'}</div>`}
+
+async function visitas(days){
+  days=days||Number(sessionStorage.getItem("vd"))||7;
+  const d=await api("analytics?days="+days+"&sport="+sport);
+  const T=(rows,key,lbl)=>`<table>${(rows||[]).slice(0,12).map(r=>`<tr><td>${esc(r.dimensions[key]||"(direto)")}</td><td style="text-align:right">${r.count}</td></tr>`).join("")||'<tr><td class="mut">Sem dados</td></tr>'}</table>`;
+  const grp={};if(sport==="padel")(d.pages||[]).forEach(r=>{const p=r.dimensions.requestPath||"/";const m=p.match(/^\/padel\/([a-z-]+)/);const k=!m||m[1]==="index"?"Início":({t:"Torneios",p:"Jogadores",pair:"Pares",results:"Resultados","rankings-men":"Rankings","rankings-women":"Rankings",rankings:"Rankings",players:"Lista de jogadores",stats:"Stats","next-week":"Next week","order-of-play":"Ordem de jogo",i:"Bio do Instagram",tournaments:"Lista de torneios",countries:"Países",credits:"Créditos"}[m[1].replace(/\.html$/,"")]||"Outras");grp[k]=(grp[k]||0)+r.count});
+  else (d.pages||[]).forEach(r=>{const p=r.dimensions.requestPath||"/";const m=p.match(/^\/(?:(es|fr|de|it)\/)?(m|p|t|stats|players|results)?/);const k=p==="/"?"Início":(m&&m[2]?{m:"Jogos",p:"Jogadores",t:"Torneios",stats:"Stats",players:"Lista de jogadores",results:"Resultados"}[m[2]]:"Outras")+((m&&m[1])?" ("+m[1]+")":"");grp[k]=(grp[k]||0)+r.count});
+  const SRC={i:"Instagram (bio)",w:"WhatsApp",f:"Facebook",x:"X / Twitter",e:"Email"};const src={};let srcTot=0;(d.pages||[]).forEach(r=>{const m=(r.dimensions.requestPath||"").match(sport==="padel"?/^\/padel\/(i)\/?(index\.html)?$/:/^\/([iwfxe])\/?(index\.html)?$/);if(m){src[m[1]]=(src[m[1]]||0)+r.count;srcTot+=r.count}});
+  const srcHtml=`<div class="card"><h3>Por link de origem</h3><table>${Object.keys(SRC).filter(k=>sport!=="padel"||k==="i").map(k=>`<tr><td>${SRC[k]} <span class="mut">beyond100tennis.com/${sport==="padel"?"padel/":""}${k}/</span></td><td style="text-align:right">${src[k]||0}</td></tr>`).join("")}</table><p class="mut">Usa cada endereço no sítio certo (bio do Instagram: /i/). Entradas sem link especial aparecem em “De onde vêm” ou como (direto).</p></div>`;
+  const max=Math.max(1,...(d.daily||[]).map(x=>x.count));
+  $("#main").innerHTML=`<div class="row">${[1,7,30].map(n=>`<button class="${n===days?"on":""}" data-d="${n}">${n===1?"24 h":n+" dias"}</button>`).join("")}</div>
+  <div class="row"><div class="card" style="flex:1"><h3>${d.total.count}</h3><span class="mut">páginas vistas</span></div><div class="card" style="flex:1"><h3>${d.total.sum.visits}</h3><span class="mut">visitas</span></div></div>
+  <div class="card"><h3>Por dia</h3><div style="display:flex;gap:3px;align-items:flex-end;height:90px">${(d.daily||[]).map(x=>`<div title="${esc(x.dimensions.date)}: ${x.count}" style="flex:1;background:var(--g);border-radius:3px 3px 0 0;height:${Math.max(3,x.count/max*100)}%"></div>`).join("")}</div></div>
+  <div class="card"><h3>O que vêem</h3><table>${Object.entries(grp).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td>${esc(k)}</td><td style="text-align:right">${v}</td></tr>`).join("")}</table></div>
+  <div class="card"><h3>Páginas mais vistas</h3>${T(d.pages,"requestPath")}</div>
+  ${srcHtml}
+  <div class="card"><h3>De onde vêm</h3>${T(d.refs,"refererHost")}</div>
+  <div class="card"><h3>Países</h3>${T(d.countries,"countryName")}</div>
+  <div class="card"><h3>Dispositivos</h3>${T(d.devices,"deviceType")}</div>
+  <p class="mut">Dados do Cloudflare Web Analytics: sem cookies e sem dados pessoais. Ao fim de poucos minutos de uma visita já aparece.</p>`;
+  $("#main").onclick=e=>{const b=e.target.closest("button[data-d]");if(b){sessionStorage.setItem("vd",b.dataset.d);visitas(Number(b.dataset.d))}}}
+
+async function google(){
+  const [g,p]=await Promise.all([readFile("gsc.json").catch(()=>({data:null})),readFile("popular.json").catch(()=>({data:null}))]);
+  const d=g.data, pd=sport==="padel";
+  const n=x=>Number(x||0).toLocaleString("pt-PT"), pos=x=>x?x.toFixed(1).replace(".",","):"–";
+  const btn=`<button id="gsc-run">Ler agora</button>`;
+  if(!d||!d.queries){$("#main").innerHTML=`<div class="card"><h3>Google (Search Console)</h3><p class="mut">Ainda sem dados. A leitura corre às segundas de manhã.</p>${btn}</div>`;wireG();return}
+  const pages=(d.pages||[]).filter(x=>pd?x.page.includes("/padel/"):!x.page.includes("/padel/"));
+  const Q=d.queries||[], imp=Q.reduce((a,x)=>a+x.impressions,0), clk=Q.reduce((a,x)=>a+x.clicks,0);
+  const ap=imp?Q.reduce((a,x)=>a+x.position*x.impressions,0)/imp:0;
+  const opp=Q.filter(x=>x.impressions>=5&&x.position<=20&&x.clicks===0).slice(0,15);
+  const row=x=>`<tr><td>${esc(x.q)}</td><td style="text-align:right">${n(x.impressions)}</td><td style="text-align:right">${n(x.clicks)}</td><td style="text-align:right">${pos(x.position)}</td></tr>`;
+  const head=`<tr><th>Pesquisa</th><th style="text-align:right">Vezes que aparecemos</th><th style="text-align:right">Cliques</th><th style="text-align:right">Posição</th></tr>`;
+  const short=u=>u.replace(/^https?:\/\/[^/]+/,"")||"/";
+  const pop=p.data?Object.entries((pd?p.data.padel:p.data.tennis)||{}).sort((a,b)=>b[1]-a[1]).slice(0,15):[];
+  $("#main").innerHTML=`<div class="row"><div class="card" style="flex:1"><h3>${n(imp)}</h3><span class="mut">vezes que aparecemos no Google (28 dias)</span></div>
+   <div class="card" style="flex:1"><h3>${n(clk)}</h3><span class="mut">cliques</span></div><div class="card" style="flex:1"><h3>${pos(ap)}</h3><span class="mut">posição média</span></div></div>
+   ${todoCard(d.todo)}
+   ${trendCard(d.daily)}
+   ${healthCard(d.health)}
+   <div class="card" style="border:2px solid var(--v)"><h3>Oportunidades</h3><p class="mut">Pesquisas em que já aparecemos na 1.ª ou 2.ª página mas ninguém clicou: melhorar o título e a página destes jogadores dá cliques.</p>
+    ${opp.length?`<table>${head}${opp.map(row).join("")}</table>`:'<p class="mut">Nenhuma de momento.</p>'}</div>
+   ${idxCard(d.index)}
+   <div class="card"><h3>O que as pessoas pesquisam</h3><p class="mut">Todo o site (o Google não separa ténis e padel nas pesquisas).</p><table>${head}${Q.slice(0,25).map(row).join("")}</table></div>
+   <div class="card"><h3>Páginas que aparecem no Google${pd?" (padel)":" (ténis)"}</h3>${pages.length?`<table>${pages.slice(0,20).map(x=>`<tr><td><a href="${esc(x.page)}" target="_blank" rel="noopener">${esc(short(x.page))}</a></td><td style="text-align:right">${n(x.impressions)}</td><td style="text-align:right">${n(x.clicks)} cliques</td></tr>`).join("")}</table>`:'<p class="mut">Ainda nenhuma.</p>'}</div>
+   <div class="card"><h3>Mais procurados no nosso site (14 dias)</h3><p class="mut">Estes jogadores ganham +0,5 de prioridade nos posts ("searched").</p>${pop.length?`<table>${pop.map(([k,v])=>`<tr><td>${esc(((pd?(p.data.padel_names||{})[k]:k)||k).replace(/-/g," "))}</td><td style="text-align:right">${n(v)} visitas</td></tr>`).join("")}</table>`:'<p class="mut">Ainda sem dados (atualiza a cada hora).</p>'}</div>
+   <p class="mut">Leitura do Google: ${esc(new Date(d.ts*1000).toLocaleString("pt-PT"))} · corre às segundas. ${btn}</p>`;
+  wireG()}
+function todoCard(T){
+  if(!T||!T.length)return "";
+  const L={playing:["Joga esta semana","var(--v)"],page2:["Subir no Google","#f0b429"],noclick:["Ninguém clica","#7fb3e0"],missing:["Página em falta","#e5484d"]};
+  return `<div class="card" style="border:2px solid var(--v)"><h3>O que fazer esta semana</h3><p class="mut">Gerado a partir das pesquisas do Google, cruzadas com os nossos jogos. O motor já trata do que pode sozinho (prioridade nos posts e nas páginas); o resto fica aqui.</p>
+   <table>${T.map(a=>`<tr><td style="white-space:nowrap"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:${L[a.kind][1]};color:#0b2b20">${L[a.kind][0]}</span></td><td>${esc(a.text)}${a.url?` <a href="${esc(a.url)}" target="_blank" rel="noopener">abrir ↗</a>`:""}</td></tr>`).join("")}</table></div>`}
+function trendCard(D){
+  if(!D||D.length<3)return "";
+  const W=760,H=200,P=34,n=D.length,mx=Math.max(1,...D.map(x=>x.i)),mc=Math.max(1,...D.map(x=>x.c));
+  const X=i=>P+(W-2*P)*i/(n-1),Y=v=>H-P-(H-2*P)*v/mx,Yc=v=>H-P-(H-2*P)*v/mc;
+  const bars=D.map((x,i)=>`<rect x="${(X(i)-(W-2*P)/n/2+1).toFixed(1)}" y="${Y(x.i).toFixed(1)}" width="${Math.max(1,(W-2*P)/n-2).toFixed(1)}" height="${(H-P-Y(x.i)).toFixed(1)}" fill="var(--g)" opacity=".75"><title>${esc(x.d)}: ${x.i} vezes, ${x.c} cliques, posição ${x.p}</title></rect>`).join("");
+  const cl=D.map((x,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Yc(x.c).toFixed(1)}`).join(" ");
+  const lab=[0,Math.floor(n/2),n-1].map(i=>`<text x="${X(i).toFixed(1)}" y="${H-10}" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">${esc(D[i].d.slice(5).split("-").reverse().join("/"))}</text>`).join("");
+  const wk=a=>a.reduce((s,x)=>s+x.i,0),last=D.slice(-7),prev=D.slice(-14,-7),wi=wk(last),pi=wk(prev);
+  const ch=pi?Math.round(100*(wi-pi)/pi):null,cc=last.reduce((s,x)=>s+x.c,0),pp=prev.reduce((s,x)=>s+x.c,0);
+  const ap=a=>{const t=a.reduce((s,x)=>s+x.i,0);return t?a.reduce((s,x)=>s+x.p*x.i,0)/t:0},pa=ap(last),pb=ap(prev);
+  const arrow=(v,good)=>v==null?"":`<b style="color:${good?"#2f9e5b":"#d9534f"}">${v>0?"▲":v<0?"▼":"="} ${Math.abs(v)}${typeof v==="number"&&!Number.isInteger(v)?"":"%"}</b>`;
+  return `<div class="card"><h3>Evolução no Google (últimos ${n} dias)</h3>
+   <div class="row" style="gap:18px;flex-wrap:wrap;margin-bottom:6px"><span>Últimos 7 dias: <b>${wi}</b> vezes no Google ${ch==null?"":arrow(ch,ch>=0)} <span class="mut">vs. semana anterior</span></span>
+   <span><b>${cc}</b> cliques <span class="mut">(antes ${pp})</span></span><span>posição média <b>${pa?pa.toFixed(1).replace(".",","):"–"}</b> <span class="mut">(antes ${pb?pb.toFixed(1).replace(".",","):"–"}; menor é melhor)</span></span></div>
+   <div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:520px;height:auto;color:var(--ink)">
+   <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="currentColor" opacity=".2"/><text x="${P}" y="${P-10}" font-size="11" fill="currentColor" opacity=".6">${mx} vezes/dia</text>
+   ${bars}<path d="${cl}" fill="none" stroke="#e5484d" stroke-width="2"/>${lab}</svg></div>
+   <p class="mut"><span style="display:inline-block;width:10px;height:10px;background:var(--g);opacity:.75;border-radius:2px"></span> vezes que aparecemos no Google por dia · <span style="display:inline-block;width:14px;height:2px;background:#e5484d;vertical-align:middle"></span> cliques (escala própria, máx. ${mc}/dia). Passa o rato por cima das barras para ver cada dia.</p></div>`}
+function healthCard(h){
+  if(!h||!(h.pages||[]).length)return "";
+  const c=v=>v>=90?"ok":v>=50?"":"bad",short=u=>u.replace(/^https?:\/\/[^/]+/,"")||"/",v=h.videos||{};
+  return `<div class="card"><h3>Saúde do site</h3><p class="mut">Medição do Google no telemóvel (0 a 100, quanto mais melhor), feita às segundas. ${esc(new Date(h.ts*1000).toLocaleDateString("pt-PT"))}.</p>
+   <table><tr><th>Página</th><th style="text-align:right">Velocidade</th><th style="text-align:right">SEO</th><th style="text-align:right">Acessibilidade</th><th style="text-align:right">Carrega em</th></tr>
+   ${h.pages.map(p=>p.error?`<tr><td>${esc(short(p.url))}</td><td colspan="4" class="mut">não deu para medir (${esc(p.error)})</td></tr>`:`<tr><td><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(short(p.url))}</a></td><td style="text-align:right" class="${c(p.perf)}">${p.perf}</td><td style="text-align:right" class="${c(p.seo)}">${p.seo}</td><td style="text-align:right" class="${c(p.a11y)}">${p.a11y}</td><td style="text-align:right">${esc(p.lcp)}</td></tr>`).join("")}</table>
+   ${v.checked?`<p style="margin-top:10px"><b>Vídeos de padel:</b> ${v.ok} passam no site · ${v.blocked_country||0} escondidos por estarem bloqueados em países principais · ${v.no_embed||0} sem autorização para o site · ${v.gone||0} apagados (de ${v.checked} verificados).</p>`:""}</div>`}
+function idxCard(ix){
+  if(!ix||!(ix.rows||[]).length)return "";
+  const R=ix.rows, ok=R.filter(x=>x.verdict==="PASS"), bad=R.filter(x=>x.verdict!=="PASS");
+  const PT={"Submitted and indexed":"no Google","Indexed, not submitted in sitemap":"no Google (fora do sitemap)","Crawled - currently not indexed":"visitada, mas não indexada","Discovered - currently not indexed":"descoberta, ainda não visitada","URL is unknown to Google":"o Google ainda não a conhece","Duplicate, Google chose different canonical than user":"duplicada: o Google escolheu outra versão","Alternate page with proper canonical tag":"versão alternativa (aponta para outra)","Page with redirect":"redireciona","Excluded by ‘noindex’ tag":"marcada para não indexar"};
+  const why=x=>x.error?("erro "+x.error):(PT[x.state]||x.state||"?");
+  const grp={};bad.forEach(x=>{const k=why(x);(grp[k]=grp[k]||[]).push(x)});
+  const short=u=>u.replace(/^https?:\/\/[^/]+/,"")||"/";
+  return `<div class="card"><h3>Estão no Google? <span class="${bad.length?"bad":"ok"}">${ok.length} de ${R.length}</span></h3>
+   <p class="mut">Inspeção página a página das mais importantes (as que já aparecem nas pesquisas e os jogadores mais vistos). Atualizada ${esc(new Date(ix.ts*1000).toLocaleString("pt-PT"))}.</p>
+   ${Object.entries(grp).sort((a,b)=>b[1].length-a[1].length).map(([k,xs])=>`<details><summary><b>${esc(k)}</b> · ${xs.length}</summary><table>${xs.map(x=>`<tr><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(short(x.url))}</a></td><td class="mut">${x.crawled?"visitada "+esc(x.crawled):""}${x.canon_google&&x.canon_google!==x.url?" · o Google prefere "+esc(short(x.canon_google)):""}</td></tr>`).join("")}</table></details>`).join("")||'<p class="ok">Todas no Google.</p>'}</div>`}
+function wireG(){const b=$("#gsc-run");if(b)b.onclick=async()=>{try{await run("gsc.yml")}catch(e){toast(e.message,true)}}}
+
+async function jogos(){
+  const [res,ps]=await Promise.all([readFile("results.json"),readFile("posts.json").catch(()=>({data:{}}))]);cache.results=res.data||[];
+  const post={};Object.values(ps.data||{}).forEach(es=>(es||[]).forEach(e=>{post[e.id]=e}));
+  $("#main").innerHTML=`<style>.jg-top{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px}.jg-top input[type=search]{flex:1;min-width:200px}
+.jg-day{font:700 12px system-ui;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin:16px 0 6px}
+.jg{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 8px}
+.jg-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--mut)}
+.jg-pl{display:grid;grid-template-columns:1fr auto;gap:2px 12px;margin:8px 0;font-size:15.5px}
+.jg-pl .w{font-weight:700}.jg-pl .l{color:var(--mut)}.jg-pl .s{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.jg-ac{display:flex;gap:6px;flex-wrap:wrap}.jg-ac a,.jg-ac button{font-size:13px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);text-decoration:none}
+.tag.ok{border-color:var(--ok);color:var(--ok)}.tag.q{border-color:var(--bad);color:var(--bad)}.tag.v{background:var(--v);color:#0e3a2d;border-color:var(--v)}</style>
+   <div class="card"><div class="jg-top"><input type="search" id="q" placeholder="Pesquisar jogador ou torneio"><label class="mut"><input type="checkbox" id="onlyq"> só qualificação</label><label class="mut"><input type="checkbox" id="onlyp"> só com cartão</label></div><div id="list"></div></div>`;
+  const today=new Date().toISOString().slice(0,10),yest=new Date(Date.now()-864e5).toISOString().slice(0,10);
+  const dayName=d=>d===today?"Hoje":d===yest?"Ontem":new Date(d+"T12:00:00Z").toLocaleDateString("pt-PT",{weekday:"long",day:"numeric",month:"short"});
+  const card=r=>{const w=r.winner===2?2:1,W=r["p"+w],L=r["p"+(3-w)],g=r.games||[];
+    const sc=(i)=>(g[i]||[]).join("  ");const p=post[r.id];
+    const st=p?(p.skipped?`<span class="tag">cartão não saiu</span>`:p.sent?`<span class="tag ok">publicado</span>`:`<span class="tag v">na fila · ${p.score??""}</span>`):"";
+    return `<div class="jg"><div class="jg-meta"><span>${esc(r.tournament)}</span><span>·</span><span>${esc(r.round||"")}</span>${r.q?'<span class="tag q">qualificação</span>':""}${st}<span style="margin-left:auto">#${r.id}</span></div>
+    <div class="jg-pl"><span class="w">${esc(W.name)}</span><span class="s w">${sc(w-1)}</span><span class="l">${esc(L.name)}</span><span class="s l">${sc(2-w)}</span></div>
+    <div class="jg-ac"><a href="/m/${r.id}.html" target="_blank" rel="noopener">Ver página ↗</a><button data-r="${r.id}">Repostar</button>${r.q?"":`<button data-q="${r.id}">Marcar qualificação</button>`}</div></div>`};
+  const draw=()=>{const q=($("#q").value||"").toLowerCase(),oq=$("#onlyq").checked,op=$("#onlyp").checked;
+    const rows=cache.results.filter(r=>!/ \/ /.test(r.p1.name+r.p2.name)).filter(r=>!oq||r.q).filter(r=>!op||post[r.id]).filter(r=>!q||(r.p1.name+" "+r.p2.name+" "+r.tournament).toLowerCase().includes(q))
+      .sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.id-a.id)).slice(0,60);
+    let last="";$("#list").innerHTML=rows.length?rows.map(r=>{const h=r.date!==last?`<div class="jg-day">${esc(dayName(r.date))}</div>`:"";last=r.date;return h+card(r)}).join(""):'<p class="mut">Nenhum jogo.</p>'};
+  draw();$("#q").oninput=draw;$("#onlyq").onchange=draw;$("#onlyp").onchange=draw;
+  $("#list").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
+    try{
+      if(b.dataset.q){if(!confirm("Marcar o jogo "+b.dataset.q+" como qualificação e reconstruir as estatísticas?"))return;
+        const f=await readFile("qualifying_ids.json");const ids=Array.from(new Set([...(f.data||[]),Number(b.dataset.q)]));
+        await saveFile("qualifying_ids.json",ids,f.sha);await run("rebuild_stats.yml");}
+      if(b.dataset.r){if(!confirm("Refazer o post do jogo "+b.dataset.r+"?"))return;await run("repost.yml",{match_id:b.dataset.r})}
+    }catch(err){toast(err.message,true)}}}
+
+async function handles(){
+  let res=[];try{res=(await readFile("results.json")).data||[]}catch(e){}
+  const names=[...new Set(res.flatMap(r=>[r.p1.name,r.p2.name]))].sort(), tn=[...new Set(res.map(r=>r.tournament))].sort();
+  const files={players:await readFile("handles.json"),tourn:await readFile("handles_torneios.json")};
+  const block=(key,title,list)=>{const d=files[key].data||{};const keep=Object.fromEntries(Object.entries(d).filter(([k])=>k.startsWith("_")));
+    const rows=Object.entries(d).filter(([k])=>!k.startsWith("_"));
+    return `<div class="card" data-k="${key}"><h3>${title}</h3><p class="mut">${esc(d._como_usar||"")}</p>
+    <datalist id="dl_${key}">${list.map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
+    <div class="rows">${rows.map(([k,v])=>rowH(key,k,v)).join("")}</div>
+    <div class="row"><button data-add="${key}">+ Adicionar</button><button class="pri" data-save="${key}">Guardar</button></div></div>`};
+  const rowH=(key,k,v)=>`<div class="row"><input list="dl_${key}" value="${esc(k)}" placeholder="Nome" style="flex:2"><input value="${esc(v)}" placeholder="@perfil" style="flex:1"><button data-del>×</button></div>`;
+  // por confirmar: quem mais aparece nos posts, no top 150 oficial ou nas páginas mais vistas, ainda sem @ verificado à mão
+  const [pf,hc,er,pp]=await Promise.all([readFile("posts.json").catch(()=>({data:{}})),readFile("photos/handles_cache.json").catch(()=>({data:{}})),readFile("espn_rank.json").catch(()=>({data:{}})),readFile("popular.json").catch(()=>({data:{}}))]);
+  const slug=n=>(n||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const have=new Set(Object.keys(files.players.data||{}).filter(k=>!k.startsWith("_")).map(slug));
+  const byId=Object.fromEntries(res.map(r=>[String(r.id),r]));const score={},nm={},why={};
+  const bump=(n,v,w)=>{const k=slug(n);if(!k||have.has(k))return;score[k]=(score[k]||0)+v;nm[k]=n;(why[k]=why[k]||new Set()).add(w)};
+  Object.values(pf.data||{}).flat().forEach(e=>{const r=byId[String(e.id)];if(r){bump(r.p1.name,3,"posts");bump(r.p2.name,2,"posts")}});
+  ["atp","wta"].forEach(lg=>((er.data||{})[lg]||[]).slice(0,100).forEach(x=>bump(x.n,1,"top 100")));
+  Object.entries((pp.data||{}).tennis||{}).sort((a,b)=>b[1]-a[1]).slice(0,30).forEach(([k,v])=>{const n=nm[k]||k.split("-").map(w=>w[0].toUpperCase()+w.slice(1)).join(" ");bump(n,2,"procurado")});
+  const todo=Object.keys(score).sort((a,b)=>score[b]-score[a]).slice(0,25);
+  const sug=k=>{const h=((hc.data||{})[k]||{}).h;return h&&/^@[A-Za-z0-9._]{1,30}$/.test(h)?h:""};
+  const todoCard=`<div class="card" style="border:2px solid var(--v)"><h3>@ por confirmar</h3><p class="mut">Quem mais conta para o alcance e ainda não tem o @ confirmado à mão. Cada @ certo faz o jogador receber notificação do post. A sugestão vem da Wikidata: abre o perfil, confirma que é a pessoa certa e carrega em Usar. Na dúvida, deixa em branco.</p>
+   ${todo.length?`<table>${todo.map(k=>{const h=sug(k);return `<tr><td><b>${esc(nm[k])}</b><br><span class="mut">${esc([...why[k]].join(" · "))}</span></td><td>${h?`<a href="https://www.instagram.com/${esc(h.slice(1))}/" target="_blank" rel="noopener">${esc(h)} ↗</a>`:`<a class="mut" href="https://www.google.com/search?q=${encodeURIComponent(nm[k]+" tennis instagram")}" target="_blank" rel="noopener">procurar ↗</a>`}</td><td><button data-use="${esc(nm[k])}|${esc(h)}">Usar</button></td></tr>`}).join("")}</table>`:'<p class="ok">Nada por confirmar.</p>'}</div>`;
+  $("#main").innerHTML=todoCard+block("players","Perfis de jogadores",names)+block("tourn","Perfis de torneios",tn);
+  $("#main").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
+    if(b.dataset.del!==undefined)b.parentElement.remove();
+    if(b.dataset.use){const [n,h]=b.dataset.use.split("|");const rows=document.querySelector('[data-k="players"] .rows');rows.insertAdjacentHTML("beforeend",rowH("players",n,h));
+      b.closest("tr").remove();rows.lastElementChild.querySelectorAll("input")[1].focus();toast(h?"Confirma o @ e carrega em Guardar.":"Escreve o @ e carrega em Guardar.")}
+    if(b.dataset.add){b.closest(".card").querySelector(".rows").insertAdjacentHTML("beforeend",rowH(b.dataset.add,"",""))}
+    if(b.dataset.save){const k=b.dataset.save,card=b.closest(".card"),f=files[k],obj={};
+      for(const [kk,vv] of Object.entries(f.data||{}))if(kk.startsWith("_"))obj[kk]=vv;
+      card.querySelectorAll(".rows .row").forEach(r=>{const [a,c]=r.querySelectorAll("input");if(a.value.trim()&&c.value.trim())obj[a.value.trim()]=c.value.trim().startsWith("@")?c.value.trim():"@"+c.value.trim()});
+      try{const r=await saveFile(k==="players"?"handles.json":"handles_torneios.json",obj,f.sha);f.sha=r.sha;f.data=obj;toast("Guardado. Entra em vigor no próximo update.")}catch(err){toast(err.message,true)}}}}
+
+async function cats(){
+  const f=await readFile("categorias_manual.json"), m=(await readFile("categorias_faltam.json").catch(()=>({data:[]}))).data||[];
+  let list=f.data||[];
+  const row=e=>`<tr><td><input value="${esc(e.city||"")}" placeholder="cidade"></td><td><input type="date" value="${esc(e.start||"")}"></td><td><select>${["Challenger 50","Challenger 75","Challenger 100","Challenger 125","Challenger 175","WTA 125","WTA 250","WTA 500","WTA 1000","ATP 250","ATP 500","ATP 1000"].map(l=>`<option ${l===e.label?"selected":""}>${l}</option>`).join("")}</select></td><td><select><option value="m" ${e.g!=="w"?"selected":""}>Masc.</option><option value="w" ${e.g==="w"?"selected":""}>Fem.</option></select></td><td><button data-del>×</button></td></tr>`;
+  $("#main").innerHTML=`<div class="card"><h3>Sem categoria</h3>${m.length?m.map(x=>`<div class="row"><span style="flex:1">${esc(x.tournament)} <span class="mut">${esc(x.date)}</span></span><button data-fill="${esc(x.tournament)}|${esc(x.date)}|${esc(x.gender||"")}">Adicionar</button></div>`).join(""):'<p class="ok">Nada em falta.</p>'}</div>
+  <div class="card"><h3>Correções manuais</h3><p class="mut">Têm prioridade sobre a lista automática. Cidade como no nome do torneio (sem "Challenger"). A data é o início da semana do torneio.</p><div style="overflow-x:auto"><table id="ct" style="min-width:560px">${list.map(row).join("")}</table></div><div class="row"><button data-add>+ Linha</button><button class="pri" data-save>Guardar</button></div></div>`;
+  $("#main").onclick=async e=>{const b=e.target.closest("button");if(!b)return;
+    if(b.dataset.del!==undefined)b.closest("tr").remove();
+    if(b.dataset.add!==undefined)$("#ct").insertAdjacentHTML("beforeend",row({}));
+    if(b.dataset.fill){const [t,d,g]=b.dataset.fill.split("|");const dt=new Date(d);dt.setDate(dt.getDate()-((dt.getDay()+6)%7));
+      $("#ct").insertAdjacentHTML("beforeend",row({city:t.replace(/\s*(Chall\.?|Challenger|WTA|ATP|Men|Women)\b.*$/i,"").trim(),start:dt.toISOString().slice(0,10),g:g==="women"?"w":"m",label:g==="women"?"WTA 250":"Challenger 75"}));toast("Escolhe a categoria e carrega em Guardar.")}
+    if(b.dataset.save!==undefined){const out=[...$("#ct").querySelectorAll("tr")].map(r=>{const i=r.querySelectorAll("input,select");return{city:i[0].value.trim(),start:i[1].value,label:i[2].value,g:i[3].value}}).filter(x=>x.city&&x.start);
+      try{const r=await saveFile("categorias_manual.json",out,f.sha);f.sha=r.sha;toast("Guardado. Entra em vigor no próximo update.")}catch(err){toast(err.message,true)}}}}
+
+function acoes(){
+  const A=[["update.yml","Atualizar agora","Corre o update completo (resultados, posts, site).",{checks:["Jogos a confirmar","8"],min_age:["Minutos de espera","15"]}],
+   ["rebuild_stats.yml","Reconstruir estatísticas","Recalcula site e estatísticas sem qualificação.",{}],
+   ["audit.yml","Auditar resultados","Relatório dos jogos suspeitos de serem qualificação. Opcional: ids a marcar.",{apply:["Ids (opcional, separados por vírgula)",""]}],
+   ["repost.yml","Repostar jogo","Refaz o post de um jogo.",{match_id:["Número do jogo",""]}],
+   ["fix_photos.yml","Apagar fotos","Apaga fotos. Bloquear=1: o jogador fica sem foto automática (podes pôr uma à mão em photos/). Bloquear=0: volta a ser procurada. Fotos extra: usa o nome alt/jogador-2 (só essa foto sai e nunca volta).",{names:["Nomes de ficheiro sem .jpg, separados por vírgula",""],block:["Bloquear (1=sim, 0=não)","1"]}],
+   ["categorias.yml","Atualizar categorias","Lê os calendários na Wikipédia e valida.",{}],
+   ["torneios_ig.yml","Perfis dos torneios","Procura na Wikidata o Instagram dos torneios do calendário. Gravar=0 só mostra no log; Gravar=1 acrescenta os novos (nunca muda os teus).",{apply:["Gravar (1=sim, 0=não)","0"]}],
+   ["test_photos.yml","Testar fotos","Executa o teste de fotos.",{}]];
+  $("#main").innerHTML=A.map(([w,t,d,inp])=>`<div class="card" data-w="${w}"><h3>${t}</h3><p class="mut">${d}</p>${Object.entries(inp).map(([k,[l,v]])=>`<div class="row"><label class="mut" style="min-width:170px">${l}</label><input data-i="${k}" value="${esc(v)}" style="flex:1"></div>`).join("")}<button class="pri">Executar</button></div>`).join("");
+  $("#main").onclick=async e=>{const b=e.target.closest("button.pri");if(!b)return;const c=b.closest(".card"),inputs={};c.querySelectorAll("[data-i]").forEach(i=>{if(i.value.trim())inputs[i.dataset.i]=i.value.trim()});
+    if(c.dataset.w==="repost.yml"&&!inputs.match_id)return toast("Indica o número do jogo.",true);
+    if(!confirm("Executar: "+c.querySelector("h3").textContent+"?"))return;
+    try{await run(c.dataset.w,inputs)}catch(err){toast(err.message,true)}}}
+
+async function defs(){
+  const v=await api("vars");
+  const DAYS=[["0","Segunda"],["1","Terça"],["2","Quarta"],["3","Quinta"],["4","Sexta"],["5","Sábado"],["6","Domingo"]];
+  const UTC=" Hora UTC: no inverno é igual à de Lisboa, no verão Lisboa está 1h à frente.";
+  // t: b=caixa, n=número, s=escolha, x=texto · d=valor por omissão do código · h=o que faz e o que muda ao subir/descer
+  const G=[
+   ["Fila e horários de publicação",[
+    ["MAX_POSTS_PER_DAY","n","3","Resultados publicados por dia","Quantos cartões de resultados saem por dia (notícias, antevisões e posts semanais não contam). Mais alto: mais conteúdo, mas entram jogos de menor interesse e gasta-se mais em legendas. Mais baixo: só o melhor do dia."],
+    ["EXTRA_POSTS","n","2","Resultados extra além do máximo","Lugares a mais por dia, só para jogos com interesse igual ou acima do “Interesse para extra”. 0 = o máximo diário é rígido."],
+    ["EXCEPTION_SCORE","n","9","Interesse para extra / sair de manhã","Jogos com este interesse ou mais saem logo, mesmo de manhã ou com o limite do dia cheio (até aos extras). Mais baixo: mais exceções."],
+    ["SEND_FROM","n","8","Publicar a partir das (Lisboa)","Antes desta hora os resultados ficam à espera na fila. Antevisões de finais saem logo, a qualquer hora."],
+    ["SEND_TO","n","23","Publicar até às (Lisboa)","Depois desta hora os resultados esperam pela manhã seguinte (resultados com mais de 20h já não saem)."],
+    ["SEND_GAP_MIN","n","45","Minutos entre posts","Intervalo mínimo entre dois posts. As atualizações correm de 30 em 30 min, por isso na prática o intervalo é arredondado a 30/60/90 min. Mais alto: posts mais espaçados ao longo do dia."],
+    ["SEND_MORNING_UNTIL","n","16","Manhã até às","Até esta hora só sai um número limitado de resultados (abaixo), para guardar lugares para os jogos da tarde."],
+    ["SEND_MORNING_MAX","n","2","Resultados máximos de manhã","Quantos resultados podem sair antes da hora acima. Só um resultado com a pontuação da "Exceção de manhã" passa deste limite. Mais alto: menos lugares guardados para a tarde."],
+    ["SEND_MORNING_EXC","n","12","Exceção de manhã (pontos)","Antes das 16h só passa do limite da manhã um resultado com esta pontuação ou mais (título, surpresa gigante)."],
+    ["SEND_STRONG_SCORE","n","8","Interesse “forte”","Resultados abaixo disto são “fracos” e só saem a partir da hora abaixo, se ainda houver lugar no dia."],
+    ["SEND_WEAK_FROM","n","20","Resultados fracos só a partir das","Hora (Lisboa) a partir da qual os resultados fracos podem preencher os lugares que sobraram."],
+    ["SEND_LATE_SCORE","n","10","Sai a qualquer hora com interesse ≥","Um resultado excecional sai mesmo fora do horário (de noite). Mais baixo: mais posts fora de horas."],
+    ["MEN_FIRST","b","1","Resultados masculinos com prioridade","Ligado: na fila passa primeiro o melhor resultado masculino que possa sair; femininos só quando não há masculino em condições. Desligado: conta só o interesse."]]],
+   ["Que jogos dão cartão",[
+    ["STORY_PENALTY","n","3","Penalização sem história","Resultados sem final, meia, quarto, surpresa ou viragem perdem estes pontos (ficam só no site). 0 = como antes."],
+    ["STORY_COMEBACK","n","2","Pontos por viragem","Perdeu o 1.º set e ganhou."],
+    ["TITLE_STYLE","x","3","Desenho dos títulos","Campeões saem sempre neste desenho (3 = painel lateral com foto grande, o do post da Harriet Dart). Vazio = 3."],
+    ["POST_MIN_SCORE","n","4","Interesse mínimo para fazer cartão","Jogos abaixo disto ficam só no site. Mais alto: menos cartões na fila (menos escolha, menos gasto). Mais baixo: mais escolha para preencher o dia."],
+    ["PHOTO_BONUS","n","2","Bónus por foto","Pontos somados ao interesse quando o vencedor tem foto licenciada."],
+    ["NO_PHOTO_EXTRA","n","1","Extra exigido sem foto","Pontos a mais exigidos a jogos sem foto. Hoje sem efeito: jogos sem foto nunca dão cartão (foto obrigatória)."],
+    ["CARD_STYLE","s","1","Desenho do cartão de resultados","Aspeto do cartão publicado no Instagram.",[["1","1 · atual"],["2","2 · capa de revista"],["3","3 · painel lateral"],["rotate","Alternar 1→2→3"]]],
+    ["TRACK_MAX_PRIO","s","2","Jogos seguidos ao vivo","Que níveis gastam pedidos da API (100/dia). Só Tour+Challenger poupa quota mas perde finais ITF.",[["1","Tour + Challenger"],["2","Tour + Challenger + ITF"]]]]],
+   ["Conteúdos automáticos",[
+    ["NEWS_ENABLED","b","0","Notícias automáticas","Pesquisa notícias do circuito e faz um post quando encontra algo verificado. Custa IA (pesquisa web)."],
+    ["NEWS_MAX_PER_DAY","n","1","Notícias por dia","Máximo de posts de notícias por dia."],
+    ["NEWS_SCAN_HOURS","n","48","Horas entre pesquisas de notícias","De quanto em quanto tempo procura notícias. Mais baixo: notícias mais frescas, mais gasto de IA."],
+    ["PREVIEW_ENABLED","b","1","Antevisões de finais “Who wins?”","Post antes de finais com os dois jogadores com foto."],
+    ["PREVIEW_MAX_PER_DAY","n","1","Antevisões por dia","Máximo de antevisões por dia."],
+    ["PREVIEW_H2H","b","1","Confronto direto oficial nas antevisões","Procura o H2H oficial na web (~0,05 USD por antevisão). Desligado: antevisão sem H2H."],
+    ["RISING_ENABLED","b","1","Carrossel “Rising this week”","Carrossel semanal com os jogadores em subida."],
+    ["RISING_DAY","s","2","Dia do Rising","Dia da semana em que sai.",DAYS],
+    ["RISING_HOUR","n","18","Hora do Rising","A partir desta hora."+UTC],
+    ["THROWBACK_ENABLED","b","0","Post “This week in <ano>”","Final histórica desta semana. Precisa do histórico ligado."],
+    ["THROWBACK_DAY","s","3","Dia do This week in","Dia da semana em que sai.",DAYS],
+    ["THROWBACK_HOUR","n","12","Hora do This week in","A partir desta hora."+UTC],
+    ["ROAD_ENABLED","b","1","“Road to the Top 100” (segunda)","Post semanal com quem está perto do top 100."],
+    ["POWER_ENABLED","b","1","“Power Ranking” (terça)","Post semanal com os jogadores em melhor forma."],
+    ["RECORDS_ENABLED","b","1","“The month in records” (dia 1)","Post mensal com os recordes do mês anterior."],
+    ["WEEKLY_DAY","s","6","Dia do resumo semanal","Dia do carrossel com o resumo da semana.",DAYS],
+    ["WEEKLY_HOUR","n","21","Hora do resumo semanal","A partir desta hora."+UTC],
+    ["STORY_HOUR","n","20","Hora das stories","A partir desta hora sai a story com o resumo do dia."+UTC]]],
+   ["Legendas e IA",[
+    ["CAPTION_MODEL","x","","Modelo das legendas","Vazio = claude-sonnet-5-5. Um modelo mais barato (ex.: claude-haiku-5-5) poupa mas escreve pior."],
+    ["CAPTION_LITE_BELOW","n","0","Modelo barato abaixo de","Jogos com interesse abaixo disto usam o modelo barato. 0 = sempre o modelo normal."],
+    ["CAPTION_WEB_CONTEXT","b","1","Contexto da web nas legendas","Procura contexto na web antes de escrever a legenda (mais rica, mais cara)."],
+    ["CAPTION_WEB_MIN_SCORE","n","10","Pesquisa web só com interesse ≥","Só os jogos com este interesse ou mais pesquisam na web. Mais baixo: mais legendas ricas, mais gasto."],
+    ["FIRST_COMMENT","b","1","Comentar a pergunta da legenda","Depois de publicar, comenta a pergunta da legenda. Só funciona com a API oficial do Instagram."],
+    ["ANTHROPIC_CREDIT_USD","x","","Saldo Anthropic (USD)","O saldo que vês na Console, ex.: 4.72. Serve para estimar quantos dias faltam."],
+    ["ANTHROPIC_CREDIT_DATE","x","","Data desse saldo","AAAA-MM-DD do dia em que viste o saldo."],
+    ["ANTHROPIC_ALERT_USD","n","1.5","Avisar abaixo de (USD)","Quando o saldo estimado desce disto aparece um aviso."]]],
+   ["Padel (@beyond100.padel)",[
+    ["PADEL_PUBLISH","b","0","Publicar no Instagram do padel","Ligado: os posts do padel são enviados ao Make (rota “Padel” → @beyond100.padel). Desligado: os cartões são feitos e ficam na fila, nada é publicado."],
+    ["PADEL_MAX_POSTS_PER_DAY","n","4","Resultados de padel por dia","Quantos cartões de resultados do padel saem por dia (apresentação, antevisões e listas semanais não contam)."],
+    ["PADEL_FIP_MAX_PER_DAY","n","2","Resultados de padel por dia (só FIP)","Nos dias sem nenhum torneio Premier Padel a decorrer, este é o máximo de resultados por dia."],
+    ["PADEL_SEND_FROM","n","9","Padel: publicar a partir das (Lisboa)","Antes desta hora os posts do padel esperam."],
+    ["PADEL_SEND_TO","n","23","Padel: publicar até às (Lisboa)","Depois desta hora esperam pela manhã (resultados com mais de 20h já não saem)."],
+    ["PADEL_SEND_GAP_MIN","n","45","Padel: minutos entre posts","Intervalo mínimo entre dois posts do padel (as atualizações são de hora a hora)."],
+    ["PADEL_QF","b","1","Padel: quartos-de-final","Ligado: Premier Padel e FIP Platinum/Gold dão cartão a partir dos quartos-de-final (FIP Silver a partir das meias). Desligado: Premier só finais e FIP só meias e finais. Surpresas saem sempre."],
+    ["PADEL_MIN_SCORE","n","4","Padel: interesse mínimo","Jogos de padel abaixo disto não dão cartão. Só saem jogos com foto livre de um dos vencedores."],
+    ["PADEL_SURPRISE_GAP","n","40","Padel: diferença para “surpresa”","Lugares de ranking (soma do par) que o par vencedor tem de estar abaixo do vencido para contar como surpresa. Mais baixo: mais surpresas."],
+    ["PADEL_MAX_REQ","n","10","Padel: pedidos à API por atualização","Pedidos à Padel API em cada atualização (plano grátis: 50 mil/mês, 10/min). Mais alto: dados mais frescos, a atualização demora mais (~6 s por pedido)."]]],
+   ["Fotos",[
+    ["PHOTO_GALLERY","n","4","Fotos extra por jogador","Fotos licenciadas extra para alternar entre posts do mesmo jogador. 0 = usa sempre a mesma."],
+    ["PHOTO_MAX_AGE_Y","n","3","Fotos extra dos últimos N anos","Evita fotos antigas. Mais alto: mais variedade, fotos menos atuais."]]],
+   ["Sistema e site",[
+    ["HISTORY","b","1","Histórico de carreiras","Dados históricos nas páginas dos jogadores e nos posts semanais."],
+    ["HISTORY_MIRROR","b","0","Usar cópia de arquivo do Tennis Abstract","O repositório original deixou de existir; ligado usa a cópia (dados até junho 2026)."],
+    ["KEEP_ARCHIVE","b","1","Guardar arquivo de jogos","Guarda os resultados antigos no repositório (privado)."],
+    ["NEWSLETTER_USER","x","","Utilizador do Buttondown","Vazio = sem formulário de newsletter no site."],
+    ["CF_BEACON_TOKEN","x","","Token do Web Analytics","Usado para excluir as tuas visitas das estatísticas."]]]];
+  const known=new Set(G.flatMap(g=>g[1].map(f=>f[0])));
+  const extra=Object.keys(v).filter(k=>!known.has(k)).map(k=>[k,"x","",k,""]);
+  if(extra.length)G.push(["Outras",extra]);
+  const isOn=(x,d)=>{x=String(x).trim().toLowerCase();return d==="1"?!["0","no","off","false"].includes(x):["1","true","yes","on"].includes(x)};
+  const field=([k,t,d,l,h,opts])=>{const cur=v[k]??"",set=cur!=="";let ctl;
+    if(t==="b")ctl=`<label class="sw"><input type="checkbox" data-b="${k}" ${isOn(set?cur:d,d)?"checked":""}><span>${isOn(set?cur:d,d)?"Ligado":"Desligado"}</span></label>`;
+    else if(t==="s")ctl=`<select data-n="${k}"><option value="">Por omissão (${esc((opts.find(o=>o[0]===d)||[d,d])[1])})</option>${set&&!opts.some(o=>o[0]===cur)?`<option value="${esc(cur)}" selected>${esc(cur)} (atual)</option>`:""}${opts.map(o=>`<option value="${o[0]}" ${set&&cur===o[0]?"selected":""}>${esc(o[1])}</option>`).join("")}</select>`;
+    else ctl=`<input data-n="${k}" value="${esc(cur)}" placeholder="${d===""?"vazio":esc(d)}" style="width:${t==="n"?90:200}px" ${t==="n"?'inputmode="decimal"':""}><button data-s="${k}">Guardar</button>`;
+    return `<div class="fld"><div class="fl"><b>${esc(l)}</b>${h?` <button class="hq" data-h="${k}" aria-label="Ajuda">?</button>`:""}<br><span class="mut">${k}${d!==""?` · omissão ${esc((opts&&(opts.find(o=>o[0]===d)||[])[1])||d)}`:""}${set&&t!=="b"?"":set?" · definido":""}</span>${h?`<p class="hp" id="h-${k}" hidden>${esc(h)}</p>`:""}</div><div class="fc">${ctl}${set?`<button class="rs" data-r="${k}" title="Repor o valor por omissão">↺</button>`:""}</div></div>`};
+  $("#main").innerHTML=`<style>.fld{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}.fld:last-child{border:0}.fl{flex:1;min-width:0}.fc{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.hq{padding:0;width:22px;height:22px;border-radius:50%;font-size:12px;line-height:1}.hp{margin:6px 0 0;font-size:13px;color:var(--mut);max-width:560px}.rs{padding:5px 9px}.sw{display:flex;gap:8px;align-items:center;cursor:pointer;white-space:nowrap}.sw input{width:20px;height:20px;accent-color:var(--g)}@media(max-width:600px){.fld{flex-direction:column}.fc{justify-content:flex-start}}</style>
+   <p class="mut">Vazio = valor por omissão do código. Toca no <b>?</b> para ver o que cada definição faz. As caixas guardam logo ao clicar.</p>
+   ${G.filter(([t])=>(sport==="padel")===t.startsWith("Padel")).map(([t,fs])=>`<div class="card"><h3>${esc(t)}</h3>${fs.map(field).join("")}</div>`).join("")}`;
+  const save=async(k,val)=>{try{await api("vars",{method:"PUT",body:{name:k,value:val}});cache.vars=null;toast(val===""?k+" reposto.":k+" guardado.");if(val==="")defs()}catch(err){toast(err.message,true)}};
+  $("#main").onclick=e=>{const b=e.target.closest("button");if(!b)return;
+    if(b.dataset.h){const p=$("#h-"+b.dataset.h);p.hidden=!p.hidden;return}
+    if(b.dataset.r){if(confirm("Repor "+b.dataset.r+" no valor por omissão?"))save(b.dataset.r,"");return}
+    if(b.dataset.s)save(b.dataset.s,$(`[data-n="${b.dataset.s}"]`).value.trim())};
+  $("#main").onchange=e=>{const t=e.target;
+    if(t.dataset.b){t.nextElementSibling.textContent=t.checked?"Ligado":"Desligado";save(t.dataset.b,t.checked?"1":"0")}
+    else if(t.tagName==="SELECT"&&t.dataset.n)save(t.dataset.n,t.value)};
+  $("#main").onkeydown=e=>{if(e.key==="Enter"&&e.target.dataset.n)save(e.target.dataset.n,e.target.value.trim())}}
+
+
+api("me").then(m=>{$("#who").textContent=m.email;show()}).catch(e=>{$("#who").textContent="";$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`});
+</script>
+</body>
+</html>

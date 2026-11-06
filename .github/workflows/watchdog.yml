@@ -1,0 +1,38 @@
+name: Watchdog
+# Falha de propósito (o GitHub envia-te email) se o Update estiver a falhar de forma continuada ou parado.
+on:
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verificar últimas execuções do Update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh api "repos/${{ github.repository }}/actions/workflows/update.yml/runs?per_page=8&status=completed" > runs.json
+          python3 - <<'PY'
+          import json, sys, datetime
+          runs = json.load(open("runs.json")).get("workflow_runs", [])
+          if not runs:
+              print("Sem execuções do Update."); sys.exit(1)
+          last4 = [r["conclusion"] for r in runs[:4]]
+          ok = [r for r in runs if r["conclusion"] == "success"]
+          problems = []
+          if len(last4) == 4 and all(c != "success" for c in last4):
+              problems.append("as últimas 4 execuções do Update falharam: " + runs[0]["html_url"])
+          if not ok:
+              problems.append("nenhuma execução recente do Update terminou com sucesso")
+          else:
+              t = datetime.datetime.strptime(ok[0]["updated_at"], "%Y-%m-%dT%H:%M:%SZ")
+              age = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - t).total_seconds() / 3600
+              if age > 4:
+                  problems.append(f"o último Update com sucesso foi há {age:.1f} h")
+          if problems:
+              print("PROBLEMA:", "; ".join(problems)); sys.exit(1)
+          print("Update OK.")
+          PY

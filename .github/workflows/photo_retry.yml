@@ -1,0 +1,38 @@
+name: Retry tennis photos (free licence)
+on:
+  workflow_dispatch:
+    inputs:
+      names:
+        description: "Nomes separados por | (vazio = top 100 ATP/WTA sem foto)"
+        default: ""
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Retry (same identity and licence checks as the site)
+        env:
+          NAMES: ${{ github.event.inputs.names }}
+          ALLOW_SA: ${{ vars.ALLOW_SA }}
+          FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
+          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          PHOTO_MAX_AGE_Y: ${{ vars.PHOTO_MAX_AGE_Y }}
+        run: python photo_retry.py
+      - name: Save
+        run: bash _engine/save_state.sh "Photos - retry" photos

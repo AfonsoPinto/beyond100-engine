@@ -1,0 +1,34 @@
+name: Instagram token
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check = só verifica o token; refresh = renova"
+        default: "check"
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests pynacl
+      - name: Run
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          GH_SECRETS_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
+          GRAPH_HOST: ${{ vars.GRAPH_HOST }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          python ig_token.py "${MODE:-refresh}"

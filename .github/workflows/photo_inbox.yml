@@ -1,0 +1,46 @@
+name: Photo inbox
+on:
+  workflow_dispatch:
+    inputs:
+      sport: { description: "tennis ou padel", default: "tennis" }
+      url_b64: { description: "link (Dropbox, .zip) em base64", required: true }
+      credit: { description: "formato do crédito", default: "Foto: {fotógrafo}/FPT" }
+      fallback: { description: "fotógrafo, se não vier nos dados da foto", default: "" }
+      dry: { description: "1 = só simula (relatório, nada guardado)", default: "0" }
+      replace: { description: "1 = troca fotos automáticas (Wikimedia) por estas", default: "0" }
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install requests pillow gdown==5.2.0
+      - name: Classify photos
+        env:
+          SPORT: ${{ github.event.inputs.sport }}
+          URLB: ${{ github.event.inputs.url_b64 }}
+          CREDIT: ${{ github.event.inputs.credit }}
+          FALLBACK: ${{ github.event.inputs.fallback }}
+          DRY: ${{ github.event.inputs.dry }}
+          REPLACE: ${{ github.event.inputs.replace }}
+        run: |
+          ARGS=(--sport "$SPORT" --url-b64 "$URLB" --credit "$CREDIT" --fallback "$FALLBACK")
+          if [ "$DRY" = "1" ]; then ARGS+=(--dry); fi
+          if [ "$REPLACE" = "1" ]; then ARGS+=(--replace); fi
+          python photo_inbox.py "${ARGS[@]}"
+      - name: Save
+        run: bash _engine/save_state.sh "Photo inbox (${{ github.event.inputs.sport }})" $(cat .inbox_changed)

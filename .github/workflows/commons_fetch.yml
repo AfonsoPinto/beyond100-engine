@@ -1,0 +1,79 @@
+name: Fetch Commons files (free licence)
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: "Nomes de ficheiros da Wikimedia Commons, separados por |"
+        required: true
+      folder:
+        description: "Pasta de destino"
+        default: "padel/photos"
+      width:
+        description: "Largura máxima (px)"
+        default: "1200"
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install requests
+      - name: Download (with licence and author into credits.json)
+        env:
+          FILES: ${{ github.event.inputs.files }}
+          FOLDER: ${{ github.event.inputs.folder }}
+          WIDTH: ${{ github.event.inputs.width }}
+          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, requests
+          ua = f"Beyond100/0.1 (https://beyond100tennis.com; {os.environ.get('WIKI_CONTACT','')})"
+          folder = os.environ["FOLDER"]; os.makedirs(folder, exist_ok=True)
+          cpath = os.path.join(folder, "credits.json")
+          credits = json.load(open(cpath)) if os.path.exists(cpath) else {}
+          log = []
+          for f in [x.strip() for x in os.environ["FILES"].split("|") if x.strip()]:
+            try:
+                  q = {"pageids": f[6:]} if f.startswith("curid:") else {"titles": "File:" + f}
+                  j = requests.get("https://commons.wikimedia.org/w/api.php", headers={"User-Agent": ua}, timeout=30, params=dict(q, **{
+                      "action": "query", "prop": "imageinfo", "iiprop": "url|extmetadata|size", "iiurlwidth": int(os.environ.get("WIDTH") or 1200), "format": "json"})).json()
+                  pg = next(iter(j["query"]["pages"].values()))
+                  ii = pg["imageinfo"][0]
+                  if f.startswith("curid:"):
+                      f = pg["title"].split(":", 1)[1]
+                  md = ii.get("extmetadata", {})
+                  try:                                            # "Extracted from": o original de uma versão recortada
+                      wt = requests.get("https://commons.wikimedia.org/w/api.php", headers={"User-Agent": ua}, timeout=30, params={
+                          "action": "query", "titles": "File:" + f, "prop": "revisions", "rvprop": "content", "rvslots": "main", "format": "json"}).json()
+                      txt = next(iter(wt["query"]["pages"].values()))["revisions"][0]["slots"]["main"]["*"]
+                      mx = re.search(r"\{\{\s*(?:extracted from|derived from|cropped from|original)\s*\|\s*(?:1=)?\s*(?:File:|Image:)?([^|}]+)", txt, re.I)
+                      orig = mx.group(1).strip() if mx else ""
+                      if not orig:
+                          mx = re.search(r"\[\[\s*:?\s*File:([^\]|]+)", txt)
+                          orig = ("?" + mx.group(1).strip()) if mx else ""
+                      log.append("WT " + f + " :: " + re.sub(r"\s+", " ", txt)[:600])
+                  except Exception:
+                      orig = ""
+                  lic = (md.get("LicenseShortName") or {}).get("value", "")
+                  art = re.sub(r"<[^>]+>", "", (md.get("Artist") or {}).get("value", "")).strip()
+                  name = re.sub(r"[^a-z0-9]+", "-", f.rsplit(".", 1)[0].lower()).strip("-") + ".jpg"
+                  open(os.path.join(folder, name), "wb").write(requests.get(ii.get("thumburl") or ii["url"], headers={"User-Agent": ua}, timeout=60).content)
+                  credits[name] = {"credit": f"Photo: {art} / {lic}", "page": ii.get("descriptionurl"), "license": lic, "title": f, "orig": orig, "w": ii.get("width"), "h": ii.get("height"), "desc": re.sub(r"<[^>]+>", "", (md.get("ImageDescription") or {}).get("value", "")).strip()[:400], "cats": (md.get("Categories") or {}).get("value", "")[:400]}
+                  print(name, lic, art); log.append(f"OK {f} -> {name} ({lic}, {art})")
+            except Exception as e:
+              print("FALHOU", f, type(e).__name__, e); log.append(f"FALHOU {f}: {type(e).__name__} {e}")
+          json.dump(credits, open(cpath, "w"), ensure_ascii=False, indent=1)
+          open(os.path.join(folder, "fetch_log.txt"), "w").write("\n".join(log))
+          PY
+      - name: Save
+        run: bash _engine/save_state.sh "Commons files" "${{ github.event.inputs.folder }}"

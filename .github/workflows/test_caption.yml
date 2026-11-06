@@ -1,0 +1,28 @@
+name: Test caption
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Generate a sample caption
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CAPTION_WEB_CONTEXT: ${{ vars.CAPTION_WEB_CONTEXT }}
+          CAPTION_MODEL: ${{ vars.CAPTION_MODEL }}
+          CAPTION_WEB_MIN_SCORE: ${{ vars.CAPTION_WEB_MIN_SCORE }}
+          CAPTION_LITE_BELOW: ${{ vars.CAPTION_LITE_BELOW }}
+        run: python test_caption.py

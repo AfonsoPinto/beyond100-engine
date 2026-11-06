@@ -1,0 +1,32 @@
+name: Search Console (weekly)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install requests google-auth
+      - name: Read Search Console
+        env:
+          GSC_KEY: ${{ secrets.GSC_KEY }}
+          GSC_SITE: ${{ vars.GSC_SITE }}
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+        run: python gsc.py
+      - name: Save
+        run: |
+          if [ -f gsc.json ]; then bash _engine/save_state.sh "Search Console" gsc.json; fi

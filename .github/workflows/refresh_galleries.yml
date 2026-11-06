@@ -1,0 +1,39 @@
+name: Refresh photo galleries
+on:
+  workflow_dispatch:
+    inputs:
+      players:
+        description: "Quantos jogadores (os que mais aparecem)"
+        default: "40"
+      names:
+        description: "Opcional: só estes jogadores (separados por vírgula)"
+        default: ""
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Search extra free-licence photos (Wikimedia only)
+        env:
+          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          PHOTO_MAX_AGE_Y: ${{ vars.PHOTO_MAX_AGE_Y }}
+          PHOTO_GALLERY: ${{ vars.PHOTO_GALLERY }}
+          NAMES: ${{ github.event.inputs.names }}
+        run: python refresh_galleries.py "${{ github.event.inputs.players }}"
+      - name: Save
+        run: bash _engine/save_state.sh "Refresh photo galleries" photos

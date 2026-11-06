@@ -1,0 +1,31 @@
+name: Padel photos (weekly scan of free photos on Wikimedia)
+on:
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "1 = só relatório (não descarrega)"
+        default: "1"
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install requests
+      - name: Scan
+        env:
+          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+        run: |
+          if [ "${{ github.event.inputs.dry }}" = "1" ]; then python -m padel.photo_scan --dry; else python -m padel.photo_scan; fi
+      - name: Save
+        run: bash _engine/save_state.sh "Padel photos (weekly scan)" padel/photos

@@ -1,0 +1,39 @@
+name: Tournament Instagram profiles
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Gravar os perfis novos (1) ou só mostrar (0)"
+        default: "0"
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Dados (repositório privado) + código (este repositório público)
+        uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - name: Código do motor por cima dos dados
+        run: |
+          rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Procurar perfis na Wikidata
+        env:
+          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+        run: python tournament_ig.py ${{ github.event.inputs.apply == '1' && '--apply' || '' }}
+      - name: Save
+        if: github.event.inputs.apply == '1'
+        run: |
+          git config user.name "beyond100-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git pull --rebase --autostash || true
+          git add handles_torneios.json
+          if ! git diff --cached --quiet; then git commit -m "Tournament Instagram profiles (Wikidata)"; git push; fi
