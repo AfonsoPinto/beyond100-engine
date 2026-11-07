@@ -716,8 +716,11 @@ def make_previews(q, tours, matches, rk):
         t = tours.get(str(m.get("tid"))) or {}
         when = (m.get("schedule_label") or (m.get("scheduled_at_local") or "")[11:16] or "").upper()
         fn = f"padel-p-{m.get('id')}.jpg"
-        cards.preview_card({"level": LEVEL_TAG.get(t.get("level"), ""), "tournament": short_name(t), "when": when, "pairs": [A, B],
-                            "photos": [pa, pb], "ranks": rk}, os.path.join(POSTS_DIR, fn))
+        tie = m.get("tie") or {}
+        lvl = "WORLD CUP" if "world cup" in (t.get("name") or "").lower() else LEVEL_TAG.get(t.get("level"), "")
+        cards.preview_card({"level": lvl, "tournament": short_name(t), "when": when, "pairs": [A, B],
+                            "photos": [pa, pb], "ranks": rk, "teams": [tie.get("team_1"), tie.get("team_2")] if tie else None},
+                           os.path.join(POSTS_DIR, fn))
         q["queue"].append({"id": f"p-{m.get('id')}", "kind": "preview", "score": 0, "created": time.time(), "image": fn, "sent": False,
                            "players": list(ids), "facts": {"tournament": t.get("name"), "category": m.get("category"), "when": when,
                                                            "pair_1": [p.get("name") for p in A], "pair_2": [p.get("name") for p in B]}})

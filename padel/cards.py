@@ -157,41 +157,75 @@ def result_card(d, out_path):
     return out_path
 
 
+def _sur(p):
+    """Apelido como o circuito o usa ("Josemaria", "Triay", "Brea"): o short_name da Padel API; sem ele, o apelido do nome.
+    Antes usava a última palavra do nome e saía "MARTIN" / "PONS" / "SENESI" (nomes espanhóis com dois apelidos), 7/11/2026."""
+    sn = (p.get("short_name") or p.get("short") or "").strip()
+    if sn:
+        return sn.split(". ", 1)[-1] if ". " in sn else sn
+    first, last = pc.split_name(p.get("name"))
+    return last or first or p.get("name") or "?"
+
+
 def preview_card(d, out_path):
-    """d = {level, tournament, city, when, pairs:[[p,p],[p,p]], photos:[{path,credit}|None, ...], ranks}"""
-    img = _grad()
-    half = W // 2
+    """d = {level, tournament, city, when, pairs:[[p,p],[p,p]], photos:[{path,credit}|None, ...], ranks, teams:[país, país]|None}
+    Com foto dos dois lados: uma foto por par. Se faltar foto a um dos lados, cartão só tipográfico (7/11/2026), para não ficar
+    meio cartão vazio."""
+    phs = d.get("photos") or [None, None]
+    both = all(ph and ph.get("path") for ph in phs[:2])
+    teams = d.get("teams") or [None, None]
+    ranks = d.get("ranks") or {}
+    tags = [(d.get("level"), VOLT, BLUE), ("FINAL", CREAM, BLUE)]
     credits = []
-    for i, ph in enumerate(d.get("photos") or [None, None]):
-        if ph and ph.get("path"):
+    sub = " · ".join(x for x in [d.get("tournament"), d.get("when")] if x).upper()
+    tail = lambda p: " · ".join(v for v in [_code(p), f"#{ranks.get(str(p.get('id')))}" if ranks.get(str(p.get("id"))) else ""] if v)
+    if both:
+        img = _grad()
+        half = W // 2
+        for i, ph in enumerate(phs[:2]):
             img.paste(_fill(ph["path"], (half, 860), (0.5, 0.2)), (i * half, 0))
             credits.append(ph.get("credit"))
-        else:                                                      # sem foto: iniciais do par em grande
-            pd = ImageDraw.Draw(img)
-            pd.rectangle([i * half, 0, (i + 1) * half, 860], fill=DEEP)
-            ini = "/".join((pc.split_name(p.get("name"))[1] or p.get("name") or "?")[:1] for p in d["pairs"][i])
-            pd.text((i * half + half / 2, 430), ini, font=font(SERIF_B, 220), fill=EDGE, anchor="mm")
-    img = _shade(img, 0, 260, 150, 0)
-    img = _shade(img, 560, 860, 0, 245)
-    dr = ImageDraw.Draw(img)
-    dr.rectangle([half - 3, 0, half + 2, 860], fill=BLUE)
-    dr.rectangle([0, 860, W, H], fill=BLUE)
-    _brand(img)
-    _tags(dr, [(d.get("level"), VOLT, BLUE), ("FINAL", CREAM, BLUE)])
-    cy = 700
-    dr.ellipse([half - 70, cy - 70, half + 70, cy + 70], fill=VOLT, outline=BLUE, width=8)
-    dr.text((half, cy + 2), "VS", font=font(SERIF_B, 60), fill=BLUE, anchor="mm")
-    ranks = d.get("ranks") or {}
-    for i, pair in enumerate(d["pairs"]):
-        cx = half / 2 + i * half
-        for j, p in enumerate(pair):
-            first, last = pc.split_name(p.get("name"))
-            dr.text((cx, 920 + j * 92), last or first, font=fit(dr, last or first, SERIF_B, 46, half - 70, 24), fill=CREAM, anchor="mm")
-            tail = " · ".join(v for v in [_code(p), f"#{ranks.get(str(p.get('id')))}" if ranks.get(str(p.get("id"))) else ""] if v)
-            dr.text((cx, 960 + j * 92), tail, font=font(SANS_B, 22), fill=SOFT, anchor="mm")
-    sub = " · ".join(x for x in [d.get("tournament"), d.get("when")] if x).upper()
-    dr.text((W / 2, 1150), sub, font=fit(dr, sub, SANS_B, 28, 960, 16), fill=VOLT, anchor="mm")
-    dr.text((W / 2, 1215), "Who wins? Tell us below.", font=font(SERIF_I, 44), fill=CREAM, anchor="mm")
+        img = _shade(img, 0, 260, 150, 0)
+        img = _shade(img, 560, 860, 0, 245)
+        dr = ImageDraw.Draw(img)
+        dr.rectangle([half - 3, 0, half + 2, 860], fill=BLUE)
+        dr.rectangle([0, 860, W, H], fill=BLUE)
+        _brand(img)
+        _tags(dr, tags)
+        cy = 700
+        dr.ellipse([half - 70, cy - 70, half + 70, cy + 70], fill=VOLT, outline=BLUE, width=8)
+        dr.text((half, cy + 2), "VS", font=font(SERIF_B, 60), fill=BLUE, anchor="mm")
+        for i, pair in enumerate(d["pairs"]):
+            cx = half / 2 + i * half
+            if teams[i]:
+                dr.text((cx, 800), teams[i].upper(), font=fit(dr, teams[i].upper(), SANS_B, 30, half - 80, 18), fill=VOLT, anchor="mm")
+            for j, p in enumerate(pair):
+                nm = _sur(p).upper()
+                dr.text((cx, 920 + j * 92), nm, font=fit(dr, nm, SERIF_B, 46, half - 70, 24), fill=CREAM, anchor="mm")
+                dr.text((cx, 960 + j * 92), tail(p), font=font(SANS_B, 22), fill=SOFT, anchor="mm")
+        dr.text((W / 2, 1150), sub, font=fit(dr, sub, SANS_B, 28, 960, 16), fill=VOLT, anchor="mm")
+        dr.text((W / 2, 1215), "Who wins? Tell us below.", font=font(SERIF_I, 44), fill=CREAM, anchor="mm")
+    else:
+        img = _grad()
+        dr = ImageDraw.Draw(img)
+        for k in range(2):                                         # linhas de um court de padel, ao fundo
+            y0 = 300 + k * 420
+            dr.rounded_rectangle([90, y0, W - 90, y0 + 380], radius=28, outline=EDGE, width=3)
+        _brand(img)
+        _tags(dr, tags)
+        for i, pair in enumerate(d["pairs"]):
+            y = 490 + i * 450
+            if teams[i]:
+                dr.text((W / 2, y - 130), teams[i].upper(), font=fit(dr, teams[i].upper(), SANS_B, 34, 800, 18), fill=VOLT, anchor="mm")
+            nm = " / ".join(_sur(p).upper() for p in pair)
+            dr.text((W / 2, y - 40), nm, font=fit(dr, nm, SERIF_B, 92, 860, 40), fill=CREAM, anchor="mm")
+            tl = "   ".join(f"{_sur(p)} {tail(p)}" for p in pair)
+            dr.text((W / 2, y + 50), tl, font=fit(dr, tl, SANS_B, 26, 860, 16), fill=SOFT, anchor="mm")
+        cy = 700
+        dr.ellipse([W / 2 - 70, cy - 70, W / 2 + 70, cy + 70], fill=VOLT, outline=BLUE, width=8)
+        dr.text((W / 2, cy + 2), "VS", font=font(SERIF_B, 60), fill=BLUE, anchor="mm")
+        dr.text((W / 2, 1165), sub, font=fit(dr, sub, SANS_B, 28, 960, 16), fill=VOLT, anchor="mm")
+        dr.text((W / 2, 1225), "Who wins? Tell us below.", font=font(SERIF_I, 44), fill=CREAM, anchor="mm")
     _footer(img, credits)
     img.save(out_path, quality=95)
     return out_path
