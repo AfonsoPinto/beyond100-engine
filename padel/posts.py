@@ -413,8 +413,9 @@ def photo_uses(q, days=60):
         po = ((e.get("facts") or {}).get("photo_of") or "").lower()
         if po and by_name.get(po):
             pids.append(by_name[po])
-        for x in ((e.get("facts") or {}).get("finals") or []):
-            po = (x.get("photo_of") or "").lower()
+        fin = (e.get("facts") or {}).get("finals")
+        for x in (fin if isinstance(fin, list) else []):           # nos posts "race", 'finals' é o nome do torneio (texto)
+            po = ((x.get("photo_of") if isinstance(x, dict) else "") or "").lower()
             if po and by_name.get(po):
                 pids.append(by_name[po])
         for pid in set(pids):
