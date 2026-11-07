@@ -413,6 +413,7 @@ a.mh{display:block;text-decoration:none;color:inherit}a.mh:hover{color:var(--v)}
 .nbox b{display:block;font:700 2rem Georgia,serif;color:var(--v)}
 .nbox span{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--s)}
 .topw{color:var(--s);margin:4px 0 22px}.topw b{color:var(--c)}
+.about{color:var(--c);line-height:1.65;font-size:15.5px;margin:6px 0 24px;max-width:68ch}.about b{font-weight:700}.about a{color:inherit;text-decoration:underline;text-decoration-color:var(--s);text-underline-offset:3px}
 .srch{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--e);background:var(--deep);color:var(--c);font-size:1rem;margin-top:8px}
 .pt{width:100%;border-collapse:collapse;margin:14px 0 30px}
 .pt th{font:600 .75rem system-ui;letter-spacing:.08em;text-transform:uppercase;color:var(--s);text-align:left;padding:8px 6px;border-bottom:1px solid var(--e)}

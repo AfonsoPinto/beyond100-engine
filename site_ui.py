@@ -1,6 +1,7 @@
 """Peças de página comuns ao ténis e ao padel (o mesmo molde, só mudam as cores, que vêm das variáveis --g --deep --c --v --s --e
 de cada site). Usar estas em vez de inventar estilos por vertente."""
 import html
+import re
 
 esc = html.escape
 
@@ -127,16 +128,65 @@ background:rgba(255,255,255,.08);color:var(--s)}.ui-form i.w{background:var(--v)
 """
 
 
-def player_hero(back_href, back_label, photo_src, name, sub, rank=None, rank_note="", form=(), tiles=(), credit_html="", square=False):
-    """Topo da página de jogador (ténis e padel): foto grande, nome, país/idade, ranking, forma (últimos jogos) e 4 números."""
-    ini = "".join(w[0] for w in (name or "?").split()[:2]).upper()
-    pic = (f'<img class="pic{" sq" if square else ""}" src="{esc(photo_src)}" alt="{esc(name)}" width="232" height="{232 if square else 290}">' if photo_src
-           else f'<div class="pic ini">{esc(ini)}</div>')
-    rk = f'<span class="rk">#{rank}{f" <small>{esc(rank_note)}</small>" if rank_note else ""}</span>' if rank else ""
+HERO_CSS = """
+.ui-hb{position:relative;min-height:400px;overflow:hidden;border-radius:24px;margin:4px 0 14px;border:1px solid var(--e);
+background:radial-gradient(120% 90% at 85% 10%,var(--e) 0,var(--deep) 62%)}
+.ui-hb .big{position:absolute;right:-30px;top:0;height:100%;width:72%;object-fit:cover;object-position:55% 15%;
+-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 38%);mask-image:linear-gradient(90deg,transparent 0,#000 38%)}
+.ui-hb .ini{position:absolute;right:-10px;bottom:-40px;font:800 15rem/1 Georgia,serif;color:var(--v);opacity:.09;letter-spacing:-.05em}
+.ui-hb .tx{position:relative;z-index:1;padding:34px 18px 34px;max-width:62%}
+.ui-hb h1{font:800 2.5rem/1 Georgia,serif;margin:0 0 12px;text-transform:uppercase;letter-spacing:-.01em;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.4);overflow-wrap:anywhere}
+.ui-hb .sub{color:#e6ece8;font-size:.84rem;line-height:1.5;text-shadow:0 1px 8px rgba(0,0,0,.6)}
+.ui-hb .sub a{color:inherit}
+.ui-hb .rk{display:inline-flex;align-items:baseline;gap:8px;margin-top:14px;background:var(--v);color:var(--g);font:800 1.15rem Georgia,serif;border-radius:14px;padding:8px 14px}
+.ui-hb .rk small{font:800 .8rem system-ui}
+.ui-hb .ui-form{margin-top:12px}
+.ui-hb .cr{position:absolute;left:18px;right:18px;bottom:8px;margin:0;z-index:1;font-size:.68rem;color:var(--s);opacity:.9}.ui-hb .cr a{color:inherit}
+@media(max-width:700px){.ui-hb{margin:4px -16px 14px;border-radius:0;border-width:1px 0}}
+.ui-st{background:var(--deep);border:1px solid var(--e);border-radius:20px;overflow:hidden;margin:0 0 18px}
+.ui-st .sr{display:grid;grid-template-columns:44px repeat(4,minmax(0,1fr));align-items:center}.ui-st .sr+.sr{border-top:1px solid var(--e)}
+.ui-st .sl{align-self:stretch;display:grid;place-items:center;font:800 .6rem system-ui;letter-spacing:.1em;text-transform:uppercase;color:var(--g);background:var(--v);
+writing-mode:vertical-rl;transform:rotate(180deg);padding:6px 0}
+.ui-st .sr>div{padding:12px 4px;text-align:center;min-width:0}
+.ui-st b{display:block;font:800 1.05rem/1.1 Georgia,serif;color:var(--c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ui-st b.sm{font-size:.86rem}.ui-st b.up{color:var(--v)}.ui-st b.dn{color:#ff8a80}
+.ui-st i{display:block;font:700 .56rem/1.3 system-ui;font-style:normal;letter-spacing:.06em;text-transform:uppercase;color:var(--s);margin-top:4px}
+"""
+
+
+def stat_table(rows):
+    """Tabela de números por baixo do topo (ténis e padel): [(rótulo, [(valor, legenda, classe), ...4]), ...]."""
+    out = ""
+    for lab, cells in rows:
+        cells = [c for c in cells if c][:4]
+        if not cells:
+            continue
+        cells += [("", "", "")] * (4 - len(cells))
+        out += (f'<div class="sr"><span class="sl">{esc(lab)}</span>'
+                + "".join(f'<div><b class="{c}{" sm" if len(re.sub("<[^>]+>|&[a-z]+;", "x", str(v))) > 8 else ""}">{v}</b><i>{esc(k)}</i></div>' if v != "" else "<div></div>"
+                   for v, k, c in cells) + "</div>")
+    return f'<div class="ui-st">{out}</div>' if out else ""
+
+
+def player_hero(back_href, back_label, photo_src, name, sub, rank=None, rank_note="", form=(), tiles=(), credit_html="", square=False, table=None):
+    """Topo da página de jogador (ténis e padel, modelo "B" escolhido a 7/11/2026): nome grande à esquerda, foto grande à direita
+    a fundir-se com o fundo, ranking e forma; por baixo a tabela de números (table) ou, sem ela, os 4 números (tiles).
+    sub: factos separados por " · " (um por linha)."""
+    words = (name or "?").split()
+    ini = "".join(w[0] for w in words[:2]).upper()
+    longest = max((len(w) for w in words), default=1)
+    fs = 2.5 if longest <= 8 else 2.15 if longest <= 10 else 1.85 if longest <= 12 else 1.55
+    pic = (f'<img class="big" src="{esc(photo_src)}" alt="{esc(name)}" width="600" height="750" fetchpriority="high">' if photo_src
+           else f'<div class="ini" aria-hidden="true">{esc(ini)}</div>')
+    rk = f'<span class="rk">No. {rank}{f" <small>{esc(rank_note)}</small>" if rank_note else ""}</span>' if rank else ""
     fm = ('<div class="ui-form" aria-label="last matches">' + "".join(f'<i class="{"w" if x else ""}">{"W" if x else "L"}</i>' for x in form) + "</div>") if form else ""
     t = ('<div class="ui-tiles">' + "".join(f'<div><b>{esc(str(v))}</b><span>{esc(k)}</span></div>' for v, k in tiles) + "</div>") if tiles else ""
-    return (f'<style>{PLAYER_CSS}</style><a class="ui-back" href="{esc(back_href)}">← {esc(back_label)}</a>'
-            f'<section class="ui-ph">{pic}<div style="min-width:0"><h1>{esc(name)}</h1><div class="sub">{sub}</div>{rk}{fm}</div>'
+    if table:
+        t = stat_table(table) or t
+    sub_html = (sub or "").replace(" · ", "<br>")
+    return (f'<style>{PLAYER_CSS}{HERO_CSS}</style><a class="ui-back" href="{esc(back_href)}">← {esc(back_label)}</a>'
+            f'<section class="ui-hb">{pic}<div class="tx"><h1 style="font-size:{fs}rem">{"<br>".join(esc(w) for w in words)}</h1>'
+            f'<div class="sub">{sub_html}</div>{rk}{fm}</div>'
             f'{f"<p class=cr>{credit_html}</p>" if credit_html else ""}</section>{t}')
 
 

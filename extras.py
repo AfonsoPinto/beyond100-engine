@@ -324,7 +324,7 @@ def data_to():
     return _DATA_TO
 
 
-def career_block(name):
+def career_block(name, women=False):
     """Carreira (agregada) a partir de history.json; vazio se não houver histórico."""
     h = hist_entry(name)
     if not h or not (h.get("w", 0) + h.get("l", 0)):
@@ -336,12 +336,13 @@ def career_block(name):
     box = lambda v, k: f'<div class="nbox"><b>{esc(str(v))}</b><span>{esc(k)}</span></div>'
     grid = ('<div class="numgrid">' + box(f'{h["w"]}-{h["l"]}', f'career {m["from"]} to {data_to() or m["to"]} ({pct}%)') +
             box(titles, "titles") + box(f'#{h["br"]}' if h.get("br") else "–", "best ranking") + "</div>")
-    lv = "".join(f"<span>{esc(k)} <b>{a}-{b}</b>{f' · {t} 🏆' if t else ''}</span>" for k, (a, b, t) in
+    cup = lambda k: "Billie Jean King Cup" if women and k == "Davis Cup" else k     # no WTA a taça por equipas é a BJK Cup
+    lv = "".join(f"<span>{esc(cup(k))} <b>{a}-{b}</b>{f' · {t} 🏆' if t else ''}</span>" for k, (a, b, t) in
                  sorted(h.get("t", {}).items(), key=lambda kv: -(kv[1][0] + kv[1][1])))
     sf = "".join(f"<span>{esc(k)} <b>{a}-{b}</b></span>" for k, (a, b) in sorted(h.get("s", {}).items(), key=lambda kv: -(kv[1][0] + kv[1][1])))
     ys = "".join(f'<tr><td class="pn">{y}</td><td>{a}-{b}</td></tr>' for y, (a, b) in sorted(h.get("y", {}).items(), reverse=True))
     bw = f'<p class="topw">Best career win: <b>{plink(h["bw"][1])}</b> (#{h["bw"][0]}, {h["bw"][2]})</p>' if h.get("bw") else ""
-    return (f'<h2 class="dh">Career</h2>{grid}<div class="sfs">{lv}</div><div class="sfs">{sf}</div>{bw}'
+    return (f'<h2 class="dh">{esc(name)} career stats</h2>{grid}<div class="sfs">{lv}</div><div class="sfs">{sf}</div>{bw}'
             f'<table class="pt"><thead><tr><th>Year</th><th>W-L</th></tr></thead><tbody>{ys}</tbody></table>'
             f'<p class="cr">Career data to {esc(data_to() or "mid-2026")}: <a href="https://www.tennisabstract.com">Tennis Abstract</a> / Jeff Sackmann, '
             f'<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> · main draw matches only, '
@@ -502,19 +503,182 @@ def player_page(e, tr, tx, ranks_by_name=None):
             break
         streak += 1
     sub = _flag(e["country"]) + esc(" · ".join(x for x in [e["country"], bio_line(e["name"]) or ""] if x))
-    move = rank_move(e["name"], rk_int, pts=True)
-    hero = site_ui.player_hero("/players.html", tx.get("players", "Players"), f"/img/{sl}.jpg" if sl in webapp.AVATARS else "",
-                               e["name"], sub + (f" {move}" if move else ""), rk_int, "", [r["winner"] == i for i, r in ms[:8]],
+    rr = RANKS.get(sl) or {}
+    now = []
+    if rk_int:
+        now.append((f"No. {rk_int}", "rank", ""))
+        prev = rr.get("prev")
+        if isinstance(prev, int) and prev != rk_int and rr.get("rank") == rk_int:
+            d = prev - rk_int
+            now.append((f'{"▲" if d > 0 else "▼"}{abs(d)}', "this week", "up" if d > 0 else "dn"))
+        if isinstance(rr.get("pts"), int) and rr.get("rank") == rk_int:
+            now.append((f'{rr["pts"]:,}', "points", ""))
+    now.append((f"{w}-{l}", f"last {len(ms)}" if len(ms) != 1 else "last match", ""))
+    if len(now) < 4:
+        now.append((pct, "win rate", ""))
+    if len(now) < 4:
+        now.append((f"W{streak}" if streak else "–", "streak", ""))
+    h_ = hist_entry(e["name"]) or {}
+    car = []
+    if h_.get("w", 0) + h_.get("l", 0):
+        br, bm_ = h_.get("br"), ""
+        rkh = h_.get("rk") or []
+        if rkh:
+            bm = min(rkh, key=lambda x: (x[1], x[0]))
+            if not br or bm[1] <= br:
+                br = bm[1]
+                try:
+                    bm_ = dt.date.fromisoformat(bm[0] + "-01").strftime("%b %Y")
+                except ValueError:
+                    bm_ = ""
+        if isinstance(rk_int, int) and isinstance(br, int) and rk_int < br:
+            br, bm_ = rk_int, "now"
+        if br:
+            car.append((f"No. {br}", "high" + (f" · {bm_}" if bm_ else ""), ""))
+        car.append((f'{h_["w"]}-{h_["l"]}', "all levels", ""))
+        car.append((str(sum(v[2] for v in (h_.get("t") or {}).values() if len(v) > 2)), "titles", ""))
+        if h_.get("bw"):
+            car.append((esc(h_["bw"][1].split()[-1]), f'best win · No. {h_["bw"][0]}', ""))
+    table = [("Now", now)] + ([("Career", car)] if car else [])
+    hero = site_ui.player_hero("/players.html", tx.get("players", "Players"), f"/img/big/{sl}.jpg" if sl in webapp.AVATARS else "",
+                               e["name"], sub, rk_int, "", [r["winner"] == i for i, r in ms[:8]],
                                [(f"{w}-{l}", "won-lost"), (pct, "win rate"), (f"W{streak}" if streak else "–", "streak"), (len(ms), "matches")],
-                               credit_line(e["name"]).replace('<p class="cr">', "").replace("</p>", ""), square=True)
+                               credit_line(e["name"]).replace('<p class="cr">', "").replace("</p>", ""), square=True, table=table)
     try:
         import tennis_videos
         vids = tennis_videos.cards([r for _, r in ms], "▶ Highlights", 12)
     except Exception:
         vids = ""
-    return (hero +
-            f'{ranking_block(e["name"], ms, rk_int)}{next_match_block(e["name"])}{vids}{season_line(PSTATS_BY_NAME.get(sl))}<div class="sfs">{sh}</div>{bh}{career_block(e["name"])}'
-            f'<h2 class="dh">Results</h2><section class="tg">{body}</section>{related_block(e, rk_int)}')
+    women = any(r.get("gender") == "women" or r.get("tour") == "wta" for _, r in ms)
+    yr = (ms[0][1].get("date") or "")[:4] if ms else ""
+    return (hero + profile_block(e, ms, rk_int, women) +
+            f'{ranking_block(e["name"], ms, rk_int)}{next_match_block(e["name"])}{vids}{season_line(PSTATS_BY_NAME.get(sl))}<div class="sfs">{sh}</div>{bh}{career_block(e["name"], women)}'
+            f'<h2 class="dh">{esc(e["name"])} results{f" {yr}" if yr else ""}</h2><section class="tg">{body}</section>{related_block(e, rk_int)}')
+
+
+def _ord_round(rd):
+    """Ronda em texto corrido: 'the quarter-finals', 'the second round'..."""
+    r = (rd or "").lower()
+    named = {"final": "the final", "semi-finals": "the semi-finals", "semifinals": "the semi-finals", "quarter-finals": "the quarter-finals",
+             "quarterfinals": "the quarter-finals", "1/8-finals": "the last 16", "round of 16": "the last 16", "1/16-finals": "the last 32",
+             "round of 32": "the last 32", "1/32-finals": "the last 64", "round of 64": "the last 64", "round of 128": "the first round"}
+    return named.get(r, f"the {r}" if r else "")
+
+
+def profile_block(e, ms, rank=None, women=False):
+    """Resumo em texto corrido no topo da página do jogador (SEO, 7/11/2026). Escrito a partir dos dados que já temos
+    (ranking, melhor ranking, carreira, último torneio), sem IA e sem inventar: o que faltar não entra."""
+    import site_more
+    name = e["name"]
+    first = name.split()[0] if name else name
+    he, his, him = ("she", "her", "her") if women else ("he", "his", "him")
+    h = hist_entry(name) or {}
+    r = RANKS.get(webapp.slugify(name)) or {}
+    out = []
+    try:
+        import espn_sync
+        ep = espn_sync.profile_for(name)
+    except Exception:
+        ep = {}
+    b = h.get("bio") or {}
+    dob = str(b.get("dob") or "")
+    age = None
+    if len(dob) >= 8 and dob[:8].isdigit():
+        t = time.gmtime()
+        age = t.tm_year - int(dob[:4]) - ((t.tm_mon, t.tm_mday) < (int(dob[4:6]), int(dob[6:8])))
+    elif ep.get("bd"):
+        age = _age(ep["bd"])
+    age = age if isinstance(age, int) and 14 <= age <= 50 else None
+    cty = site_more.country_name(e.get("country") or "") if e.get("country") else ""
+    tour = "WTA" if women else "ATP"
+    if cty.startswith(("United ", "Netherlands", "Czech Republic", "Philippines", "Dominican Republic", "Bahamas")):
+        cty = "the " + cty
+    s1 = esc(name) + " is a " + (f"{age}-year-old " if age else "") + "tennis player" + (f" from {esc(cty)}" if cty else "")
+    if isinstance(rank, int):
+        when = r.get("date") or ""
+        try:
+            when = dt.date.fromisoformat(when).strftime("%-d %B %Y") if when else ""
+        except ValueError:
+            when = ""
+        s1 += f", ranked <b>No. {rank}</b> in the {tour} rankings" + (f" ({when})" if when else "")
+        prev = r.get("prev")
+        if isinstance(prev, int) and prev != rank and r.get("rank") == rank:
+            d = prev - rank
+            s1 += f", {'up' if d > 0 else 'down'} {abs(d)} place{'s' if abs(d) != 1 else ''} on the previous week"
+    out.append(s1 + ".")
+    rk = h.get("rk") or []
+    if rk:
+        bm = min(rk, key=lambda x: (x[1], x[0]))
+        if not (isinstance(rank, int) and rank < bm[1]):
+            try:
+                mon = dt.date.fromisoformat(bm[0] + "-01").strftime("%B %Y")
+            except ValueError:
+                mon = ""
+            out.append(f"{his.capitalize()} career high is No. {bm[1]}" + (f", first reached in {mon}" if mon else "") + ".")
+        else:
+            out.append(f"That is the highest {he} has ever been ranked.")
+    tot = h.get("w", 0) + h.get("l", 0)
+    if tot >= 20:
+        m = (_HIST.get("meta") or {})
+        y0 = min((y for y in (h.get("y") or {}) if y.isdigit()), default=str(m.get("from", 2015)))
+        bits = f"Since {y0}, {first} has a {h['w']}-{h['l']} record in main-draw matches"
+        surf = [(k, a, b_) for k, (a, b_) in (h.get("s") or {}).items() if a + b_ >= 20]
+        if len(surf) > 1:
+            k, a, b_ = max(surf, key=lambda x: x[1] / (x[1] + x[2]))
+            bits += f", with {his} best results on {k.lower()} courts ({a}-{b_})"
+        out.append(bits + ".")
+        fl = h.get("fl") or 0
+        tl = {k: v[2] for k, v in (h.get("t") or {}).items() if len(v) > 2 and v[2]}
+        titles = sum(tl.values())
+        lvl = {"Tour": f"{tour} Tour", "Grand Slam": "Grand Slam", "Masters 1000": "Masters 1000", "Challenger": "Challenger" if not women else "WTA 125",
+               "ITF": "ITF", "Tour Finals": "Tour Finals"}
+        brk = ", ".join(f"{n} {lvl.get(k, k)}" for k, n in sorted(tl.items(), key=lambda kv: -kv[1]))
+        if titles:
+            one = next(iter(tl)) if len(tl) == 1 else None
+            where = (f", all at {lvl.get(one, one)} level" if titles > 1 else f" at {lvl.get(one, one)} level") if one else (f" ({brk})" if brk else "")
+            out.append(f"{he.capitalize()} has won {titles} title{'s' if titles != 1 else ''} in that time" + where
+                       + (f", from {fl} finals" if fl > titles else "") + ".")
+        elif fl:
+            out.append(f"{he.capitalize()} has reached {fl} final{'s' if fl != 1 else ''} in that time, still looking for a first title.")
+    if h.get("bw"):
+        out.append(f"{his.capitalize()} biggest win came against world No. {h['bw'][0]} {plink(h['bw'][1])} in {h['bw'][2]}.")
+    # último torneio: até onde chegou, melhor vitória e quem o parou
+    if ms:
+        t0 = webapp.base_tournament(ms[0][1].get("tournament", ""))
+        run = [(i, x) for i, x in ms if webapp.base_tournament(x.get("tournament", "")) == t0 and abs((dt.date.fromisoformat(ms[0][1]["date"][:10]) - dt.date.fromisoformat(x["date"][:10])).days) <= 12]
+        main = [(i, x) for i, x in run if not x.get("q")]
+        qual = any(x.get("q") for _, x in run)
+        last_i, last = run[0]
+        won_last = last.get("winner") == last_i
+        mon = ""
+        try:
+            mon = dt.date.fromisoformat(last["date"][:10]).strftime("%B %Y")
+        except ValueError:
+            pass
+        wins = [(x["p%d" % (3 - i)]) for i, x in main if x.get("winner") == i]
+        best = min((o for o in wins if isinstance(o.get("rank"), int)), key=lambda o: o["rank"], default=None)
+        opp = last["p%d" % (3 - last_i)]
+        rd = _ord_round(last.get("round"))
+        s = f"Most recently, at {esc(t0)}" + (f" in {mon}" if mon else "") + f", {he}"
+        if main and qual:
+            s += " came through qualifying and"
+        if not main:
+            s += (f" won {his} qualifying match against {plink(opp['name'])}" if won_last else f" lost in qualifying to {plink(opp['name'])}")
+        elif won_last and (last.get("round") or "").lower() == "final":
+            s += f" won the title, beating {plink(opp['name'])} in the final"
+        elif won_last:
+            s += f" beat {'No. ' + str(opp['rank']) + ' ' if isinstance(opp.get('rank'), int) else ''}{plink(opp['name'])}" + (f" in {rd}" if rd else "")
+        elif not wins:
+            s += f" lost to {plink(opp['name'])}" + (f" in {rd}" if rd and rd != "the first round" else " in the first round")
+        else:
+            s += f" reached {rd}" if rd else " played"
+            if best and best is not opp:
+                s += f", beating No. {best['rank']} {plink(best['name'])}"
+            s += f" before losing to {plink(opp['name'])}"
+        out.append(s + ".")
+    if len(out) < 2:
+        return ""
+    return f'<h2 class="dh">About {esc(name)}</h2><p class="about">' + " ".join(out) + "</p>"
 
 
 PIDX = {}           # slug -> entrada de players_index (preenchido por result_card.build_site), para as ligações entre jogadores

@@ -19,7 +19,10 @@ def _keys(name):
     w = [norm(x) for x in re.split(r"[\s\-]+", name or "") if norm(x)]
     if not w:
         return set()
-    return {"".join(w), w[0][0] + w[-1], w[-1] + w[0][0]}
+    k = {"".join(w), w[0][0] + w[-1], w[-1] + w[0][0]}
+    if len(w) > 1:                       # a mesma pessoa com os nomes por outra ordem ("Wang Xinyu" / "Xinyu Wang", 7/11/2026)
+        k.add("~" + "".join(sorted(w)))
+    return k
 
 
 def _day(lg, d):

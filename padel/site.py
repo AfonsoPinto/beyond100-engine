@@ -1098,6 +1098,33 @@ def tournament_runs(db, pid, ms):
     return f'<table class="pt"><thead><tr><th>Tournament</th><th>Result</th><th>Partner</th></tr></thead><tbody>{rows}</tbody></table>' if rows else ""
 
 
+def _hero_table(r, p, rk, d, w, done, titles, finals, pct, partner=""):
+    """Tabela do topo da página de jogador (igual à do ténis): agora (ranking, subida, pontos, race) e o nosso registo."""
+    now = []
+    if rk:
+        now.append((f"No. {rk}", "rank", ""))
+    if d:
+        now.append((f'{"▲" if d > 0 else "▼"}{abs(d)}', "this week", "up" if d > 0 else "dn"))
+    pts = r.get("points") or p.get("points")
+    if pts:
+        now.append((f"{pts:,}" if isinstance(pts, int) else esc(str(pts)), "points", ""))
+    race = p.get("race") if isinstance(p.get("race"), dict) else {}
+    if race.get("ranking"):
+        now.append((f'No. {race["ranking"]}', "race", ""))
+    elo = p.get("elo")
+    if isinstance(elo, dict) and elo.get("ranking"):
+        now.append((f'No. {elo["ranking"]}', "Elo rank", ""))
+    elif isinstance(elo, (int, float)) and elo:
+        now.append((f"{round(elo):,}", "Elo rating", ""))
+    if partner:
+        now.append((esc(partner.split()[-1]), "partner", ""))
+    rec = []
+    if done:
+        rec += [(f"{w}-{len(done) - w}", "won-lost", ""), (pct, "win rate", ""), (str(titles), "titles", ""), (str(finals), "finals", "")]
+    rows = ([("Now", now)] if now else []) + ([("Tracked", rec)] if rec else [])
+    return rows or None
+
+
 def page_player(db, pid, p):
     ms = player_matches(db, pid)
     done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
@@ -1121,15 +1148,16 @@ def page_player(db, pid, p):
     d = r.get("ranking_diff") or 0
     c = photo_credit(pid) if has_photo(pid) else {}
     pct = f"{round(100 * w / len(done))}%" if done else "–"
+    _partner = next((q.get("name") or "" for m, tm in ms[:1] for q in team_players(m, tm) if str(q.get("id")) != str(pid)), "")
     body = site_ui.player_hero("/padel/rankings.html", "Rankings", f"/padel/img/{pid}.jpg" if has_photo(pid) else "", p.get("name") or "",
-                               flag(p.get("nationality"), 14) + esc(" · ".join(facts)), rk, ("▲" + str(d)) if d > 0 else ("▼" + str(-d)) if d < 0 else "",
+                               flag(p.get("nationality"), 14) + esc(" · ".join(facts)), rk, "",
                                [m["winner"] == tm for m, tm in done[:8]],
                                [(r.get("points") or p.get("points") or "–", "points"), (f"{w}-{len(done) - w}", "won-lost"), (pct, "win rate"), (f"{titles}/{finals}", "titles/finals")],
-                               esc(c.get("credit") or ""))
+                               esc(c.get("credit") or ""), table=_hero_table(r, p, rk, d, w, done, titles, finals, pct, _partner))
     hv = [(m, h) for m, tm in ms for h in [highlight_for(db, m)] if h and h["kind"] == "match"][:8]
     if hv:
         body += '<h2 class="sec">▶ Highlights</h2><div class="pd-hls row">' + "".join(hl_card(db, m, h) for m, h in hv) + "</div>"
-    xr = [f'<span class="pd-xr"><b>#{p[k]["ranking"]}</b> {lab}</span>' for k, lab in (("race", "Race ranking"), ("elo", "Elo rating"))
+    xr = [f'<span class="pd-xr"><b>#{p[k]["ranking"]}</b> {lab}</span>' for k, lab in (("elo", "Elo rating"),)              # a race já está na tabela do topo
           if isinstance(p.get(k), dict) and p[k].get("ranking")]
     if xr:
         body += '<p class="pd-xrs">' + "".join(xr) + "</p>"

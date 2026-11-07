@@ -238,12 +238,31 @@ def refresh_profiles(matches, ranks):
 
 
 # ---------- jogos terminados -> results.json ----------
+def _drop_dupes(results):
+    """Tira as cópias do ESPN de jogos que já temos da API com os nomes por outra ordem (ex.: "Cheuk Ying Shek" / "Shek Ying Cheuk").
+    Mesmo dia, mesmo resultado e o mesmo par de jogadores. Fica a linha da API."""
+    def sig(r):
+        g = r.get("games") or [[], []]
+        return (r.get("date", "")[:10], tuple(sorted((tuple(g[0]), tuple(g[1])))))
+    api = {}
+    for r in results:
+        if r.get("src") != "espn":
+            for k in _pair_keys(r["p1"]["name"], r["p2"]["name"]):
+                api.setdefault((k,) + sig(r), True)
+    drop = [i for i, r in enumerate(results) if r.get("src") == "espn"
+            and any((k,) + sig(r) in api for k in _pair_keys(r["p1"]["name"], r["p2"]["name"]))]
+    for i in reversed(drop):
+        del results[i]
+    return len(drop)
+
+
 def import_results(events, matches, prev=None):
     import result_card as rc
     import extras
     import webapp
     ev = {e["eid"]: e for e in events}
     results = rc.load_results()
+    dupes = _drop_dupes(results)
     rk = rank_lookup()
     names = {}
     for r in results:
@@ -292,7 +311,9 @@ def import_results(events, matches, prev=None):
         results.append(row)
         for k in _pair_keys(a, b):
             names.setdefault(k, []).append(row)
-    if new or tbs:
+    if new or tbs or dupes:
+        if dupes:
+            print(f"ESPN: {dupes} jogo(s) repetido(s) retirado(s) (nomes por outra ordem)")
         rc.save_results(results)
         for row in new:
             try:

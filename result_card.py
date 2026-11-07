@@ -1370,8 +1370,11 @@ def build_avatars(out_dir, names):
                 continue
         try:
             os.makedirs(idir, exist_ok=True)
-            im = ImageOps.fit(Image.open(fp).convert("RGB"), (192, 192), centering=(0.5, 0.2))
+            src = Image.open(fp).convert("RGB")
+            im = ImageOps.fit(src, (192, 192), centering=(0.5, 0.2))
             im.save(os.path.join(idir, key + ".jpg"), quality=82, optimize=True)
+            os.makedirs(os.path.join(idir, "big"), exist_ok=True)         # foto grande do topo da página do jogador (7/11/2026)
+            ImageOps.fit(src, (600, 750), centering=(0.5, 0.25)).save(os.path.join(idir, "big", key + ".jpg"), quality=80, optimize=True, progressive=True)
         except Exception as e:
             print("Miniatura falhou:", name, e)
             continue
