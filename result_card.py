@@ -1775,7 +1775,7 @@ def build_site(out_dir="site", player=None):
         if _hd:
             _person["sameAs"] = [f"https://www.instagram.com/{_hd.lstrip('@')}/"]
         if os.path.exists(os.path.join(out_dir, "img", slug_p + ".jpg")):
-            _person["image"] = f"{SITE_BASE}/img/{slug_p}.jpg"
+            _person["image"] = f"{SITE_BASE}/img/big/{slug_p}.jpg"
         if _thin:
             NOINDEX.add("p/" + slug_p + ".html")
         LASTMOD["p/" + slug_p + ".html"] = _last
