@@ -1,4 +1,5 @@
 name: Update Beyond100
+run-name: ${{ github.event.inputs.fast == '1' && 'Fast update' || 'Update Beyond100' }}
 on:
   # Sem "schedule": quem dispara é o Worker da Cloudflare (7 e 37 de cada hora). O cron do GitHub falhava quase sempre
   # e, quando corria, coincidia com o do Worker (duas execuções seguidas = pedidos à API gastos em dobro).

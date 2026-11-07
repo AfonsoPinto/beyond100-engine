@@ -31,7 +31,14 @@ async function scheduled(env) {
   };
   const go = async (wf, inputs) => (await gh(`/actions/workflows/${wf}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs: inputs || {} }) })).status;
   if (!env.GITHUB_TOKEN) return out;
-  if (m >= 5 && m < 10 && !(await recent("update.yml", 25))) out.push(["update.yml", await go("update.yml")]);
+  // completa: entre os minutos 5 e 20 (3 chamadas do Worker), se não houver uma COMPLETA nos últimos 40 min nem nenhuma a correr
+  // (as rápidas, "Fast update", não contam: antes uma rápida 15 min antes saltava a hora inteira)
+  if (m >= 5 && m < 20) {
+    const runs = ((await (await gh(`/actions/workflows/update.yml/runs?per_page=10`)).json()).workflow_runs) || [];
+    const busy = runs.some(r => r.status !== "completed");
+    const full = runs.some(r => (r.display_title || r.name) !== "Fast update" && Date.now() - Date.parse(r.created_at) < 40 * 60e3);
+    if (!busy && !full) out.push(["update.yml", await go("update.yml")]);
+  }
   for (const [dw, hh, mm, wf] of SCHEDULE) {
     if ((dw === -1 || dw === d) && h === hh && m >= mm && m < mm + 5 && !(await recent(wf, 30))) out.push([wf, await go(wf)]);
   }
