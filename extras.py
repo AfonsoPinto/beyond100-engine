@@ -1354,3 +1354,112 @@ a.lv{display:block;text-decoration:none;color:inherit;transition:border-color .1
 .nl input{flex:1 1 200px;max-width:320px;padding:10px 14px;border-radius:999px;border:1px solid var(--e);background:var(--g);color:var(--c)}
 .nl button{background:var(--v);color:var(--g);border:0;border-radius:999px;padding:10px 18px;font:700 .9rem system-ui;cursor:pointer}
 """
+
+
+SPOT_CSS = """.ui-spot{display:grid;grid-auto-flow:column;grid-auto-columns:150px;gap:10px;overflow-x:auto;padding:2px 0 12px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.ui-spot::-webkit-scrollbar{display:none}
+.ui-spot a{position:relative;display:block;aspect-ratio:4/5;border-radius:18px;overflow:hidden;border:1px solid var(--e);scroll-snap-align:start;text-decoration:none;
+background:radial-gradient(120% 90% at 80% 10%,var(--e) 0,var(--deep) 65%)}
+.ui-spot img{width:100%;height:100%;object-fit:cover;object-position:50% 18%;display:block}
+.ui-spot .ini{position:absolute;inset:0;display:grid;place-items:center;font:800 3.4rem Georgia,serif;color:var(--v);opacity:.25}
+.ui-spot .ov{position:absolute;left:0;right:0;bottom:0;padding:34px 10px 10px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78))}
+.ui-spot b{display:block;font:800 .95rem/1.15 Georgia,serif;color:#fff}
+.ui-spot small{display:block;margin-top:3px;font:700 .68rem system-ui;color:#e6ece8;letter-spacing:.02em}
+.ui-spot .rk{position:absolute;top:8px;left:8px;background:var(--v);color:var(--g);font:800 .78rem system-ui;border-radius:999px;padding:3px 9px}
+@media(min-width:760px){.ui-spot{grid-auto-columns:calc(16.66% - 9px)}}"""
+
+
+def spotlight_players(n=8, lo=7.5, hi=25):
+    """Jogadores que o Google já mostra perto da 1.ª página (posição lo–hi nas pesquisas de gsc.json), por aparições.
+    Só jogadores com página no site (LINKABLE). Devolve [(slug, nome, aparições, posição média)]. (SEO, 7/11/2026)"""
+    try:
+        qs = _load("gsc.json", {}).get("queries") or []
+    except Exception:
+        qs = []
+    names = {}
+    for sl in LINKABLE:
+        e = PIDX.get(sl)
+        if e and e.get("name"):
+            names[sl] = e["name"]
+    by_set, by_ini = {}, {}
+    for sl, nm in names.items():
+        t = [x for x in re.split(r"[\s\-]+", nm.lower()) if x]
+        if len(t) >= 2:
+            by_set.setdefault(frozenset(t), sl)
+            by_ini.setdefault((t[0][0], t[-1]), set()).add(sl)
+    agg = {}
+    for q in qs:
+        pos, imp = q.get("position") or 99, q.get("impressions") or 0
+        if not (lo <= pos <= hi):
+            continue
+        t = [x for x in re.split(r"[\s\-]+", (q.get("q") or "").lower().replace(".", " "))
+             if x and x not in ("ranking", "rankings", "tennis", "wta", "atp", "live", "stats", "results") and not x.isdigit()]
+        sl = by_set.get(frozenset(t)) if len(t) >= 2 else None
+        if not sl and len(t) == 2:
+            for a, b in ((t[0], t[1]), (t[1], t[0])):      # "a parks" / "parks a" -> Alycia Parks, só se for único
+                c = by_ini.get((a[0], b)) if len(a) == 1 else None
+                if c and len(c) == 1:
+                    sl = next(iter(c))
+        if sl:
+            x = agg.setdefault(sl, [0, 0.0])
+            x[0] += imp
+            x[1] += imp * pos
+    out = [(sl, names[sl], v[0], v[1] / v[0]) for sl, v in agg.items() if v[0]]
+    out.sort(key=lambda x: -x[2])
+    return out[:n]
+
+
+def spotlight_block():
+    """Bloco da página inicial: jogadores que estão a ser procurados e que estão quase na 1.ª página do Google.
+    Ligações a partir da página inicial dão força a essas páginas."""
+    import site_ui
+    import site_more
+    rows = spotlight_players()
+    if len(rows) < 3:
+        return ""
+    cards = ""
+    for sl, nm, _imp, _pos in rows:
+        rk = (RANKS.get(sl) or {}).get("rank") or (PIDX.get(sl) or {}).get("rank")
+        img = (f'<img src="/img/big/{sl}.jpg" alt="{esc(nm)}" loading="lazy" width="150" height="188">' if sl in webapp.AVATARS
+               else f'<span class="ini">{esc("".join(w[0] for w in nm.split()[:2]).upper())}</span>')
+        c = site_more.country_name((PIDX.get(sl) or {}).get("country") or "")
+        cards += (f'<a href="/p/{sl}.html">{img}{f"<span class=rk>No. {rk}</span>" if isinstance(rk, int) else ""}'
+                  f'<span class="ov"><b>{esc(nm)}</b><small>{esc(c) if c else "Ranking &amp; results"}</small></span></a>')
+    return f'<style>{SPOT_CSS}</style>' + site_ui.sec("Players in the spotlight", "/players.html", "All players") + f'<div class="ui-spot">{cards}</div>'
+
+
+ABOUT_CSS = """.ab h2{font:800 1.15rem Georgia,serif;color:var(--v);margin:26px 0 8px}.ab p,.ab li{line-height:1.65;color:var(--c);max-width:68ch}
+.ab ul{padding-left:18px;margin:6px 0}.ab li{margin:4px 0}.ab a{color:inherit;text-decoration:underline;text-decoration-color:var(--s);text-underline-offset:3px}
+.ab .lead{font-size:1.08rem}.ab .ig{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.ab .ig a{text-decoration:none;background:var(--v);color:var(--g);
+font:800 .9rem system-ui;border-radius:999px;padding:8px 14px}"""
+
+
+def about_page():
+    """Página "About Beyond100" (SEO / confiança, 7/11/2026): o que é, como funciona, de onde vêm os dados, contacto.
+    Sem dados pessoais."""
+    return (f'<style>{ABOUT_CSS}</style><section class="page-h"><h1>About Beyond100</h1></section><div class="ab">'
+            '<p class="lead">Beyond100 follows the tennis that the big sites skip: Challenger, ITF and WTA 125 events, the players ranked '
+            'outside the top 100 and the ones about to break in. Every result gets a page, every player gets a profile, and the best '
+            'stories of the day go out on Instagram. Padel gets the same treatment, from Premier Padel to the FIP Tour.</p>'
+            '<h2>What you will find</h2><ul>'
+            '<li><a href="/results.html">Results</a>, <a href="/order-of-play.html">order of play</a> and live scores, newest first.</li>'
+            '<li><a href="/players.html">Player pages</a> with the current ranking, career high, career record, form and every match we tracked.</li>'
+            '<li><a href="/road.html">Road to the Top 100</a>, <a href="/power.html">Power Ranking</a> and <a href="/records.html">season records</a>.</li>'
+            '<li><a href="/padel/">Padel</a>: results, rankings, pairs and an Elo rating for every player.</li></ul>'
+            '<h2>How it works</h2>'
+            '<p>The site updates itself every hour, and within minutes when a match we follow finishes. Rankings change as soon as new '
+            'ones are published. The short summaries on player pages are written from the numbers and nothing else: if we do not have '
+            'a figure, it is left out rather than guessed.</p>'
+            '<h2>Where the data comes from</h2><ul>'
+            '<li>Scores come from live match data feeds and can arrive late or, now and then, wrong. Tell us and we fix it.</li>'
+            '<li>Career history up to mid-2026: <a href="https://www.tennisabstract.com">Tennis Abstract</a> / Jeff Sackmann, CC BY-NC-SA 4.0.</li>'
+            '<li>Padel results, rankings and draws: <a href="https://padelapi.org">Padel API</a>.</li>'
+            '<li>Photos come from Wikimedia Commons and Flickr under free licences, with the photographer credited under every photo and on '
+            'the <a href="/credits.html">credits page</a>. We do not use AI-generated images.</li>'
+            '<li>Highlights are YouTube videos, shown in YouTube\'s own player.</li></ul>'
+            '<h2>Independent</h2>'
+            '<p>Beyond100 is an independent project. It is not affiliated with the ATP, the WTA, the ITF, Premier Padel or the FIP.</p>'
+            '<h2>Get in touch</h2>'
+            '<p>Spotted a wrong score, or a photo of you that you would rather not see here? Send us a message on Instagram and we will sort it out.</p>'
+            '<div class="ig"><a href="https://www.instagram.com/beyond100.tennis/">@beyond100.tennis</a>'
+            '<a href="https://www.instagram.com/beyond100.padel/">@beyond100.padel</a></div></div>')

@@ -582,7 +582,7 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
             f'<nav><a class="brand" href="/padel/index.html">BEYOND PADEL</a><div>{live_pill}{topnav}<a href="{IG}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>{sport_switch.switch("padel")}'
             f'{site_more.SEARCH_HTML}{body}{LIVE_JS}'
             f'<footer>Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). '
-            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + '</body></html>')
+            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + '</body></html>')
 
 
 def write(out, path, htmltext):
@@ -1125,6 +1125,26 @@ def _hero_table(r, p, rk, d, w, done, titles, finals, pct, partner=""):
     return rows or None
 
 
+_SEEN_GSC = None
+
+
+def _thin(p, ms, rk):
+    """Ficha muito pobre fica fora do Google (noindex,follow), com a mesma regra do sitemap: menos de 3 jogos e fora do top 200.
+    Exceção: fichas que já aparecem nas pesquisas do Google (gsc.json). (7/11/2026)"""
+    global _SEEN_GSC
+    if _SEEN_GSC is None:
+        try:
+            _SEEN_GSC = {re.sub(r"\.html$", "", (x.get("page") or "").split("beyond100tennis.com")[-1])
+                         for x in json.load(open("gsc.json", encoding="utf-8")).get("pages") or []}
+        except (OSError, ValueError):
+            _SEEN_GSC = set()
+    if not ms:
+        return True
+    if len(ms) >= 3 or (isinstance(rk, int) and rk <= 200):
+        return False
+    return _clean(ppath(p)) not in _SEEN_GSC
+
+
 def page_player(db, pid, p):
     ms = player_matches(db, pid)
     done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
@@ -1229,7 +1249,7 @@ def page_player(db, pid, p):
     _ld = [_person, _crumbs([("Beyond Padel", "/padel/index.html"), ("Rankings", "/padel/rankings.html"), (p.get("name") or "", ppath(p))])]
     return shell((f"{p.get('name')} padel ranking: No. {_rk}" if _rk else f"{p.get('name')} padel ranking") + " · results and partners | Beyond Padel", body, ppath(p),
                  desc=(f"{p.get('name')} is ranked No. {_rk} in padel" if _rk else f"{p.get('name')}") + f" ({country_name(p.get('nationality'))}): ranking, points, partners and match results.", tab="players",
-                 noindex=not ms, ld=_ld)
+                 noindex=_thin(p, ms, _rk), ld=_ld)
 
 
 def page_pair(db, key, team):
@@ -1899,6 +1919,15 @@ def build(out_dir="site"):
             continue
         if (m.get("round") or 99) <= 8 or (m.get("played_at") or "") >= _cut:      # oitavos em diante, ou recentes
             lm[mpath(m)] = (m.get("played_at") or "")[:10]
+    try:                                              # páginas principais em espanhol (7/11/2026)
+        from padel import es as _es
+        _esp = _es.make(out)
+        paths += _esp
+        for u in _es.PAGES.values():
+            lm[u] = ""
+        print(f"Padel: {len(_esp)} páginas em espanhol.")
+    except Exception as e:
+        print("Padel espanhol falhou:", type(e).__name__, e)
     with open(os.path.join(out, "padel", "sitemap.xml"), "w", encoding="utf-8") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
                 + "".join(f"<url><loc>{SITE_BASE}{esc(_clean(u))}</loc>" + (f"<lastmod>{d}</lastmod>" if d else "") + "</url>\n" for u, d in lm.items())

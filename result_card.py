@@ -1208,7 +1208,7 @@ def _shell(title, body, tx, root="", path="", desc=None, image="og/default.png",
             f'{live_pill}<a class="ntop" href="{root}results.html">{esc(tx["nav"])}</a><a class="ntop" href="{root}players.html">{esc(tx.get("players", "Players"))}</a>{(f'<a class="ntop" href="{root}rankings.html">{esc(extras.L(tx, "x_rankings"))}</a>' if extras.have_full_rankings() else "")}<a class="ntop" href="{root}stats.html">{esc(extras.L(tx, "x_stats"))}</a><a href="{IG_URL}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>\n{sport_switch.switch("tennis")}'
             f'{site_more.SEARCH_HTML}{body}\n<footer>{esc(tx["note"])} · <a href="/order-of-play.html">Order of play</a> · <a href="/next.html">Next week</a> · <a href="/road.html">Road to the Top 100</a> · <a href="/power.html">Power Ranking</a> · '
             f'<a href="/records.html">Records</a> · <a href="/countries.html">Countries</a> · '
-            f'<a href="/credits.html">{esc(extras.L(tx, "x_credits"))}</a>{langs}</footer></div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + '</body></html>')
+            f'<a href="/credits.html">{esc(extras.L(tx, "x_credits"))}</a> · <a href="/about.html">About</a>{langs}</footer></div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + '</body></html>')
 
 
 FAVICON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0e3a2d"/>'
@@ -1384,6 +1384,14 @@ def build_avatars(out_dir, names):
             extras.CREDIT_ROWS[key] = {"name": name, "credit": cr, "page": (sources.get(base) or {}).get("commons_page", "")}
 
 
+def _safe(fn):
+    try:
+        return fn() or ""
+    except Exception as e:
+        print("Bloco falhou:", getattr(fn, "__name__", fn), type(e).__name__, e)
+        return ""
+
+
 def _core_pages(results, singles, tx, tr, lang, linkable):
     """Páginas principais (início, resultados, jogadores, rankings, stats, créditos) num idioma."""
     esc = html.escape
@@ -1445,6 +1453,7 @@ def _core_pages(results, singles, tx, tr, lang, linkable):
             + f'{extras.live_block(tx, 4)}'
             + (site_ui.sec("▶ Latest highlights", "/highlights.html", "All videos") + _hl if _hl else "")
             + (site_ui.sec("Latest champions", "/results.html", "All results") + f'<div class="ui-row">{_ch}</div>' if _ch else "")
+            + _safe(extras.spotlight_block)
             + site_ui.sec(esc(tx["title"]), "results.html", tx["all"].rstrip(" →"))
             + f'{_results_html(singles[:4], tr, tx["empty"])}'
             f'{webapp.week_block(webapp.week_numbers(results), tx)}'
@@ -1513,6 +1522,7 @@ def build_site(out_dir="site", player=None):
     linkable = set(extras.players_index(results))
     extras.LINKABLE.clear()
     extras.LINKABLE.update(linkable)
+    extras.PIDX = extras.players_index(results)       # o bloco "Players in the spotlight" da página inicial precisa dele (7/11/2026)
     paths = []
     write_favicons(out_dir)
     if os.path.isdir("posts"):                         # JPEGs dos posts (o Instagram vai buscá-los a este endereço)
@@ -1833,6 +1843,9 @@ def build_site(out_dir="site", player=None):
             ("power.html", "Power Ranking: best form outside the top 100 · Beyond100",
              "Our weekly ranking of the tennis players in the best form outside the top 100, from the last 14 days of Challenger, ITF and WTA results.",
              lambda: features.power_page(features.power(results, _latest), linkable, site_more.flag)),
+            ("about.html", "About Beyond100: tennis and padel beyond the top 100",
+             "What Beyond100 is, how the site updates, where the scores, rankings and photos come from, and how to reach us.",
+             extras.about_page),
             ("records.html", f"Season records {datetime.date.today().year}: Challenger, ITF and WTA · Beyond100",
              "Most wins, titles, comebacks, tie-breaks and biggest upsets of the season beyond the top 100.",
              lambda: features.records_page(features.records(results), linkable, site_more.flag))]:
