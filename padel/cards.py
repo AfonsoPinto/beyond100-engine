@@ -169,8 +169,7 @@ def _sur(p):
 
 def preview_card(d, out_path):
     """d = {level, tournament, city, when, pairs:[[p,p],[p,p]], photos:[{path,credit}|None, ...], ranks, teams:[país, país]|None}
-    Com foto dos dois lados: uma foto por par. Se faltar foto a um dos lados, cartão só tipográfico (7/11/2026), para não ficar
-    meio cartão vazio."""
+    Só com foto real dos dois pares (7/11/2026); sem isso não há post de antevisão."""
     phs = d.get("photos") or [None, None]
     both = all(ph and ph.get("path") for ph in phs[:2])
     teams = d.get("teams") or [None, None]
@@ -206,26 +205,7 @@ def preview_card(d, out_path):
         dr.text((W / 2, 1150), sub, font=fit(dr, sub, SANS_B, 28, 960, 16), fill=VOLT, anchor="mm")
         dr.text((W / 2, 1215), "Who wins? Tell us below.", font=font(SERIF_I, 44), fill=CREAM, anchor="mm")
     else:
-        img = _grad()
-        dr = ImageDraw.Draw(img)
-        for k in range(2):                                         # linhas de um court de padel, ao fundo
-            y0 = 300 + k * 420
-            dr.rounded_rectangle([90, y0, W - 90, y0 + 380], radius=28, outline=EDGE, width=3)
-        _brand(img)
-        _tags(dr, tags)
-        for i, pair in enumerate(d["pairs"]):
-            y = 490 + i * 450
-            if teams[i]:
-                dr.text((W / 2, y - 130), teams[i].upper(), font=fit(dr, teams[i].upper(), SANS_B, 34, 800, 18), fill=VOLT, anchor="mm")
-            nm = " / ".join(_sur(p).upper() for p in pair)
-            dr.text((W / 2, y - 40), nm, font=fit(dr, nm, SERIF_B, 92, 860, 40), fill=CREAM, anchor="mm")
-            tl = "   ".join(f"{_sur(p)} {tail(p)}" for p in pair)
-            dr.text((W / 2, y + 50), tl, font=fit(dr, tl, SANS_B, 26, 860, 16), fill=SOFT, anchor="mm")
-        cy = 700
-        dr.ellipse([W / 2 - 70, cy - 70, W / 2 + 70, cy + 70], fill=VOLT, outline=BLUE, width=8)
-        dr.text((W / 2, cy + 2), "VS", font=font(SERIF_B, 60), fill=BLUE, anchor="mm")
-        dr.text((W / 2, 1165), sub, font=fit(dr, sub, SANS_B, 28, 960, 16), fill=VOLT, anchor="mm")
-        dr.text((W / 2, 1225), "Who wins? Tell us below.", font=font(SERIF_I, 44), fill=CREAM, anchor="mm")
+        raise ValueError("preview_card precisa de foto dos dois pares")
     _footer(img, credits)
     img.save(out_path, quality=95)
     return out_path

@@ -711,7 +711,7 @@ def make_previews(q, tours, matches, rk):
         if not ids & feat:
             continue
         pa, pb = best_photo(A), best_photo(B)
-        if not (pa or pb):
+        if not (pa and pb):                 # só com foto real dos dois lados (7/11/2026: meio cartão vazio ou só texto parece feito por máquina)
             continue
         t = tours.get(str(m.get("tid"))) or {}
         when = (m.get("schedule_label") or (m.get("scheduled_at_local") or "")[11:16] or "").upper()
