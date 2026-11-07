@@ -27,7 +27,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Procurar perfis na Wikidata
         env:
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
         run: python tournament_ig.py ${{ github.event.inputs.apply == '1' && '--apply' || '' }}
       - name: Save
         if: github.event.inputs.apply == '1'

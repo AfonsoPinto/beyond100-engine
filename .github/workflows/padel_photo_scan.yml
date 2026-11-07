@@ -24,7 +24,7 @@ jobs:
       - run: pip install requests
       - name: Scan
         env:
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
         run: |
           if [ "${{ github.event.inputs.dry }}" = "1" ]; then python -m padel.photo_scan --dry; else python -m padel.photo_scan; fi
       - name: Save

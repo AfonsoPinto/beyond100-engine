@@ -42,7 +42,7 @@ jobs:
           CAPTION_LITE_BELOW: ${{ vars.CAPTION_LITE_BELOW }}
           FETCH_PHOTOS: "1"
           ALLOW_SA: ${{ vars.ALLOW_SA }}
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
           REQUIRE_PHOTO: ${{ vars.REQUIRE_PHOTO }}
           POST_LEVELS: ${{ vars.POST_LEVELS }}
         run: |

@@ -20,7 +20,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Wikidata + Commons (padel players with free-licence photos)
         env:
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
         run: python padel_photos_report.py
       - name: Save the report
         run: bash _engine/save_state.sh "Padel photos report" padel_photos_report.json

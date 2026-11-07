@@ -31,7 +31,7 @@ jobs:
           NAMES: ${{ github.event.inputs.names }}
           ALLOW_SA: ${{ vars.ALLOW_SA }}
           FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
           PHOTO_MAX_AGE_Y: ${{ vars.PHOTO_MAX_AGE_Y }}
         run: python photo_retry.py
       - name: Save

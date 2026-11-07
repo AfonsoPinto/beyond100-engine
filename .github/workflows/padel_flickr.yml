@@ -21,12 +21,12 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Wikidata list (all padel players)
         env:
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
         run: python padel_photos_report.py
       - name: Flickr + Openverse (free-licence padel photos)
         env:
           FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
         run: python padel_flickr_report.py
       - name: Save the reports
         run: bash _engine/save_state.sh "Padel Flickr report" padel_photos_report.json padel_flickr_report.json

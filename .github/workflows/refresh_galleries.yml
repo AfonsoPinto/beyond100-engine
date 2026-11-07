@@ -30,7 +30,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Search extra free-licence photos (Wikimedia only)
         env:
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
           PHOTO_MAX_AGE_Y: ${{ vars.PHOTO_MAX_AGE_Y }}
           PHOTO_GALLERY: ${{ vars.PHOTO_GALLERY }}
           NAMES: ${{ github.event.inputs.names }}

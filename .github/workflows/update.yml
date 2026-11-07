@@ -71,7 +71,7 @@ jobs:
           MAX_POSTS_PER_DAY: ${{ vars.MAX_POSTS_PER_DAY }}
           NO_PHOTO_EXTRA: ${{ vars.NO_PHOTO_EXTRA }}
           PHOTO_BONUS: ${{ vars.PHOTO_BONUS }}
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
           NEWS_ENABLED: ${{ vars.NEWS_ENABLED }}
           NEWS_MAX_PER_DAY: ${{ vars.NEWS_MAX_PER_DAY }}
           NEWS_SCAN_HOURS: ${{ vars.NEWS_SCAN_HOURS }}

@@ -33,7 +33,7 @@ jobs:
           FILES: ${{ github.event.inputs.files }}
           FOLDER: ${{ github.event.inputs.folder }}
           WIDTH: ${{ github.event.inputs.width }}
-          WIKI_CONTACT: ${{ vars.WIKI_CONTACT }}
+          WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
         run: |
           python3 - <<'PY'
           import json, os, re, requests
