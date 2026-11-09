@@ -256,6 +256,7 @@ def find_photo(p):
     return found
 
 
+PHOTO_REPEAT_DAYS = float(os.environ.get("PHOTO_REPEAT_DAYS") or "10")   # foto usada há menos de N dias: o post não sai (exceto finais)
 PHOTO_REPEAT_3D = float(os.environ.get("PHOTO_REPEAT_3D") or "3")      # a única foto do vencedor saiu há menos de 3 dias: -3
 PHOTO_REPEAT_10D = float(os.environ.get("PHOTO_REPEAT_10D") or "1.5")   # há menos de 10 dias: -1,5
 POST_PHOTO_REPEAT = False     # última escolha de find_post_photo repetiu uma foto usada há pouco (sem alternativa)
@@ -2363,10 +2364,9 @@ def maybe_post(m, out_dir, force=False):
     if has_photo and "final" not in why:              # 5/11/2026: a mesma foto em posts seguidos estraga o feed (finais/títulos: sem castigo). Se a melhor opção
         try:                                          # (a usada há mais tempo) saiu há pouco, é porque não há outra: perde pontos
             _age = (time.time() - find_post_photo(m["players"]["p%d" % _w], dry=True)[2]) / 86400
-            _pen = PHOTO_REPEAT_3D if _age < 3 else PHOTO_REPEAT_10D if _age < 10 else 0
-            if _pen:
-                score -= _pen
-                why.append(f"photo-repeat:{int(_age)}d")
+            if _age < PHOTO_REPEAT_DAYS:                  # 9/11/2026 (Afonso): foto repetida há pouco -> não publica (finais sim)
+                print(f"Jogo {m.get('id')}: a única foto boa do vencedor saiu há {_age:.1f} dias, não publica (só finais repetem).")
+                return None
         except Exception as e:
             print("Foto repetida: erro", type(e).__name__)
     if REQUIRE_PHOTO and not has_photo:
@@ -2417,36 +2417,18 @@ def maybe_post(m, out_dir, force=False):
     os.makedirs(pdir, exist_ok=True)
     _facts = dict(slim(m), reasons=why)
     _facts.update(_past_context(m, w))
-    _cs = os.environ.get("CARD_STYLE", "1").strip().lower()
-    if _cs in ("rotate", "alternar", "0"):                      # alterna 1 -> 2 -> 3 de um cartão de resultado para o seguinte
-        _n = sum(1 for v in posts.values() for x in v if not str(x.get("id")).startswith(("news-", "preview-")))
-        _cs = str(1 + _n % 3)
-    d["style"] = _cs if _cs in ("1", "2", "3") else "1"
+    d["style"] = "3"            # 9/11/2026: um só modelo para resultados (painel verde + foto); títulos: cartão de campeão; surpresa gigante: o seu
     _title = "final" in why and not ev and bool(_wd.get("photo"))
     if _title and _env("TITLE_STYLE", "3") in ("1", "2", "3"):  # títulos: sempre o painel lateral com a foto grande (o post da Harriet Dart: 3,9 mil visualizações)
         d["style"] = _env("TITLE_STYLE", "3")
-    # último recurso: mesma foto do mesmo jogador há pouco tempo -> outro desenho (outro enquadramento), para não parecer repetido
-    _spath = os.path.join(PHOTO_DIR, "used_style.json")
-    _styles = _load_json(_spath, {})
-    _pk = webapp.slugify(pw.get("name") or "")
-    if POST_PHOTO_REPEAT and _styles.get(_pk) == d["style"] and not _title:
-        d["style"] = {"1": "2", "2": "3", "3": "1"}[d["style"]]
-        print(f"Foto repetida de {pw.get('name')}: muda o desenho para {d['style']}.")
-    _styles[_pk] = d["style"]
-    try:
-        with open(_spath, "w", encoding="utf-8") as _f:
-            json.dump(_styles, _f, ensure_ascii=False, indent=1)
-    except OSError:
-        pass
     if d["style"] in ("2", "3"):                               # desenhos novos: data, etiqueta e título editorial
-        from captions import card_headline
         try:                                                      # data do jogo (não a do dia em que o cartão é feito)
             d["date"] = datetime.date.fromisoformat((m.get("updated_at") or "")[:10]).strftime("%d %b %Y").upper()
         except ValueError:
             d["date"] = time.strftime("%d %b %Y", time.gmtime()).upper()
         d["kicker"] = "UPSET" if ev else ("TITLE" if "final" in why else "WIN")
         d["round"] = d.get("round") or ""
-        d["edit_head"] = card_headline(_facts) or (d.get("headline") or "").rstrip(".") or None
+        d["edit_head"] = (d.get("headline") or "").rstrip(".") or None     # 9/11/2026: frase fixa a partir dos factos (sem título escrito por IA)
     png = None
     if "giant" in why and _wd.get("photo"):                     # surpresa gigante: as caras dos dois (derrotado a P&B)
         _ld = _who(pl)
