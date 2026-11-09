@@ -361,7 +361,13 @@ def send():
             return datetime.strptime(e["sent_at"], "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
         except (KeyError, ValueError):
             return None
-    sent = [(e, sent_dt(e)) for es in posts.values() for e in es if e.get("sent") and not e.get("skipped")]
+    archived = set()                            # 9/11/2026: posts que o Afonso arquivou no Instagram não contam para o máximo do dia
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "archived_posts.txt"), encoding="utf-8") as f:
+            archived = {ln.split("#")[0].strip() for ln in f if ln.split("#")[0].strip()}
+    except OSError:
+        pass
+    sent = [(e, sent_dt(e)) for es in posts.values() for e in es if e.get("sent") and not e.get("skipped") and str(e.get("id")) not in archived]
     sent = [(e, t) for e, t in sent if t]
     res_today = sum(1 for e, t in sent if is_res(e) and t.date() == now_l.date())
     last = max([t for e, t in sent if not is_prev(e)], default=None)
