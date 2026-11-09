@@ -329,6 +329,24 @@ def _known_names():
     return _KNOWN
 
 
+def _same_image(page):
+    """A mesma foto no Commons com e sem corte ('X_01.jpg' e 'X_01_(cropped).jpg') conta como uma só (9/11/2026)."""
+    import urllib.parse
+    f = urllib.parse.unquote((page or "").rsplit("/", 1)[-1]).lower()
+    return re.sub(r"[_ ]\((edited[_ ]and[_ ])?cropped\)", "", re.sub(r"\.(jpe?g|png|webp)$", "", f))
+
+
+def _few_photos(key):
+    """Menos de 2 fotos diferentes deste jogador: procura fotos novas já (no máximo 1 vez por semana), em vez de esperar um mês."""
+    srcs = _load_json(os.path.join(PHOTO_DIR, "sources.json"), {})
+    imgs = {_same_image(v.get("commons_page")) for k, v in srcs.items() if isinstance(v, dict)
+            and (k == key + ".jpg" or (k.startswith("alt/" + key + "-") and k[len(key) + 5:-4].isdigit()))}
+    if len(imgs) >= 2:
+        return False
+    st = _load_json(os.path.join(PHOTO_DIR, "gallery.json"), {})
+    return time.time() - st.get(key, 0) > 7 * 86400
+
+
 def find_post_photo(p, dry=False):
     """Foto para um POST (não para o site): alterna entre a foto principal e as fotos extra recentes do jogador (photos/alt/),
     escolhendo a que foi usada há mais tempo. A principal só fica de fora se for antiga e houver alternativas recentes.
@@ -341,7 +359,7 @@ def find_post_photo(p, dry=False):
     key = fetch_photos.slug(name)
     if os.environ.get("FETCH_PHOTOS") == "1":
         try:
-            fetch_photos.gallery(name, p.get("birthday"), PHOTO_DIR)
+            fetch_photos.gallery(name, p.get("birthday"), PHOTO_DIR, force=_few_photos(key))
         except Exception as e:
             print("Galeria de fotos:", name, type(e).__name__)
     credits = _load_json(os.path.join(PHOTO_DIR, "credits.json"), {})
@@ -376,8 +394,20 @@ def find_post_photo(p, dry=False):
     if not good:
         return (None, None, 0) if dry else (None, None)
     opts = good
+    seen_img, uniq = set(), []
+    for o in opts:                                                 # a mesma foto com e sem corte só conta uma vez
+        k_ = _same_image((sources.get(o[2]) or {}).get("commons_page")) or o[2]
+        if k_ not in seen_img:
+            seen_img.add(k_)
+            uniq.append(o)
+    opts = uniq
     upath = os.path.join(PHOTO_DIR, "used.json")
     used = _load_json(upath, {})
+    for o in opts:                                                 # uso de uma versão conta para a outra
+        k_ = _same_image((sources.get(o[2]) or {}).get("commons_page"))
+        for rel_, v_ in sources.items():
+            if rel_ != o[2] and isinstance(v_, dict) and k_ and _same_image(v_.get("commons_page")) == k_:
+                used[o[2]] = max(used.get(o[2], 0), used.get(rel_, 0))
     opts.sort(key=lambda o: o[3] or "", reverse=True)              # empate: a mais recente primeiro
     pick = min(opts, key=lambda o: used.get(o[2], 0))              # a usada há mais tempo (ou nunca usada)
     if dry:                                                        # só para saber há quanto tempo saiu (não regista nada)

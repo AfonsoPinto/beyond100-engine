@@ -444,7 +444,7 @@ def fetch_photo(name, birthday=None, photo_dir=None):
 
 
 # ---------------------------------------------------------------- galeria (várias fotos recentes por jogador, para alternar nos posts)
-GALLERY_MAX = int(os.environ.get("PHOTO_GALLERY") or "4")          # fotos extra por jogador (além da principal)
+GALLERY_MAX = int(os.environ.get("PHOTO_GALLERY") or "6")          # fotos extra por jogador (além da principal)
 PHOTO_MAX_AGE_Y = int(os.environ.get("PHOTO_MAX_AGE_Y") or "3")    # só fotos extra tiradas nos últimos N anos (com data conhecida)
 GALLERY_EVERY_D = 30
 
