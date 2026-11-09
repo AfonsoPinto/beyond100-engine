@@ -261,6 +261,63 @@ PHOTO_REPEAT_10D = float(os.environ.get("PHOTO_REPEAT_10D") or "1.5")   # há me
 POST_PHOTO_REPEAT = False     # última escolha de find_post_photo repetiu uma foto usada há pouco (sem alternativa)
 
 
+_RD = {"final": "F", "finals": "F", "semi-finals": "SF", "semifinals": "SF", "quarter-finals": "QF", "quarterfinals": "QF",
+       "1/8-finals": "R16", "round of 16": "R16", "1/16-finals": "R32", "round of 32": "R32", "1/32-finals": "R64", "round of 64": "R64",
+       "1/64-finals": "R128", "round of 128": "R128"}
+
+
+def _champion_card(m, pw, pl, wd, sets, tag, out_path):
+    """Cartão de campeão: o caminho até ao título vem dos nossos resultados do mesmo torneio (últimos 12 dias)."""
+    from photo_cards import render_champion
+    name = pw.get("name") or ""
+    base = webapp.base_tournament(m.get("tournament", ""))
+    day = (m.get("updated_at") or time.strftime("%Y-%m-%d"))[:10]
+    road, lost_sets = [], 0
+    for r in sorted(load_results(), key=lambda r: r.get("date", "")):
+        if webapp.base_tournament(r.get("tournament", "")) != base or str(r.get("id")) == str(m.get("id")):
+            continue
+        try:
+            if abs((datetime.date.fromisoformat(day) - datetime.date.fromisoformat(r.get("date", "")[:10])).days) > 12:
+                continue
+        except ValueError:
+            continue
+        i = 1 if r["p1"]["name"] == name else 2 if r["p2"]["name"] == name else 0
+        if not i or r.get("winner") != i:
+            continue
+        o = r["p%d" % (3 - i)]
+        rd = "Q" if r.get("q") else _RD.get((r.get("round") or "").strip().lower(), "")
+        road.append((rd, o.get("name") or "", o.get("rank")))
+        g = r.get("games") or [[], []]
+        lost_sets += sum(1 for a, b in zip(g[i - 1], g[2 - i]) if a < b)
+    road.append(("F", pl.get("name") or "", pl.get("ranking")))
+    lost_sets += sum(1 for a, b in sets if a < b)
+    wins = len(road)
+    note = f"{wins} wins · " + ("no sets dropped" if not lost_sets else f"{lost_sets} set{'s' if lost_sets > 1 else ''} dropped")
+    try:
+        date = datetime.date.fromisoformat(day).strftime("%-d %b %Y")
+    except ValueError:
+        date = ""
+    d = {"name": name, "rank": pw.get("ranking"), "photo": wd.get("photo"), "credit": wd.get("credit"),
+         "tournament": re.sub(r"^(ATP|WTA)\s+", "", base), "level": (tag or "").upper(), "date": date,
+         "final": {"opp": pl.get("name") or "", "opp_rank": pl.get("ranking"), "sets": sets}, "road": road, "note": note}
+    print(f"Jogo {m.get('id')}: campeão, cartão próprio ({wins} vitórias no caminho).")
+    return render_champion(d, out_path)
+
+
+_KNOWN = None
+
+
+def _known_names():
+    """Nomes de todos os jogadores dos nossos resultados (para reconhecer fotos com outro jogador no nome do ficheiro)."""
+    global _KNOWN
+    if _KNOWN is None:
+        try:
+            _KNOWN = {x[k]["name"] for x in load_results() for k in ("p1", "p2") if x.get(k, {}).get("name")}
+        except Exception:
+            _KNOWN = set()
+    return _KNOWN
+
+
 def find_post_photo(p, dry=False):
     """Foto para um POST (não para o site): alterna entre a foto principal e as fotos extra recentes do jogador (photos/alt/),
     escolhendo a que foi usada há mais tempo. A principal só fica de fora se for antiga e houver alternativas recentes.
@@ -296,6 +353,18 @@ def find_post_photo(p, dry=False):
     on = [o for o in opts if not fetch_photos.off_court((sources.get(o[2]) or {}).get("commons_page"))]
     if on:                                                         # fotos de gala/prémios só se não houver nenhuma em court
         opts = on
+    # 9/11/2026: só fotos nítidas, com tamanho e de uma pessoa só (sem cerimónias nem "X vs Y"); se nenhuma servir, o post sai sem foto
+    import photo_quality
+    good = []
+    for o in opts:
+        why = []
+        if photo_quality.card_ok(o[0], name, (sources.get(o[2]) or {}).get("commons_page"), _known_names(), why):
+            good.append(o)
+        else:
+            print(f"Foto de {name} ({o[2]}) não serve para post: {why[0]}.")
+    if not good:
+        return (None, None, 0) if dry else (None, None)
+    opts = good
     upath = os.path.join(PHOTO_DIR, "used.json")
     used = _load_json(upath, {})
     opts.sort(key=lambda o: o[3] or "", reverse=True)              # empate: a mais recente primeiro
@@ -2350,6 +2419,11 @@ def maybe_post(m, out_dir, force=False):
                       headline=(f"Down a set, stuns {_last}." if "comeback" in why else f"Stuns {_last}.") if _last else d.get("headline"))
             png = upset_card.render_giant_upset(dg, os.path.join(pdir, f"final-{m.get('id')}.png"), _env("GIANT_STYLE", "C"))
             print(f"Jogo {m.get('id')}: surpresa gigante, cartão com os dois jogadores.")
+    if not png and _title and _env("CHAMPION_CARD", "1") != "0":   # 9/11/2026: post próprio para campeões (foto, final e caminho até ao título)
+        try:
+            png = _champion_card(m, pw, pl, _wd, sets, tag, os.path.join(pdir, f"final-{m.get('id')}.png"))
+        except Exception as e:
+            print("Cartão de campeão falhou:", type(e).__name__, e)
     if not png:
         png = render_match_photo(d, os.path.join(pdir, f"final-{m.get('id')}.png"))
     _facts["_interest"] = score
@@ -2454,7 +2528,7 @@ def preview_finals(out_dir):
         pdir = os.path.join(out_dir, "post")
         os.makedirs(pdir, exist_ok=True)
         n_prev = sum(1 for v in posts.values() for x in v if str(x.get("id")).startswith("preview-"))
-        render = render_preview_b if n_prev % 2 else render_preview          # alterna o desenho A / B de uma antevisão para a seguinte
+        render = render_preview          # 9/11/2026: só o desenho A (o B, em faixas, cortava as caras e ficava mal)
         png = render({"p1": who["p1"], "p2": who["p2"], "tournament": tname, "round": "Final",
                               "level": (tag or "").upper(), "when": f"{day} · {hhmm} UTC", "h2h": h2h}, os.path.join(pdir, pid + ".png"))
         facts = {"tournament": tname, "round": "Final", "level": tag, "starts_utc": f"{day.lower()} {hhmm} UTC",

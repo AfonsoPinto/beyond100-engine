@@ -385,68 +385,79 @@ def send():
         _save(posts)
         return True
 
-    # 1) antiguidade: posts velhos não saem
-    for d, e in pending:
-        old = d < limit or (is_res(e) and e.get("created") and time.time() - e["created"] > 20 * 3600)
+    # 9/11/2026 (pedido do Afonso): no máximo DAY_MAX_POSTS (3) por dia no feed, contando tudo (resultados, antevisões,
+    # especiais e carrosséis), e que sejam os melhores do dia. Em vez de publicar à medida que os jogos acabam, há 3 horas de
+    # publicação (POST_SLOTS, Lisboa: 13h, 18h, 21h); em cada uma sai o post com mais interesse na fila das últimas 24 h.
+    # Um post excecional (SEND_NOW_SCORE, 12+: título, surpresa gigante) não espera pela hora, mas conta para os 3.
+    day_max = int(env("DAY_MAX_POSTS", "3"))
+    slots = sorted(int(x) for x in env("POST_SLOTS", "13,18,21").split(",") if x.strip().isdigit())
+    now_score = float(env("SEND_NOW_SCORE", "12"))
+    prev_score = float(env("PREVIEW_SCORE", "9"))
+    other_score = float(env("SPECIAL_SCORE", "9"))
+    for d, e in pending:                                          # antiguidade: resultados com mais de 24 h e antevisões com mais de 12 h não saem
+        age = time.time() - (e.get("created") or 0) if e.get("created") else None
+        old = d < limit or (age is not None and age > (12 if is_prev(e) else 24) * 3600)
         if old:
             e["sent"], e["skipped"] = True, "stale"
     _save(posts)
     pending = [(d, e) for d, e in pending if not e.get("sent")]
-    # 2) antevisões: saem logo (são antes do jogo)
+    if not pending:
+        print("Fila vazia.")
+        return
+    try:
+        with open(CAROUSELS_FILE, encoding="utf-8") as f:
+            _car = json.load(f)
+    except (OSError, ValueError):
+        _car = []
+    car_today = 0
+    for c in _car:
+        try:
+            if c.get("sent") and datetime.strptime(c["sent_at"], "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("UTC")).astimezone(tz).date() == now_l.date():
+                car_today += 1
+        except (KeyError, ValueError, TypeError):
+            pass
+    day_count = sum(1 for e, t in sent if t.date() == now_l.date()) + car_today
+    if day_count >= day_max:
+        print(f"Já saíram {day_count} posts hoje (máximo {day_max}): {len(pending)} esperam ou caducam.")
+        return
+
+    def value(e):
+        if is_prev(e):
+            return prev_score
+        if not is_res(e):
+            return float(e.get("score") or other_score)
+        return float(e.get("score") or 0)
+    # antevisões são antes do jogo: saem logo (dentro da janela), mas contam para o máximo do dia
     for d, e in [x for x in pending if is_prev(x[1])]:
+        if in_window and day_count < day_max:
+            print(f"Antevisão {e.get('id')}: sai já (antes do jogo), {day_count + 1}/{day_max} hoje.")
+            if send_one(d, e):
+                return
+    pending = [x for x in pending if not is_prev(x[1])]
+    if not pending:
+        return
+    order = sorted(pending, key=lambda x: (-value(x[1]), prio(x)[0], x[1].get("created") or 0))
+    d, e = order[0]
+    v = value(e)
+    slots_open = sum(1 for h in slots if now_l.hour >= h)
+    if v >= now_score and gap_ok and in_window:
+        print(f"Post {e.get('id')} é excecional ({v:g}): sai já ({day_count + 1}/{day_max} hoje).")
         send_one(d, e)
+        return
     if not in_window:
-        # exceção: um resultado excecional (interesse >= SEND_LATE_SCORE) sai a qualquer hora, sem esperar pela janela
-        late_score = float(env("SEND_LATE_SCORE", "10"))
-        if now_l.hour < int(env("SEND_MORNING_UNTIL", "16")):             # de madrugada/manhã cedo conta como manhã: só 12+ (6/11/2026)
-            late_score = max(late_score, float(env("SEND_MORNING_EXC", "12")))
-        best = sorted([x for x in pending if is_res(x[1]) and (x[1].get("score") or 0) >= late_score], key=prio)
-        if best and gap_ok and res_today < max_day + extra:
-            print(f"Fora da janela, mas o resultado {best[0][1].get('id')} é excecional ({best[0][1].get('score'):g}): sai já.")
-            send_one(*best[0])
-            return
         print(f"Fora da janela de publicação ({s_from}h-{s_to}h Lisboa): {len(pending)} posts esperam.")
+        return
+    if day_count >= slots_open:
+        nxt = next((h for h in slots if h > now_l.hour), None)
+        print(f"{day_count} publicados hoje; próxima hora de publicação: {f'{nxt}h' if nxt else 'amanhã'}. "
+              f"Melhor na fila: {e.get('id')} ({v:g}).")
         return
     if not gap_ok:
         print(f"Último post há menos de {gap_min} min: espera pela próxima execução.")
         return
-    # 3) um post por execução: primeiro notícias/especiais, depois o melhor resultado da fila
-    others = [x for x in pending if not is_res(x[1]) and not is_prev(x[1])]
-    if others:
-        send_one(*others[0])
-        return
-    res = sorted([x for x in pending if is_res(x[1])], key=prio)
-    if not res:
-        print("Fila vazia.")
-        return
-    morning = now_l.hour < morning_until
+    print(f"Hora de publicação: sai o melhor da fila, {e.get('id')} ({v:g}), {day_count + 1}/{day_max} hoje.")
+    send_one(d, e)
 
-    morning_exc = float(env("SEND_MORNING_EXC", "12"))
-
-    def _reach_pts(e):                                       # bónus de alcance do post (posts antigos: lido das razões, até +2)
-        if isinstance(e.get("reach_pts"), (int, float)):
-            return float(e["reach_pts"])
-        return 1.5 if any(str(r).startswith("reach:") for r in e.get("reasons") or []) else 0.0
-
-    def ok(sc, rp=0.0):
-        if morning:                                                    # 6/11/2026: manhãs com no máximo SEND_MORNING_MAX (2), 9+;
-            if sc >= morning_exc and res_today < max_day + extra:      # só um resultado mesmo excecional (12+: título, surpresa gigante)
-                return True                                            # passa disso. Os extras ficam para a tarde.
-            return res_today < morning_max and sc - rp >= morning_min        # 6/11/2026: de manhã os 9 contam SEM o bónus de alcance
-        if sc >= exc and res_today < max_day + extra:                 # tarde: excelente sai já (também como extra)
-            return True
-        return res_today < max_day and (sc >= strong or now_l.hour >= weak_from)
-    # o primeiro da ordem (masculinos primeiro) que possa sair agora
-    for d, e in res:
-        if ok(e.get("score") or 0, _reach_pts(e)):
-            send_one(d, e)
-            return
-    d, e = res[0]
-    sc = e.get("score") or 0
-    why = (f"de manhã só {morning_max} e com {morning_min:g}+, extras só com {morning_exc:g}+ (lugares guardados para a tarde)" if morning
-           else f"abaixo de {strong:g} só a partir das {weak_from}h" if sc < strong and res_today < max_day
-           else f"limite do dia ({max_day}, extra só com {exc:g}+)")
-    print(f"Resultado {e.get('id')} (interesse {sc:g}) espera: {res_today} publicados hoje; {why}.")
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""

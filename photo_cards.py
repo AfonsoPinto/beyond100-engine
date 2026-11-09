@@ -539,3 +539,69 @@ def render_match_photo_v3(d, out_path):
         dr.text((W - 40, H - 18), win["credit"][:90], font=font(SANS_B, 17), fill=SOFT, anchor="rm")
     img.save(out_path, quality=95)
     return out_path
+
+
+# ------------------------------------------------------------------ campeão (9/11/2026)
+def render_champion(d, out_path):
+    """Post de campeão: foto grande do campeão, nome, torneio, resultado da final e o caminho até ao título (ronda a ronda).
+    d = {name, rank, photo, credit, tournament, level, date, final:{opp, opp_rank, sets:[(a,b)]}, road:[(ronda, adversário, rank)],
+         badge (opcional, só factos confirmados), note (opcional, ex.: "5 wins · 1 set dropped")}"""
+    img = _gradient((17, 66, 51), (8, 34, 26))
+    PH = 860
+    ph, has = _photo_or_monogram((W, PH), {"photo": d.get("photo"), "name": d.get("name")}, centering=(0.5, 0.2))
+    img.paste(ph, (0, 0))
+    _overlay(img, 0, 240, 150, 0)
+    _overlay(img, 480, PH, 0, 250)
+    dr = ImageDraw.Draw(img)
+    _header(img)
+    f = font(SANS_B, 26)
+    x = 70
+    for label, fill, fg in [("CHAMPION", VOLT, GREEN), (d.get("level"), CREAM, GREEN)]:
+        if not label:
+            continue
+        tw = dr.textlength(label, font=f) + 40
+        dr.rounded_rectangle([x, 150, x + tw, 198], radius=24, fill=fill)
+        dr.text((x + tw / 2, 174), label, font=f, fill=fg, anchor="mm")
+        x += tw + 14
+    first, last = split_name(d.get("name"))
+    if first:
+        dr.text((70, 640), first.upper(), font=fit(dr, first.upper(), SANS_B, 40, W - 140, 22), fill=SOFT, anchor="ls")
+    dr.text((66, 760), last.upper(), font=fit(dr, last.upper(), SERIF_B, 132, W - 300, 60), fill=CREAM, anchor="ls")
+    if isinstance(d.get("rank"), int):
+        dr.text((W - 70, 760), f"#{d['rank']}", font=font(SERIF_B, 76), fill=VOLT, anchor="rs")
+    sub = " · ".join(x_ for x_ in [d.get("tournament"), d.get("date")] if x_).upper()
+    dr.text((70, 815), sub, font=fit(dr, sub, SANS_B, 30, W - 140, 18), fill=VOLT, anchor="ls")
+    # painel de baixo: final (esquerda) e caminho até ao título (direita)
+    y0 = PH + 30
+    dr.text((70, y0), "FINAL", font=font(SANS_B, 22), fill=SOFT, anchor="lt")
+    fx = 70
+    for a, b in d["final"]["sets"][:5]:
+        txt = f"{a}-{b}"
+        dr.rounded_rectangle([fx, y0 + 40, fx + 120, y0 + 120], radius=16, fill=VOLT)
+        dr.text((fx + 60, y0 + 80), txt, font=font(SERIF_B, 46), fill=GREEN, anchor="mm")
+        fx += 134
+    opp = d["final"].get("opp") or ""
+    orank = f" #{d['final']['opp_rank']}" if isinstance(d["final"].get("opp_rank"), int) else ""
+    dl = f"d. {opp}{orank}"
+    dr.text((70, y0 + 150), dl, font=fit(dr, dl, SANS_B, 28, 440, 16), fill=CREAM, anchor="lt")
+    if d.get("note"):
+        dr.text((70, y0 + 196), d["note"], font=fit(dr, d["note"], SANS_B, 24, 440, 14), fill=SOFT, anchor="lt")
+    if d.get("badge"):
+        bf = font(SANS_B, 22)
+        tw = dr.textlength(d["badge"], font=bf) + 34
+        dr.rounded_rectangle([70, y0 + 240, 70 + tw, y0 + 282], radius=21, outline=VOLT, width=3)
+        dr.text((70 + tw / 2, y0 + 261), d["badge"], font=bf, fill=VOLT, anchor="mm")
+    rx = 560
+    dr.line([(rx - 30, y0), (rx - 30, y0 + 300)], fill=EDGE, width=2)
+    dr.text((rx, y0), "ROAD TO THE TITLE", font=font(SANS_B, 22), fill=SOFT, anchor="lt")
+    road = d.get("road") or []
+    yy = y0 + 42
+    step = 52 if len(road) <= 5 else 44
+    for rd, nm, rk in road[-6:]:
+        dr.text((rx, yy), rd, font=font(SANS_B, 22), fill=VOLT, anchor="lt")
+        t = nm + (f"  #{rk}" if isinstance(rk, int) else "")
+        dr.text((rx + 70, yy - 2), t, font=fit(dr, t, SERIF_B, 28, W - rx - 110, 16), fill=CREAM, anchor="lt")
+        yy += step
+    _footer(img, d.get("credit") if has else None)
+    img.save(out_path, quality=95)
+    return out_path

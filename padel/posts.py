@@ -50,7 +50,7 @@ ROUND = {1: "Final", 2: "Semi-final", 4: "Quarter-final", 8: "Round of 16", 16: 
 env = lambda k, d: (os.environ.get(k) or "").strip() or d
 MIN_SCORE = float(env("PADEL_MIN_SCORE", "4"))
 SURPRISE_GAP = int(env("PADEL_SURPRISE_GAP", "40"))
-MAX_DAY = int(env("PADEL_MAX_POSTS_PER_DAY", "4"))
+MAX_DAY = int(env("PADEL_MAX_POSTS_PER_DAY", "3"))
 FIP_MAX_DAY = int(env("PADEL_FIP_MAX_PER_DAY", "2"))   # 5/11/2026: dias só com FIP (sem Premier a decorrer): menos resultados por dia
 
 
@@ -86,6 +86,13 @@ def ranks():
         for row in (v or {}).get("rows", []):
             out[str(row.get("id"))] = row.get("ranking")
     return out
+
+
+def level_tag(t):
+    """Etiqueta do nível do torneio; o Mundial da FIP (seleções) leva "WORLD CUP" em vez de "FIP" (9/11/2026)."""
+    if "world cup" in (t.get("name") or "").lower():
+        return "WORLD CUP"
+    return LEVEL_TAG.get(t.get("level"), "")
 
 
 def team(m, t):
@@ -252,10 +259,10 @@ def make():
         except (TypeError, ValueError):
             date = ""
         fn = f"padel-r-{mid}.jpg"
-        cards.result_card({"kicker": kicker(info, m), "level": LEVEL_TAG.get(t.get("level"), ""), "round": ROUND.get(m.get("round"), m.get("round_name") or ""),
+        cards.result_card({"kicker": kicker(info, m), "level": level_tag(t), "round": ROUND.get(m.get("round"), m.get("round_name") or ""),
                            "tournament": short_name(t), "city": t.get("location"), "date": date, "winners": W, "losers": L, "sets": sets,
                            "photo": ph, "ranks": rk, "note": note_for(info, W, L, rk)}, os.path.join(POSTS_DIR, fn))
-        facts = {"tournament": t.get("name"), "level": LEVEL_TAG.get(t.get("level"), ""), "city": t.get("location"), "country": t.get("country"),
+        facts = {"tournament": t.get("name"), "level": level_tag(t), "city": t.get("location"), "country": t.get("country"),
                  "category": m.get("category"), "round": ROUND.get(m.get("round"), m.get("round_name")),
                  "winners": [{"name": p.get("name"), "country": p.get("nationality"), "ranking": rk.get(str(p.get("id")))} for p in W],
                  "losers": [{"name": p.get("name"), "country": p.get("nationality"), "ranking": rk.get(str(p.get("id")))} for p in L],
@@ -285,11 +292,58 @@ def make():
     print(f"Padel: {made} posts novos na fila.")
 
 
+def nations_post(q, m, t, matches, rk, seen, info):
+    """Final por seleções: espera que as duas eliminatórias (homens e mulheres) estejam decididas e faz um só cartão."""
+    tid = str(m.get("tid"))
+    pid = f"c-{tid}"
+    if any(e["id"] == pid for e in q["queue"]):
+        return 0
+    fin = [x for x in matches if str(x.get("tid")) == tid and x.get("round") == 1 and isinstance(x.get("tie"), dict)]
+    cats = sorted({x.get("category") for x in fin}, key=lambda c: c != "men")
+    ties = []
+    for cat in cats:
+        rs = sorted([x for x in fin if x.get("category") == cat], key=lambda x: x["tie"].get("rubber") or 0)
+        tie = rs[0]["tie"]
+        w = tie.get("winner")
+        if w not in ("team_1", "team_2"):
+            seen.pop(str(m.get("id")), None)
+            print(f"Padel {m.get('id')}: eliminatória {cat} ainda por decidir, espera.")
+            return 0
+        rub = [{"winners": team(x, x["winner"]), "losers": team(x, other(x["winner"])), "champ": x["winner"] == w,
+                "sets": [(sc.get(x["winner"]), sc.get(other(x["winner"]))) for sc in x.get("score") or []]}
+               for x in rs if x.get("winner") in ("team_1", "team_2")]
+        ties.append({"label": "Men" if cat == "men" else "Women", "winner": tie.get(w), "loser": tie.get(other(w)),
+                     "score": ((tie.get("score") or {}).get(w), (tie.get("score") or {}).get(other(w))), "rubbers": rub})
+    if not ties:
+        return None
+    ph = best_photo([p for tt in ties for r in tt["rubbers"] if r["champ"] for p in r["winners"]])
+    if not ph:                                                    # sem foto real de um campeão: não há post (nada de cartões só com texto)
+        return None
+    try:
+        date = dt.date.fromisoformat(max(x.get("played_at") or "" for x in fin)).strftime("%d %b %Y").upper()
+    except (TypeError, ValueError):
+        date = ""
+    fn = f"padel-{pid}.jpg"
+    cards.nations_card({"level": level_tag(t), "tournament": short_name(t), "city": t.get("location"), "date": date,
+                        "photo": ph, "ties": ties}, os.path.join(POSTS_DIR, fn))
+    facts = {"tournament": t.get("name"), "city": t.get("location"), "round": "Final (national teams)",
+             "ties": [{"category": tt["label"].lower(), "winner": tt["winner"], "loser": tt["loser"], "score": f"{tt['score'][0]}-{tt['score'][1]}",
+                       "matches": [{"winners": [p.get("name") for p in r["winners"]], "losers": [p.get("name") for p in r["losers"]],
+                                    "score": " ".join(f"{a}-{b}" for a, b in r["sets"])} for r in tt["rubbers"]]} for tt in ties]}
+    for x in fin:
+        seen[str(x.get("id"))] = time.time()
+    q["queue"].append({"id": pid, "kind": "result", "score": info["score"] + 2, "created": time.time(), "image": fn,
+                       "facts": facts, "sent": False, "players": [str(p.get("id")) for tt in ties for r in tt["rubbers"] for p in r["winners"] + r["losers"]]})
+    return 1
+
+
 def champions_post(q, m, t, matches, rk, seen, info):
     """Final de um torneio: se a outra final (homens/mulheres) do mesmo torneio também já acabou, faz UM cartão com os dois pares
     campeões; se ainda vai ser jogada nas próximas horas, espera por ela (devolve 0 e volta a tentar na próxima atualização).
     Devolve None quando não há outra final (segue o cartão normal)."""
     tid = str(m.get("tid"))
+    if isinstance(m.get("tie"), dict):                            # Mundial (seleções): cartão do país campeão (9/11/2026)
+        return nations_post(q, m, t, matches, rk, seen, info)
     other_f = [x for x in matches if str(x.get("tid")) == tid and x.get("round") == 1 and (x.get("draw") or "main") == "main"
                and x.get("category") != m.get("category")]
     if not other_f:
@@ -309,7 +363,9 @@ def champions_post(q, m, t, matches, rk, seen, info):
     for x in sorted([m, o], key=lambda x: x.get("category") != "men"):
         w = x["winner"]
         W, L = team(x, w), team(x, other(w))
-        fins.append({"label": "Men" if x.get("category") == "men" else "Women", "winners": W, "losers": L,
+        _tie = x.get("tie") or {}
+        _nat = _tie.get(w) if isinstance(_tie, dict) else None               # Mundial: país que ganhou
+        fins.append({"label": ("Men" if x.get("category") == "men" else "Women") + (f" · {_nat}" if _nat else ""), "winners": W, "losers": L,
                      "sets": [(s.get(w), s.get(other(w))) for s in x["score"]], "photo": best_photo(W)})
     if not any(f["photo"] for f in fins):
         return None
@@ -319,9 +375,9 @@ def champions_post(q, m, t, matches, rk, seen, info):
     except (TypeError, ValueError):
         date = ""
     fn = f"padel-{pid}.jpg"
-    cards.champions_card({"level": LEVEL_TAG.get(t.get("level"), ""), "tournament": short_name(t), "city": t.get("location"), "date": date,
+    cards.champions_card({"level": level_tag(t), "tournament": short_name(t), "city": t.get("location"), "date": date,
                           "finals": fins, "ranks": rk}, os.path.join(POSTS_DIR, fn))
-    facts = {"tournament": t.get("name"), "level": LEVEL_TAG.get(t.get("level"), ""), "city": t.get("location"), "country": t.get("country"),
+    facts = {"tournament": t.get("name"), "level": level_tag(t), "city": t.get("location"), "country": t.get("country"),
              "round": "Final", "finals": [{"category": f["label"].lower(),
                                            "winners": [{"name": p.get("name"), "country": p.get("nationality"), "ranking": rk.get(str(p.get("id")))} for p in f["winners"]],
                                            "losers": [{"name": p.get("name"), "country": p.get("nationality"), "ranking": rk.get(str(p.get("id")))} for p in f["losers"]],
@@ -483,11 +539,11 @@ def make_tour_preview(q, tours, rk):
         except (KeyError, ValueError):
             when = ""
         fn = f"padel-tp-{tid}.jpg"
-        cards.tour_preview_card({"level": LEVEL_TAG.get(t.get("level"), ""), "tournament": short_name(t), "when": when, "photos": photos,
+        cards.tour_preview_card({"level": level_tag(t), "tournament": short_name(t), "when": when, "photos": photos,
                                  "place": place_photo(t.get("location")), "city": t.get("location"),
                                  "cols": [(CAT_NAME.get(c_, c_), rows_) for c_, rows_ in cols], "champions": " · ".join(champs), "ranks": rk},
                                 os.path.join(POSTS_DIR, fn))
-        facts = {"tournament": t.get("name"), "level": LEVEL_TAG.get(t.get("level"), ""), "city": t.get("location"), "starts": t.get("start_date"),
+        facts = {"tournament": t.get("name"), "level": level_tag(t), "city": t.get("location"), "starts": t.get("start_date"),
                  "prize": (t.get("prize") or {}).get("amount"),
                  "top_seeds": {c_: [{"seed": s, "pair": [x.get("name") for x in v], "short": [x.get("short") or x.get("name") for x in v]} for s, v in rows_] for c_, rows_ in cols},
                  "defending_champions": champs, "defending_year": (eds[0].get("start_date") or "")[:4] if eds else None}
@@ -583,7 +639,7 @@ def make_new_pairs(q, tours, matches, rk):
             lines.append({"left": str(seed) if seed else "·", "name": " / ".join(_sn(x, short) for x in v), "sub": prev, "right": "NEW PAIR",
                           "hot": True})
         fn = f"padel-np-{tid}.jpg"
-        feature_card.feature_card({"tags": ["NEW PAIR ALERT", LEVEL_TAG.get(t.get("level"), "")], "title": short_name(t),
+        feature_card.feature_card({"tags": ["NEW PAIR ALERT", level_tag(t)], "title": short_name(t),
                                    "subtitle": "First tournament together", "place": place, "photos": photos, "rows": lines,
                                    "foot": "Pairs playing together for the first time in our records."}, os.path.join(POSTS_DIR, fn), theme="padel")
         facts = {"tournament": t.get("name"), "starts": t.get("start_date"),
@@ -717,7 +773,7 @@ def make_previews(q, tours, matches, rk):
         when = (m.get("schedule_label") or (m.get("scheduled_at_local") or "")[11:16] or "").upper()
         fn = f"padel-p-{m.get('id')}.jpg"
         tie = m.get("tie") or {}
-        lvl = "WORLD CUP" if "world cup" in (t.get("name") or "").lower() else LEVEL_TAG.get(t.get("level"), "")
+        lvl = level_tag(t)
         cards.preview_card({"level": lvl, "tournament": short_name(t), "when": when, "pairs": [A, B],
                             "photos": [pa, pb], "ranks": rk, "teams": [tie.get("team_1"), tie.get("team_2")] if tie else None},
                            os.path.join(POSTS_DIR, fn))
@@ -914,7 +970,7 @@ def send():
         if not e.get("sent") and e["kind"] == "result" and time.time() - e["created"] > 20 * 3600:
             e["sent"], e["skipped"] = True, "stale"
     day0 = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    res_today = sum(1 for e in sent if e["kind"] == "result" and e.get("sent_ts", 0) >= day0)
+    res_today = sum(1 for e in sent if e.get("sent_ts", 0) >= day0)   # 9/11/2026: o máximo do dia conta todos os posts, não só resultados
     cap = MAX_DAY if premier_on(load("tournaments.json", {}), now.date().isoformat()) else min(MAX_DAY, FIP_MAX_DAY)
     pend = [e for e in q["queue"] if not e.get("sent")]
     intro = sorted([e for e in pend if e["kind"] == "intro"], key=lambda e: e["n"])
@@ -923,8 +979,9 @@ def send():
     order = ([e for e in pend if e["kind"] == "intro"] + [e for e in pend if e["kind"] in ("preview", "tour_preview", "newpairs", "top10", "race")] + [e for e in pend if e["kind"] == "weekly"] +
              sorted([e for e in pend if e["kind"] == "result"], key=lambda e: -e.get("score", 0)))
     for e in order:
-        if e["kind"] == "result" and res_today >= cap:
-            continue
+        if res_today >= cap:
+            print(f"Padel: já saíram {res_today} posts hoje (máximo {cap}).")
+            break
         img = f"{SITE}/posts/{e['image']}"
         try:
             if requests.head(img, timeout=20).status_code != 200:

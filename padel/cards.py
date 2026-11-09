@@ -66,6 +66,14 @@ def photo_of(pid):
     fp = os.path.join(PHOTOS, f"{pid}.jpg")
     if not os.path.exists(fp):
         return None, None, False
+    try:                                                           # 9/11/2026: fotos desfocadas/ampliadas ou pequenas não vão para posts
+        import photo_quality
+        why = []
+        if not photo_quality.card_ok(fp, why=why):
+            print(f"Padel: foto {pid} não serve para post ({why[0]}).")
+            return None, None, False
+    except ImportError:
+        pass
     try:
         c = json.load(open(os.path.join(PHOTOS, "credits.json"), encoding="utf-8")).get(str(pid)) or {}
     except (OSError, ValueError):
@@ -165,6 +173,12 @@ def _sur(p):
         return sn.split(". ", 1)[-1] if ". " in sn else sn
     first, last = pc.split_name(p.get("name"))
     return last or first or p.get("name") or "?"
+
+
+def _disp(p):
+    """Nome como o circuito o usa: primeiro nome + apelido curto ("Ariana Sanchez", não "Ariana Sanchez Fallada")."""
+    nm = (p.get("name") or "?").split()
+    return f"{nm[0]} {_sur(p)}" if len(nm) > 1 and _sur(p).lower() != nm[0].lower() else (p.get("name") or "?")
 
 
 def preview_card(d, out_path):
@@ -294,8 +308,10 @@ def champions_card(d, out_path):
     img = _grad()
     fins = d["finals"][:2]
     credits = []
-    pw = W // len(fins)
-    for i, f in enumerate(fins):
+    withp = [f for f in fins if (f.get("photo") or {}).get("path")]
+    split = len(fins) == 2 and len(withp) == 2               # 9/11/2026: só divide ao meio com foto dos dois lados (nada de metade vazia)
+    pw = W // 2 if split else W
+    for i, f in enumerate(fins if split else withp[:1]):
         ph = f.get("photo") or {}
         if ph.get("path"):
             img.paste(_fill(ph["path"], (pw, 600), (0.5, 0.2)), (i * pw, 0))
@@ -304,10 +320,15 @@ def champions_card(d, out_path):
     img = _shade(img, 0, 240, 150, 0)
     img = _shade(img, 380, 600, 0, 255)
     dr = ImageDraw.Draw(img)
-    if len(fins) == 2:
+    if not split and withp:
+        lab = withp[0]["label"].split(" · ")[0].upper()
+        tw = dr.textlength(lab, font=font(SANS_B, 22)) + 28
+        dr.rounded_rectangle([24, 530, 24 + tw, 566], radius=18, fill=CREAM)
+        dr.text((24 + tw / 2, 548), lab, font=font(SANS_B, 22), fill=BLUE, anchor="mm")
+    if split:
         dr.line([(pw, 0), (pw, 600)], fill=BLUE, width=6)
         for i, f in enumerate(fins):
-            lab = f["label"].upper()
+            lab = f["label"].split(" · ")[0].upper()
             tw = dr.textlength(lab, font=font(SANS_B, 22)) + 28
             x = i * pw + 24
             dr.rounded_rectangle([x, 530, x + tw, 566], radius=18, fill=CREAM)
@@ -324,7 +345,7 @@ def champions_card(d, out_path):
             dr.line([(70, y - 18), (W - 70, y - 18)], fill=EDGE, width=2)
         dr.text((70, y + 20), f["label"].upper(), font=font(SANS_B, 22), fill=VOLT, anchor="ls")
         for k, p in enumerate(f["winners"]):
-            nm = p.get("name") or "?"
+            nm = _disp(p)
             fnt = fit(dr, nm, SERIF_B, 40, 600, 24)
             dr.text((70, y + 70 + k * 50), nm, font=fnt, fill=CREAM, anchor="ls")
             rk = ranks.get(str(p.get("id")))
@@ -332,10 +353,59 @@ def champions_card(d, out_path):
             dr.text((70 + dr.textlength(nm, font=fnt) + 14, y + 70 + k * 50), tail, font=font(SANS_B, 22), fill=SOFT, anchor="ls")
         sc = "  ".join(f"{str(a).split('(')[0]}-{str(b).split('(')[0]}" for a, b in f["sets"])
         dr.text((W - 70, y + 92), sc, font=fit(dr, sc, SERIF_B, 52, 330, 30), fill=VOLT, anchor="rs")
-        ls = "d. " + " / ".join(p.get("name") or "?" for p in f["losers"])
+        ls = "d. " + " / ".join(_disp(p) for p in f["losers"])
         dr.text((70, y + 160), ls, font=fit(dr, ls, SANS_B, 24, W - 140, 16), fill=SOFT, anchor="ls")
         y += 210
     _footer(img, credits[:2])
+    img.save(out_path, quality=95)
+    return out_path
+
+
+def nations_card(d, out_path):
+    """Final por seleções (Mundial da FIP), 9/11/2026: o campeão é o país, não um par. Foto de um jogador do país campeão em cima,
+    o país em grande e, por categoria, o resultado da eliminatória e os jogos (rubbers).
+    d = {level, tournament, city, date, photo:{path,credit}|None, ties:[{label, winner, loser, score:(a,b),
+         rubbers:[{winners:[p,p], losers:[p,p], sets:[(a,b)], champ:bool}]}]}"""
+    img = _grad()
+    credits = []
+    ph = d.get("photo") or {}
+    if ph.get("path"):
+        img.paste(_fill(ph["path"], (W, 660), (0.5, 0.2)), (0, 0))
+        if ph.get("credit"):
+            credits.append(ph["credit"])
+    img = _shade(img, 0, 240, 150, 0)
+    img = _shade(img, 420, 660, 0, 255)
+    dr = ImageDraw.Draw(img)
+    _brand(img)
+    _tags(dr, [(d.get("level"), VOLT, BLUE), ("FINAL", CREAM, BLUE)])
+    ties = d["ties"][:2]
+    nations = {t["winner"] for t in ties}
+    title = next(iter(nations)).upper() if len(nations) == 1 else "CHAMPIONS"
+    dr.text((70, 640), title, font=fit(dr, title, SERIF_B, 120, W - 140, 60), fill=CREAM, anchor="ls")
+    kick = ("WORLD CHAMPIONS · MEN AND WOMEN" if len(ties) == 2 else "WORLD CHAMPIONS") if len(nations) == 1 else ""
+    if kick:
+        dr.text((70, 692), kick, font=fit(dr, kick, SANS_B, 30, W - 140, 18), fill=VOLT, anchor="ls")
+    sub = " · ".join(x for x in [d.get("tournament"), d.get("city"), d.get("date")] if x).upper()
+    dr.text((70, 734), sub, font=fit(dr, sub, SANS_B, 22, W - 140, 14), fill=SOFT, anchor="ls")
+    y = 790
+    for i, t in enumerate(ties):
+        if i:
+            dr.line([(70, y - 14), (W - 70, y - 14)], fill=EDGE, width=2)
+        a, b = t["score"]
+        head = f'{t["label"].upper()} · {t["winner"].upper()} {a}-{b} {t["loser"].upper()}'
+        dr.text((70, y + 22), head, font=fit(dr, head, SANS_B, 26, W - 140, 16), fill=VOLT, anchor="ls")
+        y += 44
+        for r in t["rubbers"]:
+            col = CREAM if r["champ"] else SOFT
+            wn = " / ".join(_sur(p) for p in r["winners"])
+            ln = " / ".join(_sur(p) for p in r["losers"])
+            sc = "  ".join(f"{str(x).split('(')[0]}-{str(z).split('(')[0]}" for x, z in r["sets"])
+            line = f"{wn}  d.  {ln}"
+            dr.text((70, y + 26), line, font=fit(dr, line, SERIF_B, 32, 690, 18), fill=col, anchor="ls")
+            dr.text((W - 70, y + 26), sc, font=fit(dr, sc, SANS_B, 26, 250, 16), fill=col, anchor="rs")
+            y += 48
+        y += 30
+    _footer(img, credits[:1])
     img.save(out_path, quality=95)
     return out_path
 
