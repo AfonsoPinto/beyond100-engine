@@ -605,3 +605,73 @@ def render_champion(d, out_path):
     _footer(img, d.get("credit") if has else None)
     img.save(out_path, quality=95)
     return out_path
+
+
+# ------------------------------------------------------------------ Road to the Top 100 (9/11/2026)
+def _circle(img, fp, box):
+    x0, y0, x1, y1 = box
+    s = x1 - x0
+    ph = ImageOps.fit(Image.open(fp).convert("RGB"), (s, s), centering=(0.5, 0.2))
+    m = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(m).ellipse([0, 0, s - 1, s - 1], fill=255)
+    img.paste(ph, (x0, y0), m)
+
+
+def render_road(data, date_label, out_path):
+    """Ranking OFICIAL (ESPN) dos que estão logo a seguir ao top 100: por género, o primeiro em destaque (foto, se houver uma boa)
+    e os 3 seguintes. A distância é em pontos para o n.º 100 dessa semana. data = {"men": [...], "women": [...]},
+    cada um {name, rank, pts, gap, move, photo, credit}."""
+    img = _gradient((17, 66, 51), (8, 34, 26))
+    dr = ImageDraw.Draw(img)
+    _header(img)
+    dr = ImageDraw.Draw(img)
+    dr.text((70, 215), "ROAD TO THE TOP 100", font=fit(dr, "ROAD TO THE TOP 100", SERIF_B, 76, W - 140, 40), fill=CREAM, anchor="ls")
+    sub = f"Official rankings · {date_label}"
+    dr.text((70, 262), sub, font=font(SANS_B, 28), fill=VOLT, anchor="ls")
+    credits = []
+    y = 320
+
+    def gap_txt(x):
+        if x.get("gap") is None:
+            return ""
+        return "level on points with No. 100" if x["gap"] <= 0 else f"{x['gap']} pts behind No. 100"
+
+    def mv_txt(x):
+        m = x.get("move")
+        return "" if not m else (f"▲{m}" if m > 0 else f"▼{-m}")
+    for g, label in (("men", "MEN"), ("women", "WOMEN")):
+        xs = (data.get(g) or [])[:4]
+        if not xs:
+            continue
+        dr.text((70, y + 22), label, font=font(SANS_B, 24), fill=SOFT, anchor="ls")
+        y += 40
+        top = xs[0]
+        dr.rounded_rectangle([60, y, W - 60, y + 170], radius=28, fill=(22, 82, 63))
+        tx = 100
+        if top.get("photo"):
+            _circle(img, top["photo"], (90, y + 20, 220, y + 150))
+            dr = ImageDraw.Draw(img)
+            credits.append(top.get("credit"))
+            tx = 250
+        dr.text((tx, y + 62), f"No. {top['rank']}", font=font(SERIF_B, 36), fill=VOLT, anchor="ls")
+        mv = mv_txt(top)
+        if mv:
+            dr.text((tx + dr.textlength(f"No. {top['rank']}", font=font(SERIF_B, 36)) + 18, y + 60), mv, font=font(SANS_B, 26),
+                    fill=VOLT if top["move"] > 0 else (255, 138, 128), anchor="ls")
+        dr.text((tx, y + 112), top["name"], font=fit(dr, top["name"], SERIF_B, 50, W - tx - 100, 26), fill=CREAM, anchor="ls")
+        dr.text((tx, y + 150), gap_txt(top), font=font(SANS_B, 26), fill=SOFT, anchor="ls")
+        y += 186
+        for x in xs[1:]:
+            dr.text((100, y + 40), f"{x['rank']}", font=font(SERIF_B, 34), fill=VOLT, anchor="ls")
+            dr.text((180, y + 40), x["name"], font=fit(dr, x["name"], SERIF_B, 34, 460, 20), fill=CREAM, anchor="ls")
+            mv = mv_txt(x)
+            if mv:
+                dr.text((660, y + 38), mv, font=font(SANS_B, 22), fill=VOLT if x["move"] > 0 else (255, 138, 128), anchor="ls")
+            gt = "level" if (x.get("gap") is not None and x["gap"] <= 0) else (f"−{x['gap']} pts" if x.get("gap") is not None else "")
+            dr.text((W - 90, y + 38), gt, font=font(SANS_B, 26), fill=SOFT, anchor="rs")
+            dr.line([(100, y + 58), (W - 90, y + 58)], fill=EDGE, width=1)
+            y += 64
+        y += 24
+    _footer(img, credit_join(*[c for c in credits if c]) or None)
+    img.save(out_path, quality=95)
+    return out_path

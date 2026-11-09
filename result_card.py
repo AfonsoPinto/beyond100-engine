@@ -1950,7 +1950,7 @@ def build_site(out_dir="site", player=None):
     for _fn, _title, _desc, _body in [
             ("road.html", "Road to the Top 100: players ranked 101 to 130 · Beyond100",
              "The tennis players knocking on the door of the top 100: rankings, moves and points to go, men and women.",
-             lambda: features.road_page(features.road(results, _load_json(RANKS_FILE, {})), linkable, site_more.flag)),
+             lambda: features.road_page(features.road_official() or features.road(results, _load_json(RANKS_FILE, {})), linkable, site_more.flag)),
             ("power.html", "Power Ranking: best form outside the top 100 · Beyond100",
              "Our weekly ranking of the tennis players in the best form outside the top 100, from the last 14 days of Challenger, ITF and WTA results.",
              lambda: features.power_page(features.power(results, _latest), linkable, site_more.flag)),

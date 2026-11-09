@@ -89,7 +89,7 @@ def road_page(data, linkable, flag=lambda c: ""):
                    f'{(" · " + str(int(x["gap"])) + " to go") if x.get("gap") else ""}</td></tr>')
         return f'<table class="pt"><thead><tr><th>Rank</th><th>Player</th><th>Move</th><th>Points</th></tr></thead><tbody>{tr}</tbody></table>'
     return ('<section class="page-h"><h1>Road to the Top 100</h1><p>The players ranked 101 to 130: the ones knocking on the door. '
-            'Rankings and points as recorded in their latest matches we tracked; “to go” is the gap to the player we last saw at No. 100.</p></section>'
+            'Official ATP and WTA rankings of the week; “to go” is the gap in points to the player at No. 100.</p></section>'
             + "".join(f'<h2 class="dh">{G[g]}</h2>{table(data.get(g, []))}' for g in ("men", "women")))
 
 
@@ -235,6 +235,46 @@ def _list_card(title, sub, rows, out, foot):
     pc._footer(img)
     img.save(out, quality=95)
     return out
+
+
+def road_official(max_age_d=8):
+    """Road to the Top 100 a partir do ranking OFICIAL da semana (espn_rank.json: ATP e WTA até ao 150), 9/11/2026.
+    O antigo (ranks.json, ranking visto nos jogos) estava desatualizado: no post de 9/11 o Piros aparecia em 101 já sendo 99.
+    {gender: [{name, rank, pts, prev, move, gap}]}, ou None se não houver ranking recente."""
+    d = _load("espn_rank.json", {})
+    if not d or time.time() - (d.get("ts") or 0) > max_age_d * 86400:
+        return None
+    out = {}
+    for lg, g in (("atp", "men"), ("wta", "women")):
+        xs = d.get(lg) or []
+        p100 = next((x.get("pts") for x in xs if x.get("r") == 100), None)
+        rows = []
+        for x in xs:
+            if not (101 <= (x.get("r") or 0) <= 130):
+                continue
+            prev = x.get("prev") if isinstance(x.get("prev"), int) else None
+            rows.append({"name": x.get("n"), "rank": x["r"], "pts": x.get("pts"), "prev": prev,
+                         "move": (prev - x["r"]) if prev else 0, "slug": webapp.slugify(x.get("n") or ""), "country": (x.get("c") or "").upper(),
+                         "gap": (p100 - x["pts"]) if isinstance(p100, int) and isinstance(x.get("pts"), int) else None, "date": ""})
+        out[g] = sorted(rows, key=lambda r: r["rank"])
+    return out if any(out.values()) else None
+
+
+def road_card_official(data, out):
+    """Cartão novo (fotos boas e ranking oficial). As fotos só se passarem o filtro de qualidade."""
+    import result_card as rc
+    import photo_cards
+    d = {}
+    for g in ("men", "women"):
+        xs = [dict(x) for x in (data.get(g) or [])[:4]]
+        if xs:
+            fp, cr = rc.find_post_photo({"name": xs[0]["name"]})
+            if fp:
+                xs[0].update(photo=fp, credit=cr)
+        d[g] = xs
+    if sum(len(v) for v in d.values()) < 4:
+        return None
+    return photo_cards.render_road(d, datetime.date.today().strftime("%-d %b %Y"), out)
 
 
 def road_card(data, out):
@@ -451,8 +491,12 @@ def weekly_post(kind, out_dir="out", force=False):
     os.makedirs(os.path.join(out_dir, "post"), exist_ok=True)
     png = os.path.join(out_dir, "post", pid + ".png")
     if kind == "road":
-        data = road(results, _load("ranks.json", {}))
-        made = road_card(data, png)
+        data = road_official()
+        if data:
+            made = road_card_official(data, png)
+        else:                                                   # sem ranking oficial recente: não publica (o antigo saía desatualizado)
+            print("road: sem ranking oficial desta semana, não sai.")
+            return None
         facts = {g: [{"name": x["name"], "ranking": x["rank"], "previous_ranking": x.get("prev"), "points_to_top100": x.get("gap")}
                      for x in data[g][:5]] for g in data}
     elif kind == "climbers":
