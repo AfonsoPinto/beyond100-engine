@@ -110,6 +110,21 @@ def card_a(d_, out):
     d = ImageDraw.Draw(img, "RGBA")
     d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
     _chips(d, 60, 128, [d_.get("kicker"), d_.get("level")], P)
+    if d_.get("loser_photo"):                                        # surpresa: quem caiu, a preto e branco
+        s = 250
+        lp = ImageOps.grayscale(Image.open(d_["loser_photo"]).convert("RGB")).convert("RGB")
+        lp = ImageOps.fit(lp, (s, s), Image.LANCZOS, centering=(0.5, 0.2))
+        mk = Image.new("L", (s, s), 0)
+        ImageDraw.Draw(mk).ellipse([0, 0, s - 1, s - 1], fill=255)
+        cx, cy = W - 60 - s, 230
+        d.ellipse([cx - 8, cy - 8, cx + s + 8, cy + s + 8], fill=(226, 66, 52))
+        img.paste(lp, (cx, cy), mk)
+        d = ImageDraw.Draw(img, "RGBA")
+        lab = "KNOCKED OUT"
+        d.text((cx + s / 2, cy + s + 44), lab, font=F("black", 24), fill=P["cream"], anchor="ms")
+        lr = d_["losers"][0]
+        t = lr["name"] + (f"  #{lr['rank']}" if lr.get("rank") else "")
+        d.text((cx + s / 2, cy + s + 78), t, font=_fit(d, t, "semi", 24, s + 60), fill=P["soft"], anchor="ms")
     if d_.get("line"):
         d.text((60, 790), d_["line"].upper(), font=_fit(d, d_["line"].upper(), "bold", 30, W - 120), fill=P["acc"], anchor="ls")
     wname = _side(d_["winners"]).upper()
@@ -171,7 +186,11 @@ def card_b(d_, out):
     d.text((60, 1120), los, font=_fit(d, los, "semi", 30, W - 120), fill=P["cream"], anchor="ls")
     sub = " · ".join(x for x in [d_.get("tournament"), d_.get("round"), d_.get("date")] if x).upper()
     d.text((60, 1172), sub, font=_fit(d, sub, "semi", 24, W - 120), fill=P["soft"], anchor="ls")
-    if d_.get("line"):
+    road = [x for x in (d_.get("road") or []) if x[0] != "F"][-5:]
+    if road:                                                          # campeão: o caminho numa linha
+        r_ = "  ·  ".join(f"{rd} {n_.split()[-1]}" for rd, n_, _ in road)
+        d.text((60, 1226), "ROAD:  " + r_, font=_fit(d, "ROAD:  " + r_, "semi", 26, W - 120, 16), fill=P["acc"], anchor="ls")
+    elif d_.get("line"):
         d.text((60, 1226), d_["line"], font=_fit(d, d_["line"], "bold", 30, W - 120), fill=P["acc"], anchor="ls")
     _footer(img, d, P, d_.get("credit"))
     img.convert("RGB").save(out, quality=94)

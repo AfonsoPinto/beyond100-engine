@@ -143,7 +143,9 @@ def result_card(d, out_path):
         import modern_cards
         rk = d.get("ranks") or {}
         side = lambda ps: [{"name": p.get("name"), "short": _sur(p), "country": _code(p), "rank": rk.get(str(p.get("id")))} for p in ps]
-        return modern_cards.card_c({"sport": "padel", "kicker": (d.get("kicker") or "Win").upper(), "level": d.get("level"),
+        k_ = (d.get("kicker") or "Win").upper()
+        fn_ = modern_cards.card_b if k_ in ("CHAMPIONS", "FIRST TITLE") else modern_cards.card_a if k_ == "UPSET" else modern_cards.card_c
+        return fn_({"sport": "padel", "kicker": k_, "level": d.get("level"),
                                     "tournament": " · ".join(x for x in [d.get("tournament"), d.get("city")] if x), "round": d.get("round"),
                                     "date": d.get("date"), "winners": side(d["winners"]), "losers": side(d["losers"]),
                                     "sets": [(int(str(a).split("(")[0] or 0), int(str(b).split("(")[0] or 0)) for a, b in d["sets"]],

@@ -313,9 +313,13 @@ def _champion_card(m, pw, pl, wd, sets, tag, out_path):
          "tournament": re.sub(r"^(ATP|WTA)\s+", "", base), "level": (tag or "").upper(), "date": date,
          "final": {"opp": pl.get("name") or "", "opp_rank": pl.get("ranking"), "sets": sets}, "road": road, "note": note}
     print(f"Jogo {m.get('id')}: campeão, cartão próprio ({wins} vitórias no caminho).")
-    if _env("RESULT_STYLE", "C") == "C":                        # mesmo estilo moderno dos resultados
+    if _env("RESULT_STYLE", "C") == "C":                        # 9/11/2026: campeão = modelo B (cartaz)
         import modern_cards
-        return modern_cards.card_champion(dict(d, sport="tennis"), out_path)
+        return modern_cards.card_b({"sport": "tennis", "kicker": "CHAMPION", "level": d["level"], "tournament": d["tournament"],
+                                    "round": "Final", "date": d["date"],
+                                    "winners": [{"name": name, "rank": pw.get("ranking"), "country": (pw.get("country") or "").upper()}],
+                                    "losers": [{"name": pl.get("name") or "", "rank": pl.get("ranking")}], "sets": sets,
+                                    "photo": d["photo"], "credit": d["credit"], "road": road}, out_path)
     return render_champion(d, out_path)
 
 
@@ -2443,8 +2447,17 @@ def maybe_post(m, out_dir, force=False):
             import upset_card
             _last = (pl.get("name") or "").split()[-1] if pl.get("name") else ""
             dg = dict(d, loser=_ld, level=tag.upper(),
-                      headline=(f"Down a set, stuns {_last}." if "comeback" in why else f"Stuns {_last}.") if _last else d.get("headline"))
-            png = upset_card.render_giant_upset(dg, os.path.join(pdir, f"final-{m.get('id')}.png"), _env("GIANT_STYLE", "C"))
+                      headline=(f"Down a set, still beat {_last}." if "comeback" in why else f"Beat {_last}.") if _last else d.get("headline"))
+            if _env("RESULT_STYLE", "C") == "C":                  # 9/11/2026: surpresa gigante = modelo A (grafismo de TV + quem caiu)
+                import modern_cards
+                png = modern_cards.card_a({"sport": "tennis", "kicker": "GIANT UPSET", "level": tag.upper(), "tournament": d["tournament"],
+                                           "round": d["round"], "date": d.get("date"),
+                                           "winners": [{"name": pw.get("name"), "rank": pw.get("ranking"), "country": (pw.get("country") or "").upper()}],
+                                           "losers": [{"name": pl.get("name"), "rank": pl.get("ranking"), "country": (pl.get("country") or "").upper()}],
+                                           "sets": sets, "photo": _wd["photo"], "credit": __import__("photo_cards").credit_join(_wd.get("credit"), _ld.get("credit")),
+                                           "loser_photo": _ld["photo"], "line": (dg.get("headline") or "").rstrip(".")}, os.path.join(pdir, f"final-{m.get('id')}.png"))
+            else:
+                png = upset_card.render_giant_upset(dg, os.path.join(pdir, f"final-{m.get('id')}.png"), _env("GIANT_STYLE", "C"))
             print(f"Jogo {m.get('id')}: surpresa gigante, cartão com os dois jogadores.")
     if not png and _title and _env("CHAMPION_CARD", "1") != "0":   # 9/11/2026: post próprio para campeões (foto, final e caminho até ao título)
         try:
