@@ -2428,7 +2428,8 @@ def maybe_post(m, out_dir, force=False):
             d["date"] = time.strftime("%d %b %Y", time.gmtime()).upper()
         d["kicker"] = "UPSET" if ev else ("TITLE" if "final" in why else "WIN")
         d["round"] = d.get("round") or ""
-        d["edit_head"] = (d.get("headline") or "").rstrip(".") or None     # 9/11/2026: frase fixa a partir dos factos (sem título escrito por IA)
+        from captions import card_headline                       # 9/11/2026: IA sim, mas a soar a pessoa (sem "crown", "seizes"...); se falhar, frase fixa
+        d["edit_head"] = card_headline(_facts) or (d.get("headline") or "").rstrip(".") or None
     png = None
     if "giant" in why and _wd.get("photo"):                     # surpresa gigante: as caras dos dois (derrotado a P&B)
         _ld = _who(pl)

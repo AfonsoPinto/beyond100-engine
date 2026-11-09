@@ -40,7 +40,7 @@ SYSTEM = (
     "For kind=history: a throwback to a past season (facts.year); tell it as 'this week in <year>' using only the facts, and if "
     "facts.career_best is given, say the player later reached that career-high ranking. End with 'Data: Tennis Abstract' on its own line before the hashtags. "
     "For kind=road: the weekly 'Road to the Top 100' list (players ranked just outside the top 100, men and women); name two or three of them "
-    "with their ranking and, if given, points_to_top100; say rankings are as recorded in their latest matches; ask who gets in first. "
+    "with their ranking and, if given, points_to_top100 (points behind No. 100; 0 means level on points); these are the official rankings of the week; ask who gets in first. "
     "For kind=power: our weekly Power Ranking of the best form outside the top 100 (last 14 days); name the number 1 of each list with their "
     "record (won-lost) and titles if any; say it is our own ranking; ask readers who is missing from the list. "
     "For kind=climbers: the biggest jumps of the week in the OFFICIAL ATP and WTA rankings (top 150); name the top climber of each tour with "
@@ -331,13 +331,19 @@ def head_to_head(p1, p2, gender=None):
 
 
 HEAD_SYSTEM = (
-    "You write ONE short editorial headline for a tennis result card (like a sports magazine cover line). "
-    "2 to 5 words, English, no player names, no emoji, no hashtags, no quotes, no final period. It must be about the story in the JSON "
-    "(for example the ranking gap, a comeback, a title, the round, age or recent form) and only use facts from the JSON. "
-    "No numbers unless that exact number is in the JSON. Never invent events (no match points, injuries, records, streaks). "
-    "Examples of the style: 'Still not done winning', 'Turns it around', 'Into the final', 'Giant-killing in Brest'. "
-    "Output the headline only."
+    "You write ONE short line for a tennis result card, the way a tennis fan or a good beat writer would say it out loud. "
+    "2 to 6 words, English, no player names, no emoji, no hashtags, no quotes, no final period. "
+    "Say something specific from the JSON (the ranking gap, the comeback, the round, the age, who they beat), in plain words. "
+    "Use only facts from the JSON; no numbers unless that exact number is in the JSON. Never invent events (no match points, injuries, records, streaks). "
+    "Do NOT write tabloid headlinese: never use crown, crowned, seize, claim, storm, cruise, outsider, clinch, triumph, glory, reign, "
+    "masterclass, dominant, statement, stuns, shock, heads to, dream run, fairytale, sends a message. "
+    "Do NOT use the pattern '<something> in <city>'. "
+    "Good: 'Down a set, still won it', 'Beat the No. 17 in the final', 'Two tie-breaks, one trophy', 'Nobody saw that coming', "
+    "'From qualifying to the title', 'Not bad for a qualifier'. "
+    "Output the line only."
 )
+HEAD_BANNED = re.compile(r"crown|seiz|claim|storm|cruis|outsider|clinch|triumph|glory|reign|masterclass|dominan|statement|stun|shock|"
+                         r"heads? to|dream run|fairytale|sends? a message|\bin [A-Z][a-z]+$", re.I)
 
 
 def card_headline(facts):
@@ -361,7 +367,7 @@ def card_headline(facts):
         return None
     names = " ".join(str((f.get(k) or {}).get("name", "")) for k in ("p1", "p2") if isinstance(f.get(k), dict)).lower().split()
     bad = (not t or len(t.split()) > 6 or len(t) > 40 or "\n" in t or "#" in t or (_numbers(t) - _numbers(payload))
-           or BANNED.search(t) or any(len(n) > 3 and n in t.lower().split() for n in names))
+           or BANNED.search(t) or HEAD_BANNED.search(t) or any(len(n) > 3 and n in t.lower().split() for n in names))
     if bad:
         print("Título do cartão recusado:", t[:60])
         return None
