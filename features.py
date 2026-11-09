@@ -260,6 +260,20 @@ def road_official(max_age_d=8):
     return out if any(out.values()) else None
 
 
+def _modern_on():
+    return (os.environ.get("RESULT_STYLE") or "C").upper() == "C"
+
+
+def _hero_photo(name, dry=False):
+    """Foto boa (filtro de qualidade) para o destaque de uma lista; None se não houver."""
+    import result_card as rc
+    try:
+        r = rc.find_post_photo({"name": name}, dry=dry)
+        return r[0], r[1]
+    except Exception:
+        return None, None
+
+
 def road_card_official(data, out):
     """Cartão novo (fotos boas e ranking oficial). As fotos só se passarem o filtro de qualidade."""
     import result_card as rc
@@ -274,6 +288,16 @@ def road_card_official(data, out):
         d[g] = xs
     if sum(len(v) for v in d.values()) < 4:
         return None
+    if _modern_on():                                             # 9/11/2026: mesmo estilo dos cartões novos
+        import modern_cards
+        gap = lambda x: "" if x.get("gap") is None else ("level on points with No. 100" if x["gap"] <= 0 else f"{x['gap']} pts behind No. 100")
+        secs = [{"label": g, "hero": {"name": xs[0]["name"], "big": f"No. {xs[0]['rank']}", "move": xs[0].get("move") or 0,
+                                      "sub": gap(xs[0]), "photo": xs[0].get("photo")},
+                 "rows": [(x["rank"], x["name"], ("level" if (x.get("gap") is not None and x["gap"] <= 0) else f"−{x['gap']} pts" if x.get("gap") is not None else ""))
+                          for x in xs[1:4]]} for g, xs in (("Men", d.get("men") or []), ("Women", d.get("women") or [])) if xs]
+        return modern_cards.card_list({"sport": "tennis", "kicker": "OFFICIAL RANKINGS", "date": datetime.date.today().strftime("%-d %b %Y").upper(),
+                                       "title": "Road to the Top 100", "sub": "Points behind No. 100 this week", "sections": secs,
+                                       "credits": [x[0].get("credit") for x in d.values() if x and x[0].get("credit")]}, out)
     return photo_cards.render_road(d, datetime.date.today().strftime("%-d %b %Y"), out)
 
 
@@ -311,6 +335,22 @@ def power_card(data, out):
                 rows.append((str(i), f"{e['name']}", f"{e['w']}-{e['l']}" + (f" · {e['titles']} title" + ("s" if e['titles'] > 1 else "") if e["titles"] else ""), i == 1))
     if len(rows) < 4:
         return None
+    if _modern_on():                                             # 9/11/2026: estilo novo
+        import modern_cards
+        secs, crs = [], []
+        for g in ("men", "women"):
+            xs = data.get(g, [])[:4]
+            if not xs:
+                continue
+            fp, cr = _hero_photo(xs[0]["name"])
+            crs.append(cr)
+            rec = lambda e: f"{e['w']}-{e['l']}" + (f" · {e['titles']} title" + ("s" if e["titles"] > 1 else "") if e["titles"] else "")
+            secs.append({"label": G[g], "hero": {"name": xs[0]["name"], "big": "No. 1", "sub": rec(xs[0]) + (f" · ranked #{xs[0]['rank']}" if xs[0].get("rank") else ""),
+                                                 "photo": fp},
+                         "rows": [(i, e["name"], rec(e)) for i, e in enumerate(xs[1:4], 2)]})
+        return modern_cards.card_list({"sport": "tennis", "kicker": "POWER RANKING", "date": datetime.date.today().strftime("%-d %b %Y").upper(),
+                                       "title": "Best form outside the top 100", "sub": "Last 14 days · wins, opponents and titles",
+                                       "sections": secs, "credits": crs}, out)
     import tennis_bento
     if tennis_bento.on():
         try:
@@ -343,6 +383,21 @@ def climbers_card(data, out):
                              "hot": x["r"] <= 100 < x["prev"]})
     if len(rows) < 4:
         return None
+    if _modern_on():                                             # 9/11/2026: estilo novo
+        import modern_cards
+        secs, crs = [], []
+        for lg in ("atp", "wta"):
+            xs = data.get(lg) or []
+            if not xs:
+                continue
+            fp, cr = _hero_photo(xs[0]["n"])
+            crs.append(cr)
+            secs.append({"label": lg.upper(), "hero": {"name": xs[0]["n"], "big": f"No. {xs[0]['r']}", "move": xs[0]["prev"] - xs[0]["r"],
+                                                       "sub": f"from No. {xs[0]['prev']}" + (" · into the top 100" if xs[0]["r"] <= 100 < xs[0]["prev"] else ""), "photo": fp},
+                         "rows": [(f"▲{x['prev'] - x['r']}", x["n"], f"No. {x['prev']} → {x['r']}") for x in xs[1:4]]})
+        return modern_cards.card_list({"sport": "tennis", "kicker": "OFFICIAL RANKINGS", "date": datetime.date.today().strftime("%-d %b %Y").upper(),
+                                       "title": "Climbers of the week", "sub": "Biggest jumps in the ATP and WTA top 150",
+                                       "sections": secs, "credits": crs}, out)
     top = [x["n"] for lg in ("atp", "wta") for x in (data.get(lg) or [])[:1]] + [x["n"] for lg in ("atp", "wta") for x in (data.get(lg) or [])[1:]]
     return feature_card.feature_card({"tags": ["CLIMBERS OF THE WEEK", "OFFICIAL RANKINGS"], "title": "Biggest jumps", "subtitle": "ATP and WTA · top 150",
                                       "place": None, "photos": _photos(top, 3), "rows": rows,

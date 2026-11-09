@@ -295,3 +295,77 @@ def card_champion(d_, out):
     _footer(img, d, P, d_.get("credit"))
     img.convert("RGB").save(out, quality=94)
     return out
+
+
+# ------------------------------------------------------------------ listas semanais (Road, Power Ranking, Climbers), 9/11/2026
+def _circle_photo(img, fp, box, ring=None):
+    x0, y0, x1, y1 = box
+    s = x1 - x0
+    ph = ImageOps.fit(Image.open(fp).convert("RGB"), (s, s), Image.LANCZOS, centering=(0.5, 0.2))
+    mk = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(mk).ellipse([0, 0, s - 1, s - 1], fill=255)
+    if ring:
+        ImageDraw.Draw(img).ellipse([x0 - 5, y0 - 5, x1 + 5, y1 + 5], fill=ring)
+    img.paste(ph, (x0, y0), mk)
+
+
+def card_list(d_, out):
+    """Lista semanal no estilo novo: fundo com a foto do destaque desfocada e escura, título condensado e um painel de vidro
+    por secção (destaque com foto + linhas).
+    d_ = {sport, kicker, title, sub, foot, sections:[{label, hero:{name, big, sub, move, photo}, rows:[(esq, nome, dir)]}], credits:[...]}"""
+    P = PALETTE[d_.get("sport", "tennis")]
+    secs = [s for s in d_["sections"] if s.get("hero")][:2]
+    bgp = next((s["hero"].get("photo") for s in secs if s["hero"].get("photo")), None)
+    img = Image.new("RGBA", (W, H), P["bg"] + (255,))
+    if bgp:
+        bg = _photo(bgp, (W, H)).filter(ImageFilter.GaussianBlur(26))
+        img.alpha_composite(bg)
+        img.alpha_composite(Image.new("RGBA", (W, H), P["bg"] + (205,)))
+    img = img.convert("RGB")
+    d = ImageDraw.Draw(img, "RGBA")
+    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, 60, 128, [d_.get("kicker"), d_.get("date")], P)
+    _paste_sq(img, d_["title"].upper(), "black", 118, P["cream"] + (255,), 56, 330, W - 120, anchor="lb")
+    d = ImageDraw.Draw(img, "RGBA")
+    if d_.get("sub"):
+        d.text((60, 380), d_["sub"], font=_fit(d, d_["sub"], "semi", 30, W - 120), fill=P["acc"], anchor="ls")
+    y = 420
+    avail = H - 120 - y
+    each = (avail - 24 * (len(secs) - 1)) / max(1, len(secs))
+    for s in secs:
+        box = (48, int(y), W - 48, int(y + each))
+        d.rounded_rectangle(box, radius=34, fill=(0, 0, 0, 70), outline=(255, 255, 255, 50), width=2)
+        x0, yy = box[0] + 36, box[1] + 30
+        d.text((x0, yy + 22), s.get("label", "").upper(), font=F("bold", 22), fill=P["soft"], anchor="ls")
+        h = s["hero"]
+        hx = x0
+        if h.get("photo"):
+            _circle_photo(img, h["photo"], (x0, yy + 44, x0 + 120, yy + 164), ring=P["acc"])
+            d = ImageDraw.Draw(img, "RGBA")
+            hx = x0 + 150
+        d.text((hx, yy + 84), h.get("big", ""), font=F("black", 34), fill=P["acc"], anchor="ls")
+        if h.get("move"):
+            m = h["move"]
+            d.text((hx + d.textlength(h.get("big", ""), font=F("black", 34)) + 16, yy + 82), f"▲{m}" if m > 0 else f"▼{-m}",
+                   font=F("bold", 24), fill=P["acc"] if m > 0 else (255, 128, 112), anchor="ls")
+        d.text((hx, yy + 132), h["name"], font=_fit(d, h["name"], "xb", 46, box[2] - 40 - hx), fill=P["cream"], anchor="ls")
+        if h.get("sub"):
+            d.text((hx, yy + 166), h["sub"], font=_fit(d, h["sub"], "med", 26, box[2] - 40 - hx), fill=P["soft"], anchor="ls")
+        ry = yy + 200
+        for left, name, right in s.get("rows", [])[:3]:
+            if ry + 40 > box[3] - 10:
+                break
+            d.line([(x0, ry - 8), (box[2] - 36, ry - 8)], fill=(255, 255, 255, 40), width=1)
+            d.text((x0, ry + 28), str(left), font=F("black", 28), fill=P["acc"], anchor="ls")
+            nx = x0 + max(70, int(d.textlength(str(left), font=F("black", 28))) + 22)
+            d.text((nx, ry + 28), name, font=_fit(d, name, "semi", 30, 520), fill=P["cream"], anchor="ls")
+            d.text((box[2] - 36, ry + 28), right, font=_fit(d, right, "semi", 26, 300), fill=P["soft"], anchor="rs")
+            ry += 52
+        y += each + 24
+    if d_.get("foot"):
+        d.text((60, H - 84), d_["foot"], font=_fit(d, d_["foot"], "med", 22, W - 120), fill=P["soft"], anchor="ls")
+    cr = [c for c in d_.get("credits") or [] if c]
+    import photo_cards
+    _footer(img, d, P, photo_cards.credit_join(*cr) if cr else None)
+    img.convert("RGB").save(out, quality=94)
+    return out

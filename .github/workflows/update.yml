@@ -127,6 +127,7 @@ jobs:
           python watch_list.py site || echo "watch list falhou (ignorado)"
           if [ "$FAST" != "1" ]; then python -m padel.fetch || echo "padel: sincronização falhou (ignorado)"; fi
           python -m padel.site site || echo "padel: site falhou (ignorado)"
+          python story_cards.py site || echo "story: falhou (ignorado)"
           python -m padel.posts make || echo "padel: posts falharam (ignorado)"
           python clean_links.py site || echo "links: falhou (ignorado)"
       - name: Keep new cards and captions (7 days)
