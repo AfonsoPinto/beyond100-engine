@@ -402,7 +402,7 @@ def send():
     other_score = float(env("SPECIAL_SCORE", "9"))
     for d, e in pending:                                          # antiguidade: resultados com mais de 24 h e antevisões com mais de 12 h não saem
         age = time.time() - (e.get("created") or 0) if e.get("created") else None
-        old = d < limit or (age is not None and age > (12 if is_prev(e) else 24) * 3600)
+        old = d < limit or (age is not None and age > (12 if is_prev(e) else float(env("RESULT_MAX_AGE_H", "16"))) * 3600)   # 9/11/2026: 24 h -> 16 h
         if old:
             e["sent"], e["skipped"] = True, "stale"
     _save(posts)
