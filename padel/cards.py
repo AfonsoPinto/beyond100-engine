@@ -139,6 +139,15 @@ def _g(x):
 
 def result_card(d, out_path):
     """d = {kicker, level, round, tournament, city, date, winners:[p,p], losers:[p,p], sets:[(w,l)], photo:{path,credit}, ranks:{id:rank}, note}"""
+    if os.environ.get("PADEL_RESULT_STYLE", "C").upper() == "C" and (d.get("photo") or {}).get("path"):   # 9/11/2026: moderno, igual ao ténis
+        import modern_cards
+        rk = d.get("ranks") or {}
+        side = lambda ps: [{"name": p.get("name"), "short": _sur(p), "country": _code(p), "rank": rk.get(str(p.get("id")))} for p in ps]
+        return modern_cards.card_c({"sport": "padel", "kicker": (d.get("kicker") or "Win").upper(), "level": d.get("level"),
+                                    "tournament": " · ".join(x for x in [d.get("tournament"), d.get("city")] if x), "round": d.get("round"),
+                                    "date": d.get("date"), "winners": side(d["winners"]), "losers": side(d["losers"]),
+                                    "sets": [(int(str(a).split("(")[0] or 0), int(str(b).split("(")[0] or 0)) for a, b in d["sets"]],
+                                    "photo": d["photo"]["path"], "credit": d["photo"].get("credit"), "line": d.get("line") or ""}, out_path)
     img = _grad()
     ph = d.get("photo") or {}
     if ph.get("path"):

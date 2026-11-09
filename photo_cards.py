@@ -147,6 +147,15 @@ def render_match_photo(d, out_path):
     """d = {winner:{name,country,rank,photo,credit}, loser:{name,rank}, sets:[(w,l),...] do ponto de vista do vencedor,
             tournament, round, level (ex. 'CHALLENGER'), tag (ex. 'UPSET'), headline}"""
     style = str(d.get("style") or os.environ.get("CARD_STYLE", "1")).strip()
+    if style.upper() == "C" and (d.get("winner") or {}).get("photo"):   # 9/11/2026: cartão moderno (placar em vidro), igual ao padel
+        import modern_cards
+        win, los = d["winner"], d["loser"]
+        return modern_cards.card_c({"sport": "tennis", "kicker": (d.get("kicker") or ("UPSET" if d.get("tag") else "WIN")).upper(),
+                                    "level": d.get("level"), "tournament": d.get("tournament"), "round": d.get("round"), "date": d.get("date"),
+                                    "winners": [{"name": win.get("name"), "country": (win.get("country") or "").upper(), "rank": win.get("rank")}],
+                                    "losers": [{"name": los.get("name"), "country": (los.get("country") or "").upper(), "rank": los.get("rank")}],
+                                    "sets": d["sets"], "photo": win["photo"], "credit": win.get("credit"),
+                                    "line": d.get("edit_head") or (d.get("headline") or "").rstrip(".")}, out_path)
     if style == "2":                                              # capa de revista (nome enorme + título editorial)
         return render_match_photo_v2(d, out_path)
     if style == "3":                                              # painel lateral

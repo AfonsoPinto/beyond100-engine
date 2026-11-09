@@ -313,6 +313,9 @@ def _champion_card(m, pw, pl, wd, sets, tag, out_path):
          "tournament": re.sub(r"^(ATP|WTA)\s+", "", base), "level": (tag or "").upper(), "date": date,
          "final": {"opp": pl.get("name") or "", "opp_rank": pl.get("ranking"), "sets": sets}, "road": road, "note": note}
     print(f"Jogo {m.get('id')}: campeão, cartão próprio ({wins} vitórias no caminho).")
+    if _env("RESULT_STYLE", "C") == "C":                        # mesmo estilo moderno dos resultados
+        import modern_cards
+        return modern_cards.card_champion(dict(d, sport="tennis"), out_path)
     return render_champion(d, out_path)
 
 
@@ -2417,11 +2420,11 @@ def maybe_post(m, out_dir, force=False):
     os.makedirs(pdir, exist_ok=True)
     _facts = dict(slim(m), reasons=why)
     _facts.update(_past_context(m, w))
-    d["style"] = "3"            # 9/11/2026: um só modelo para resultados (painel verde + foto); títulos: cartão de campeão; surpresa gigante: o seu
+    d["style"] = _env("RESULT_STYLE", "C")   # 9/11/2026: um só modelo para resultados (C = moderno, placar em vidro); títulos: campeão; surpresa gigante: o seu
     _title = "final" in why and not ev and bool(_wd.get("photo"))
     if _title and _env("TITLE_STYLE", "3") in ("1", "2", "3"):  # títulos: sempre o painel lateral com a foto grande (o post da Harriet Dart: 3,9 mil visualizações)
         d["style"] = _env("TITLE_STYLE", "3")
-    if d["style"] in ("2", "3"):                               # desenhos novos: data, etiqueta e título editorial
+    if d["style"] in ("2", "3", "C"):                          # desenhos novos: data, etiqueta e frase do jogo
         try:                                                      # data do jogo (não a do dia em que o cartão é feito)
             d["date"] = datetime.date.fromisoformat((m.get("updated_at") or "")[:10]).strftime("%d %b %Y").upper()
         except ValueError:

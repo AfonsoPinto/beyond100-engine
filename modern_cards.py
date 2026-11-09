@@ -198,8 +198,9 @@ def card_c(d_, out):
     d.rounded_rectangle(box, radius=36, outline=(255, 255, 255, 60), width=2)
     d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
     _chips(d, 60, 128, [d_.get("kicker"), d_.get("level")], P)
-    if d_.get("line"):
-        _paste_sq(img, d_["line"].upper(), "black", 96, P["cream"] + (255,), 60, 830, W - 120, anchor="lb")
+    big = (d_.get("line") or _side(d_["winners"])).upper()          # sem frase do jogo: os nomes de quem ganhou
+    if big:
+        _paste_sq(img, big, "black", 96, P["cream"] + (255,), 60, 830, W - 120, anchor="lb")
         d = ImageDraw.Draw(img, "RGBA")
     x0, y0 = box[0] + 40, box[1] + 40
     sub = " · ".join(x for x in [d_.get("tournament"), d_.get("round")] if x).upper()
@@ -218,6 +219,60 @@ def card_c(d_, out):
         for i, (a, b) in enumerate(d_["sets"]):
             v, o = (a, b) if win else (b, a)
             d.text((xs + i * cw + cw / 2, y + 62), str(v), font=F("black", 60), fill=P["acc"] if v > o else (255, 255, 255, 110), anchor="ms")
+    _footer(img, d, P, d_.get("credit"))
+    img.convert("RGB").save(out, quality=94)
+    return out
+
+
+# ------------------------------------------------------------------ campeão no mesmo estilo (9/11/2026)
+def card_champion(d_, out):
+    """d_ = {sport, name, rank, photo, credit, tournament, level, date, final:{opp, opp_rank, sets}, road:[(ronda, nome, rank)]}"""
+    P = PALETTE[d_.get("sport", "tennis")]
+    img = Image.new("RGBA", (W, H), P["bg"] + (255,))
+    img.alpha_composite(_photo(d_["photo"], (W, H)))
+    img = _grad(img, 0, 260, (0, 0, 0), 140, 0)
+    img = _grad(img, 600, H, (0, 0, 0), 0, 170)
+    road = [x for x in (d_.get("road") or []) if x[0] != "F"][-5:]       # a final já está na linha do resultado
+    top = H - 100 - (200 + 50 * len(road))
+    box = (48, top, W - 48, H - 90)
+    blur = img.crop(box).filter(ImageFilter.GaussianBlur(28))
+    glass = Image.alpha_composite(blur, Image.new("RGBA", blur.size, P["bg"] + (195,)))
+    m = Image.new("L", blur.size, 0)
+    ImageDraw.Draw(m).rounded_rectangle([0, 0, blur.width - 1, blur.height - 1], radius=36, fill=255)
+    img.paste(glass, box[:2], m)
+    img = img.convert("RGB")
+    d = ImageDraw.Draw(img, "RGBA")
+    d.rounded_rectangle(box, radius=36, outline=(255, 255, 255, 60), width=2)
+    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, 60, 128, ["CHAMPION", d_.get("level")], P)
+    nm = d_["name"].split()
+    first, last = (" ".join(nm[:-1]), nm[-1]) if len(nm) > 1 else ("", nm[0])
+    if first:
+        d.text((62, top - 170), first.upper(), font=F("bold", 38), fill=P["cream"], anchor="ls")
+    _paste_sq(img, last.upper(), "black", 170, P["cream"] + (255,), 56, top - 24, W - 300, anchor="lb")
+    d = ImageDraw.Draw(img, "RGBA")
+    if d_.get("rank"):
+        d.text((W - 60, top - 34), f"#{d_['rank']}", font=F("black", 64), fill=P["acc"], anchor="rs")
+    x0, y0 = box[0] + 40, box[1] + 40
+    sub = " · ".join(x for x in [d_.get("tournament"), "Final"] if x).upper()
+    d.text((x0, y0 + 20), sub, font=_fit(d, sub, "bold", 24, 640), fill=P["soft"], anchor="ls")
+    d.text((box[2] - 40, y0 + 20), (d_.get("date") or "").upper(), font=F("semi", 22), fill=P["soft"], anchor="rs")
+    x = x0
+    for a, b in d_["final"]["sets"]:
+        s = f"{a}-{b}"
+        f = F("black", 64)
+        d.text((x, y0 + 100), s, font=f, fill=P["acc"] if a > b else P["soft"], anchor="ls")
+        x += d.textlength(s, font=f) + 34
+    opp = "def. " + (d_["final"].get("opp") or "") + (f"  #{d_['final']['opp_rank']}" if d_["final"].get("opp_rank") else "")
+    d.text((x, y0 + 96), opp, font=_fit(d, opp, "semi", 28, box[2] - 40 - x), fill=P["cream"], anchor="ls")
+    y = y0 + 150
+    for rd, n_, rk in road:
+        d.line([(x0, y - 4), (box[2] - 40, y - 4)], fill=(255, 255, 255, 40), width=1)
+        d.text((x0, y + 34), rd, font=F("black", 26), fill=P["acc"], anchor="ls")
+        d.text((x0 + 80, y + 34), n_, font=_fit(d, n_, "semi", 30, 560), fill=P["cream"], anchor="ls")
+        if rk:
+            d.text((box[2] - 40, y + 34), f"#{rk}", font=F("semi", 26), fill=P["soft"], anchor="rs")
+        y += 50
     _footer(img, d, P, d_.get("credit"))
     img.convert("RGB").save(out, quality=94)
     return out
