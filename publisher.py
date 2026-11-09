@@ -416,9 +416,14 @@ def send():
                 car_today += 1
         except (KeyError, ValueError, TypeError):
             pass
-    day_count = sum(1 for e, t in sent if t.date() == now_l.date()) + car_today
-    if day_count >= day_max:
-        print(f"Já saíram {day_count} posts hoje (máximo {day_max}): {len(pending)} esperam ou caducam.")
+    sent_today = [e for e, t in sent if t.date() == now_l.date()]
+    day_count = len(sent_today) + car_today
+    # 9/11/2026: um 4.º post só para algo excecional (12+), no máximo 1 por dia e só se nenhum dos de hoje já era 12+
+    exc_done = any(float(e.get("score") or 0) >= now_score for e in sent_today if is_res(e))
+    best_pend = max((float(e.get("score") or 0) for _, e in pending if is_res(e)), default=0)
+    cap = day_max + (1 if (best_pend >= now_score and not exc_done) else 0)
+    if day_count >= cap:
+        print(f"Já saíram {day_count} posts hoje (máximo {day_max}, +1 só para 12+): {len(pending)} esperam ou caducam.")
         return
 
     def value(e):
@@ -441,11 +446,22 @@ def send():
     v = value(e)
     slots_open = sum(1 for h in slots if now_l.hour >= h)
     if v >= now_score and gap_ok and in_window:
-        print(f"Post {e.get('id')} é excecional ({v:g}): sai já ({day_count + 1}/{day_max} hoje).")
+        print(f"Post {e.get('id')} é excecional ({v:g}): sai já ({day_count + 1}/{cap} hoje).")
         send_one(d, e)
         return
     if not in_window:
         print(f"Fora da janela de publicação ({s_from}h-{s_to}h Lisboa): {len(pending)} posts esperam.")
+        return
+    if day_count >= day_max:
+        print(f"Já saíram {day_count} posts hoje (máximo {day_max}); só um 12+ pode ainda sair.")
+        return
+    # 9/11/2026: fasquia por hora (SLOT_MIN, alinhada com POST_SLOTS): 13h só 10+, 18h só 9+, 21h o melhor que houver.
+    # Se a hora cedo não tiver nada à altura, o lugar fica guardado para mais tarde (sai depois, com a fasquia dessa hora).
+    mins = [float(x) for x in env("SLOT_MIN", "10,9,0").split(",") if x.strip()]
+    cur = max((k for k, h in enumerate(slots) if now_l.hour >= h), default=None)
+    bar = mins[cur] if cur is not None and cur < len(mins) else 0
+    if slots_open and day_count < slots_open and v < bar:
+        print(f"Hora de publicação ({slots[cur]}h), mas o melhor da fila ({e.get('id')}, {v:g}) não chega a {bar:g}: o lugar fica para mais tarde.")
         return
     if day_count >= slots_open:
         nxt = next((h for h in slots if h > now_l.hour), None)
