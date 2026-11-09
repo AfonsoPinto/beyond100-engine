@@ -550,8 +550,8 @@ def render_champion(d, out_path):
     PH = 860
     ph, has = _photo_or_monogram((W, PH), {"photo": d.get("photo"), "name": d.get("name")}, centering=(0.5, 0.2))
     img.paste(ph, (0, 0))
-    _overlay(img, 0, 240, 150, 0)
-    _overlay(img, 480, PH, 0, 250)
+    img = _overlay(img, 0, 240, 150, 0)
+    img = _overlay(img, 380, PH, 0, 235)
     dr = ImageDraw.Draw(img)
     _header(img)
     f = font(SANS_B, 26)
@@ -565,8 +565,8 @@ def render_champion(d, out_path):
         x += tw + 14
     first, last = split_name(d.get("name"))
     if first:
-        dr.text((70, 640), first.upper(), font=fit(dr, first.upper(), SANS_B, 40, W - 140, 22), fill=SOFT, anchor="ls")
-    dr.text((66, 760), last.upper(), font=fit(dr, last.upper(), SERIF_B, 132, W - 300, 60), fill=CREAM, anchor="ls")
+        dr.text((70, 640), first.upper(), font=fit(dr, first.upper(), SANS_B, 40, W - 140, 22), fill=CREAM, anchor="ls")
+    dr.text((66, 760), last.upper(), font=fit(dr, last.upper(), SERIF_B, 132, W - 340, 60), fill=CREAM, anchor="ls")
     if isinstance(d.get("rank"), int):
         dr.text((W - 70, 760), f"#{d['rank']}", font=font(SERIF_B, 76), fill=VOLT, anchor="rs")
     sub = " · ".join(x_ for x_ in [d.get("tournament"), d.get("date")] if x_).upper()

@@ -291,8 +291,19 @@ def _champion_card(m, pw, pl, wd, sets, tag, out_path):
         lost_sets += sum(1 for a, b in zip(g[i - 1], g[2 - i]) if a < b)
     road.append(("F", pl.get("name") or "", pl.get("ranking")))
     lost_sets += sum(1 for a, b in sets if a < b)
+    # só a parte do caminho sem buracos até à final (se não acompanhámos uma ronda, as anteriores ficam de fora) e sem contagem de
+    # vitórias/sets: não sabemos se vimos o quadro todo, e um número errado é pior do que nenhum (9/11/2026)
+    order = ["R128", "R64", "R32", "R16", "QF", "SF", "F"]
+    tail = []
+    for x in reversed(road):
+        if tail and x[0] in order and tail[-1][0] in order and order.index(x[0]) != order.index(tail[-1][0]) - 1:
+            break
+        if x[0] not in order:
+            break
+        tail.append(x)
+    road = list(reversed(tail))
     wins = len(road)
-    note = f"{wins} wins · " + ("no sets dropped" if not lost_sets else f"{lost_sets} set{'s' if lost_sets > 1 else ''} dropped")
+    note = ""
     try:
         date = datetime.date.fromisoformat(day).strftime("%-d %b %Y")
     except ValueError:
@@ -1971,7 +1982,7 @@ UPSET_GAP = int(os.environ.get("UPSET_GAP", "80"))
 UPSET_MAX_LOSER_RANK = int(_env("UPSET_MAX_LOSER_RANK", "250"))   # o derrotado tem de ser top 250 para contar como surpresa
 TOUR_MIN_RANK = int(_env("TOUR_MIN_RANK", "50"))                     # no Tour, o vencedor tem de estar fora do top N (ranking > N)
 POST_LEVELS = {x.strip() for x in _env("POST_LEVELS", "challenger,tour").lower().split(",") if x.strip()}   # níveis que geram post: challenger,tour,itf
-REQUIRE_PHOTO = _env("REQUIRE_PHOTO", "1") == "1"                      # só publica se o vencedor tiver foto licenciada
+REQUIRE_PHOTO = True   # 9/11/2026 (Afonso): sem foto boa do vencedor, não há post (fica só no site)                      # só publica se o vencedor tiver foto licenciada
 MIN_ITF_TIER = int(_env("MIN_ITF_TIER", "60"))                      # ITF só é publicado a partir de W60/M60 (M15/M25/W35... ficam só no site)   # diferença mínima de ranking para ser "surpresa"
 RISING_MAX_JUMP = 150                                 # saltos maiores são tratados como erro nos dados
 RANK_MAX_AGE_D = 60                                   # só compara com rankings vistos nos últimos 60 dias
@@ -2317,7 +2328,7 @@ def maybe_post(m, out_dir, force=False):
     score, why = interest(m)
     # prioridade a jogos COM imagem: com foto licenciada ganha bónus; sem foto precisa de mais interesse
     _w = winner_index(m)
-    has_photo = bool(_w and find_photo(m["players"]["p%d" % _w])[0])
+    has_photo = bool(_w and find_post_photo(m["players"]["p%d" % _w], dry=True)[0])   # 9/11/2026: só conta foto que passe o filtro de qualidade
     score += PHOTO_BONUS if has_photo else 0
     if has_photo and "final" not in why:              # 5/11/2026: a mesma foto em posts seguidos estraga o feed (finais/títulos: sem castigo). Se a melhor opção
         try:                                          # (a usada há mais tempo) saiu há pouco, é porque não há outra: perde pontos
