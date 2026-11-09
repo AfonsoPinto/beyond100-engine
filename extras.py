@@ -782,16 +782,19 @@ const sc=(s,o,tb)=>s.map((x,i)=>`<span>${x}${tb&&tb[i]!=null&&i<s.length-1&&x==6
 const fl=f=>f?`<img src="https://flagcdn.com/${f}.svg" alt="" width="16" height="12" loading="lazy" style="vertical-align:-2px;margin-right:7px;border-radius:2px">`:"";
 let miss=0;const again=()=>{if(++miss<=6)setTimeout(tick,5000);else if(!seen&&S)S.innerHTML='<span class="dot"></span> In progress · the live score shows up here as soon as the first points are played (checking every 30 s)'};
 async function tick(){if(document.hidden)return;let j;try{const r=await fetch("/api/tennis/live",{cache:"no-store"});if(!r.ok)return again();j=await r.json()}catch(e){return again()}
- const cards=[...G.querySelectorAll(".lv")];let added=0;
- for(const m of j.matches||[]){let hit=null,flip=false;
+ const cards=[...G.querySelectorAll(".lv")];let added=0;const got=new Set();
+ for(const m of [...(j.matches||[]),...(j.fin||[]).map(x=>Object.assign({},x,{done:1}))]){let hit=null,flip=false;
   for(const c of cards){const a=c.dataset.a,b=c.dataset.b;if(!a)continue;if(same(a,m.p[0].n)&&same(b,m.p[1].n)){hit=c;break}if(same(a,m.p[1].n)&&same(b,m.p[0].n)){hit=c;flip=true;break}}
   const s=flip?[m.s[1],m.s[0]]:m.s,tb=flip?[m.tb[1],m.tb[0]]:m.tb;
-  if(hit){const z=hit.querySelectorAll(".sc");if(z.length==2){z[0].innerHTML=sc(s[0],s[1],tb[0]);z[1].innerHTML=sc(s[1],s[0],tb[1])}hit.classList.add("rt");continue}
-  if(cards.length+added>=N)continue;added++;
+  if(hit){got.add(hit);const z=hit.querySelectorAll(".sc");if(z.length==2){z[0].innerHTML=sc(s[0],s[1],tb[0]);z[1].innerHTML=sc(s[1],s[0],tb[1])}hit.classList.add("rt");
+   if(m.done&&!hit.dataset.fin){hit.dataset.fin=1;hit.style.opacity=".75";const h=hit.querySelector(".lh");if(h)h.insertAdjacentHTML("beforeend",' <b style="color:#d9f23d">· Final</b>');
+    const w=flip?(m.w===0?1:m.w===1?0:null):m.w;const pl=hit.querySelectorAll(".pl");if(w!=null&&pl[1-w])pl[1-w].style.opacity=".6"}continue}
+  if(m.done||cards.length+added>=N)continue;added++;
   const d=document.createElement("div");d.className="lv rt";d.dataset.a=m.p[0].n;d.dataset.b=m.p[1].n;
   d.innerHTML=`<div class="lh"><span class="tag">${m.lg.toUpperCase()}</span> ${esc(m.t)} · ${esc(m.r)}</div>`+[0,1].map(i=>`<div class="pl"><div class="who"><div><span class="nm">${esc(m.p[i].n)}</span><small>${fl(m.p[i].f)}${esc(m.p[i].c)}</small></div></div><div class="sc">${sc(m.s[i],m.s[1-i],m.tb[i])}</div></div>`).join("");
   G.appendChild(d)}
- if(G.querySelector(".lv")){W.hidden=false;if(U)U.textContent="live · "+new Date(j.ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}}
+ for(const c of cards){const t=(c.querySelector(".tag")||{}).textContent||"";if(/^(ATP|WTA) (250|500|1000)\b/.test(t)&&!got.has(c))c.style.display="none"}   // ATP/WTA que o ESPN já não tem: acabou há horas, sai da lista
+ if([...G.querySelectorAll(".lv")].some(c=>c.style.display!=="none")){W.hidden=false;if(U)U.textContent="live · "+new Date(j.ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}}
 tick();const T=setInterval(tick,30000);document.addEventListener("visibilitychange",tick)})()</script>"""
 
 
