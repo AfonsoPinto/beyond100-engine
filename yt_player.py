@@ -38,7 +38,7 @@ def embeddable(vid):
         return None
     c = _emb_load()
     hit = c.get(vid)
-    fresh = hit and time.time() - hit[1] < (7 if hit[0] == 200 else 2) * 86400
+    fresh = hit and time.time() - hit[1] < (1 if hit[0] == 200 else 2) * 86400   # 9/11/2026: bons só 1 dia (canais não oficiais apagam vídeos)
     if fresh and not (hit[0] == 200 and os.environ.get("YT_API_KEY") and len(hit) < 3):   # com chave nova: verifica também os países
         return hit[0] == 200
     if _n[0] >= EMBED_PER_RUN:

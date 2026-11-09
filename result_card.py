@@ -1319,7 +1319,7 @@ def _shell(title, body, tx, root="", path="", desc=None, image="og/default.png",
             f'{live_pill}<a class="ntop" href="{root}results.html">{esc(tx["nav"])}</a><a class="ntop" href="{root}players.html">{esc(tx.get("players", "Players"))}</a>{(f'<a class="ntop" href="{root}rankings.html">{esc(extras.L(tx, "x_rankings"))}</a>' if extras.have_full_rankings() else "")}<a class="ntop" href="{root}stats.html">{esc(extras.L(tx, "x_stats"))}</a><a href="{IG_URL}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>\n{sport_switch.switch("tennis")}'
             f'{site_more.SEARCH_HTML}{body}\n<footer>{esc(tx["note"])} · <a href="/order-of-play.html">Order of play</a> · <a href="/next.html">Next week</a> · <a href="/road.html">Road to the Top 100</a> · <a href="/power.html">Power Ranking</a> · '
             f'<a href="/records.html">Records</a> · <a href="/countries.html">Countries</a> · '
-            f'<a href="/credits.html">{esc(extras.L(tx, "x_credits"))}</a> · <a href="/about.html">About</a>{langs}</footer></div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + '</body></html>')
+            f'<a href="/credits.html">{esc(extras.L(tx, "x_credits"))}</a> · <a href="/about.html">About</a>{langs}</footer></div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + __import__("site_ui").DEAD_YT_JS + '</body></html>')
 
 
 FAVICON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0e3a2d"/>'

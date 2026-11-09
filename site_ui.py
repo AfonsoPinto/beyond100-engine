@@ -278,6 +278,12 @@ def compare(names, rows):
 
 # Horas na hora de quem visita (5/11/2026): o HTML traz a hora em UTC (ou local do torneio) dentro de <time class="lt" datetime="ISO">;
 # no browser passa para a hora do visitante. data-fmt="dm" mostra também o dia. Um <small>UTC</small> logo a seguir passa a "your time".
+# 9/11/2026: vídeo apagado no YouTube -> a miniatura vem cinzenta (120x90) ou dá erro; o cartão desaparece em vez de ficar "..."
+DEAD_YT_JS = r"""<script>(function(){var R=/i\.ytimg\.com\/vi\//;function hide(i){var a=i.closest('a')||i;a.style.display='none'}
+function chk(i){if(i.tagName==='IMG'&&R.test(i.src)&&i.complete&&i.naturalWidth>0&&i.naturalWidth<=120)hide(i)}
+document.addEventListener('load',function(e){chk(e.target)},true);
+document.addEventListener('error',function(e){var i=e.target;if(i.tagName==='IMG'&&R.test(i.src))hide(i)},true);
+[].forEach.call(document.querySelectorAll('img'),chk)})()</script>"""
 LOCALTIME_JS = ("<script>(function(){function f(){document.querySelectorAll('time.lt[datetime]').forEach(function(e){if(e.dataset.lt)return;"
                 "var d=new Date(e.getAttribute('datetime'));if(isNaN(d))return;var hm=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});"
                 "e.textContent=(e.dataset.fmt==='dm'?d.toLocaleDateString([],{day:'2-digit',month:'2-digit'})+' · ':'')+hm+(e.dataset.sfx||'');"

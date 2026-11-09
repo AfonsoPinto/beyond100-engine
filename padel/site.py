@@ -582,7 +582,7 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
             f'<nav><a class="brand" href="/padel/index.html">BEYOND PADEL</a><div>{live_pill}{topnav}<a href="{IG}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>{sport_switch.switch("padel")}'
             f'{site_more.SEARCH_HTML}{body}{LIVE_JS}'
             f'<footer>Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). '
-            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + '</body></html>')
+            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + '</body></html>')
 
 
 def write(out, path, htmltext):
