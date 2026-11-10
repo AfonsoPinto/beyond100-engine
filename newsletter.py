@@ -186,7 +186,7 @@ def _assets(d, out="site/newsletter"):
     return res
 
 
-def _padel_cover(d, out):
+def _padel_cover(d, out, big=None):
     """Capa do padel para os convites do site (/newsletter/cover-padel.jpg), 10/11/2026: os campeões de padel da semana.
     Com foto boa (licenciada, filtro dos posts) dos DOIS jogadores do par: foto dividida ao meio. Senão: capa desenhada com os
     nomes e o resultado. Sem campeões de padel na semana: não há ficheiro e o site mostra a capa fixa "The padel week"."""
@@ -197,7 +197,7 @@ def _padel_cover(d, out):
         os.remove(fp_out)
     pc = d.get("pchamps") or []
     if not pc:
-        return
+        return False
     P = mc.PALETTE["padel"]
     W_, H_ = 600, 690
     photos, top = None, None
@@ -256,6 +256,9 @@ def _padel_cover(d, out):
         if cr:
             dr.text((W_ - 30, 676), cr, font=mc._fit(dr, cr, "med", 12, W_ - 60, 8), fill=P["soft"], anchor="rs")
     img.resize((300, 345), Image.LANCZOS).save(fp_out, quality=86)
+    if big:
+        img.save(big, quality=90)
+    return True
 
 
 def _t(inner, pad="0 24px"):
@@ -389,7 +392,7 @@ def render(d, assets=None):
         pit.append((_avatar("", "8", SKY), "Race to the Finals", esc(f"Top 8 pairs qualify · on the bubble: {bub}"), _chip("Race", "#173f61", CREAM)))
     for t in d["next_p"][:3]:
         pit.append((f'<div style="width:48px;text-align:center">{_date(t.get("start_date"))}</div>', esc(t.get("name")), esc(t.get("location") or ""), _chip("Next", "#173f61", CREAM)))
-    if pit:
+    if pit and not os.environ.get("BUTTONDOWN_PADEL_API_KEY"):          # quando o padel tiver newsletter própria, sai daqui
         rows += _h2("Padel", "BEYOND PADEL", SKY)
         rows += _panel("".join(_item(a, b, c, r, f"{SITE}/padel/", i == len(pit) - 1) for i, (a, b, c, r) in enumerate(pit)), "#0b2740", "#1d4466")
     if d["next_t"]:
@@ -425,14 +428,14 @@ def render(d, assets=None):
 STATE = "newsletter_state.json"
 
 
-def _status(d):
+def _status(d, key_env="BUTTONDOWN_API_KEY", state=STATE, summary=None):
     """Para o separador Newsletter do admin: número de inscritos (1 pedido ao Buttondown, grátis) e a semana gerada."""
-    st = _load(STATE, {})
-    key = (os.environ.get("BUTTONDOWN_API_KEY") or "").strip()
+    st = _load(state, {})
+    key = (os.environ.get(key_env) or "").strip()
     st["key"] = bool(key)
     st["built_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
     st["week"] = d["week"]
-    st["summary"] = {"results": d["n_results"], "champions": len(d["champs"]), "upsets": len(d["upsets"]), "padel": len(d["pchamps"])}
+    st["summary"] = summary or {"results": d["n_results"], "champions": len(d["champs"]), "upsets": len(d["upsets"]), "padel": len(d["pchamps"])}
     if key:
         try:
             import requests
@@ -442,27 +445,28 @@ def _status(d):
                 st["subscribers"] = r.json().get("count")
         except Exception:
             pass
-    with open(STATE, "w", encoding="utf-8") as f:
+    with open(state, "w", encoding="utf-8") as f:
         json.dump(st, f)
 
 
-def draft(d, html_out):
+def draft(d, html_out, key_env="BUTTONDOWN_API_KEY", state=STATE, subject=None, ok_week=None):
     """Domingo a partir das 19h (Lisboa): cria a newsletter da semana como RASCUNHO no Buttondown (nada é enviado sem o Afonso).
     Precisa do segredo BUTTONDOWN_API_KEY no repositório do motor. Uma vez por semana (newsletter_state.json)."""
-    key = (os.environ.get("BUTTONDOWN_API_KEY") or "").strip()
-    print(f"Newsletter: chave do Buttondown {'presente' if key else 'em falta (BUTTONDOWN_API_KEY)'}.")
+    key = (os.environ.get(key_env) or "").strip()
+    print(f"Newsletter: chave do Buttondown {'presente' if key else f'em falta ({key_env})'}.")
     from zoneinfo import ZoneInfo
     now = dt.datetime.now(ZoneInfo("Europe/Lisbon"))
     wk = f"{now.isocalendar()[0]}-W{now.isocalendar()[1]:02d}"
-    st = _load(STATE, {})
+    st = _load(state, {})
     force = os.environ.get("NEWSLETTER_FORCE") == "1"
     if not key or st.get("draft") == wk or (not force and not (now.weekday() == 6 and now.hour >= 19)):
         return False
     import requests
-    subj = ("[TEST] " if force else "") + f"The week beyond the top 100 · Week {d['week']}"
+    subj = ("[TEST] " if force else "") + (subject or f"The week beyond the top 100 · Week {d['week']}")
     try:
         # 10/11/2026 (Afonso): ao domingo sai SOZINHA. Só fica em rascunho se for um teste ou se a semana estiver vazia/estranha.
-        ok_week = d["n_results"] >= 30 and (d["champs"] or d["pchamps"])
+        if ok_week is None:
+            ok_week = d["n_results"] >= 30 and bool(d["champs"] or d["pchamps"])
         auto = not force and ok_week and os.environ.get("NEWSLETTER_AUTOSEND", "1") != "0"
         if not force and not ok_week:
             print(f"Newsletter: semana com poucos dados ({d['n_results']} resultados, {len(d['champs'])} campeões): fica em rascunho para veres.")
@@ -480,11 +484,11 @@ def draft(d, html_out):
     if force:                                                   # teste manual: não conta como o rascunho da semana
         print(f"Newsletter: rascunho de TESTE criado no Buttondown ({subj}).")
         return True
-    st = _load(STATE, {})
+    st = _load(state, {})
     st["draft"] = wk
     st["draft_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
     st["sent"] = bool(auto)
-    with open(STATE, "w", encoding="utf-8") as f:
+    with open(state, "w", encoding="utf-8") as f:
         json.dump(st, f)
     print(f"Newsletter: {'ENVIADA aos inscritos' if auto else 'rascunho criado'} no Buttondown ({subj}).")
     return True
