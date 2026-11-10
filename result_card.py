@@ -2446,6 +2446,7 @@ def maybe_post(m, out_dir, force=False):
         from captions import card_headline                       # 9/11/2026: IA sim, mas a soar a pessoa (sem "crown", "seizes"...); se falhar, frase fixa
         d["edit_head"] = card_headline(_facts) or (d.get("headline") or "").rstrip(".") or None
     png = None
+    _card_style = None
     if "giant" in why and _wd.get("photo"):                     # surpresa gigante: as caras dos dois (derrotado a P&B)
         _ld = _who(pl)
         _lfp, _lcr = find_post_photo(pl)
@@ -2464,16 +2465,24 @@ def maybe_post(m, out_dir, force=False):
                                            "losers": [{"name": pl.get("name"), "rank": pl.get("ranking"), "country": (pl.get("country") or "").upper()}],
                                            "sets": sets, "photo": _wd["photo"], "credit": __import__("photo_cards").credit_join(_wd.get("credit"), _ld.get("credit")),
                                            "loser_photo": _ld["photo"], "line": (dg.get("headline") or "").rstrip(".")}, os.path.join(pdir, f"final-{m.get('id')}.png"))
+                _card_style = "A"
             else:
                 png = upset_card.render_giant_upset(dg, os.path.join(pdir, f"final-{m.get('id')}.png"), _env("GIANT_STYLE", "C"))
             print(f"Jogo {m.get('id')}: surpresa gigante, cartão com os dois jogadores.")
     if not png and _title and _env("CHAMPION_CARD", "1") != "0":   # 9/11/2026: post próprio para campeões (foto, final e caminho até ao título)
         try:
             png = _champion_card(m, pw, pl, _wd, sets, tag, os.path.join(pdir, f"final-{m.get('id')}.png"))
+            _card_style = "B" if png and _env("RESULT_STYLE", "C") == "C" else None
         except Exception as e:
             print("Cartão de campeão falhou:", type(e).__name__, e)
+    _variants = []
     if not png:
         png = render_match_photo(d, os.path.join(pdir, f"final-{m.get('id')}.png"))
+        try:
+            import photo_cards
+            _variants = photo_cards.render_variants(d, png)
+        except Exception as e:
+            print("Variantes do cartão falharam:", type(e).__name__, e)
     _facts["_interest"] = score
     _rw, _rl = pw.get("ranking"), pl.get("ranking")
     if isinstance(_rw, int):
@@ -2485,7 +2494,7 @@ def maybe_post(m, out_dir, force=False):
     from captions import save_pending
     save_pending(png, "final", _facts, mention=d["winner"].get("handle"), tournament=tournament_handle(m.get("tournament")))
     posts.setdefault(today, []).append({"id": m.get("id"), "score": score, "reach_pts": m.get("_reach_pts", 0), "reasons": why, "file": os.path.basename(png),
-                                        "gender": _g, "created": time.time()})
+                                        "gender": _g, "created": time.time(), **({"alts": _variants} if _variants else {}), **({"style": _card_style} if _card_style else {})})
     keep = sorted(posts)[-14:]
     posts = {k: posts[k] for k in keep}
     with open(POSTS_FILE, "w", encoding="utf-8") as f:

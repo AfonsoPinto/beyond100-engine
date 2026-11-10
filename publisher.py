@@ -63,6 +63,14 @@ def prepare(out_dir="out"):
             if os.path.exists(tg):
                 shutil.copy(tg, os.path.join(POSTS_DIR, stem + ".tag"))
             e["image"], e["sent"] = stem + ".jpg", False
+            vs = {"C": stem + ".jpg"}                    # 10/11/2026: modelos alternativos do mesmo resultado (A e B)
+            for k in e.get("alts") or []:
+                vp = os.path.splitext(png)[0] + f".{k}.png"
+                if os.path.exists(vp):
+                    Image.open(vp).convert("RGB").save(os.path.join(POSTS_DIR, f"{stem}-{k.lower()}.jpg"), quality=92)
+                    vs[k] = f"{stem}-{k.lower()}.jpg"
+            if len(vs) > 1:
+                e["variants"] = vs
             n += 1
     # limpa ficheiros com mais de KEEP_DAYS dias
     cutoff = time.time() - KEEP_DAYS * 86400
@@ -378,8 +386,19 @@ def send():
     last = max([t for e, t in sent if not is_prev(e)], default=None)
     gap_ok = last is None or (now_l - last).total_seconds() >= gap_min * 60
 
+    # 10/11/2026: modelos a rodar. Um resultado com variantes sai no modelo que não apareceu nos 2 últimos posts.
+    recent_styles = [x.get("style") or "C" for x, _ in sorted(((x, t) for x, t in sent if is_res(x)), key=lambda p: p[1])][-2:]
+
+    def pick(e):
+        vs = e.get("variants") or {}
+        for k in ("C", "A", "B"):
+            if k in vs and k not in recent_styles:
+                return k, vs[k]
+        return "C", e["image"]
+
     def send_one(d, e):
-        url = f"{SITE_URL}/posts/{e['image']}"
+        style, img = pick(e) if e.get("variants") else (None, e["image"])
+        url = f"{SITE_URL}/posts/{img}"
         if not _image_ready(url):               # fica na fila e tenta na próxima execução
             return False
         try:
@@ -392,6 +411,9 @@ def send():
             return False
         e["sent"] = True
         e["sent_at"] = time.strftime("%Y-%m-%d %H:%M", time.gmtime())
+        if style:
+            e["style"], e["sent_image"] = style, img
+            print(f"Post {e.get('id')}: modelo {style} (últimos: {', '.join(recent_styles) or '-'}).")
         print(f"Post {e.get('id')}: enviado ({backend}).")
         _save(posts)
         return True

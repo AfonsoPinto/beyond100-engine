@@ -143,19 +143,41 @@ def _photo_or_monogram(size, who, centering=(0.5, 0.22)):
 
 
 # ------------------------------------------------------------------ jogo importante
+def _modern_dict(d):
+    win, los = d["winner"], d["loser"]
+    return {"sport": "tennis", "kicker": (d.get("kicker") or ("UPSET" if d.get("tag") else "WIN")).upper(),
+            "level": d.get("level"), "tournament": d.get("tournament"), "round": d.get("round"), "date": d.get("date"),
+            "winners": [{"name": win.get("name"), "country": (win.get("country") or "").upper(), "rank": win.get("rank")}],
+            "losers": [{"name": los.get("name"), "country": (los.get("country") or "").upper(), "rank": los.get("rank")}],
+            "sets": d["sets"], "photo": win["photo"], "credit": win.get("credit"),
+            "line": d.get("edit_head") or (d.get("headline") or "").rstrip(".")}
+
+
+def render_variants(d, out_path):
+    """10/11/2026 (Afonso: "os 3 posts de hoje foram iguais, devia alternar"): para resultados normais desenha também os
+    modelos A (grafismo de TV) e B (cartaz) ao lado do C. O publisher escolhe, na hora, o que ainda não saiu nos 2 últimos.
+    Ficheiros: <out>.A.png e <out>.B.png. Devolve os modelos feitos."""
+    if str(d.get("style") or "").upper() != "C" or not (d.get("winner") or {}).get("photo"):
+        return []
+    import modern_cards
+    base = os.path.splitext(out_path)[0]
+    done = []
+    for k, fn in (("A", modern_cards.card_a), ("B", modern_cards.card_b)):
+        try:
+            fn(_modern_dict(d), f"{base}.{k}.png")
+            done.append(k)
+        except Exception as e:
+            print(f"Modelo {k} falhou:", type(e).__name__, e)
+    return done
+
+
 def render_match_photo(d, out_path):
     """d = {winner:{name,country,rank,photo,credit}, loser:{name,rank}, sets:[(w,l),...] do ponto de vista do vencedor,
             tournament, round, level (ex. 'CHALLENGER'), tag (ex. 'UPSET'), headline}"""
     style = str(d.get("style") or os.environ.get("CARD_STYLE", "1")).strip()
     if style.upper() == "C" and (d.get("winner") or {}).get("photo"):   # 9/11/2026: cartão moderno (placar em vidro), igual ao padel
         import modern_cards
-        win, los = d["winner"], d["loser"]
-        return modern_cards.card_c({"sport": "tennis", "kicker": (d.get("kicker") or ("UPSET" if d.get("tag") else "WIN")).upper(),
-                                    "level": d.get("level"), "tournament": d.get("tournament"), "round": d.get("round"), "date": d.get("date"),
-                                    "winners": [{"name": win.get("name"), "country": (win.get("country") or "").upper(), "rank": win.get("rank")}],
-                                    "losers": [{"name": los.get("name"), "country": (los.get("country") or "").upper(), "rank": los.get("rank")}],
-                                    "sets": d["sets"], "photo": win["photo"], "credit": win.get("credit"),
-                                    "line": d.get("edit_head") or (d.get("headline") or "").rstrip(".")}, out_path)
+        return modern_cards.card_c(_modern_dict(d), out_path)
     if style == "2":                                              # capa de revista (nome enorme + título editorial)
         return render_match_photo_v2(d, out_path)
     if style == "3":                                              # painel lateral
