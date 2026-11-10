@@ -122,7 +122,8 @@ async function tenisPosts(){
   const val=e=>isPrev(e)?prevSc:isRes(e)?(e.score||0):(e.score||9);
   const excDone=sentToday.some(e=>isRes(e)&&(e.score||0)>=nowSc);
   const order=pend.slice().sort((a,b)=>val(b)-val(a)||(a.created||0)-(b.created||0));
-  const open=slots.filter(h=>L.h>=h).length,cur=open?open-1:null,bar=cur!=null?(mins[cur]||0):0,nextSlot=slots.find(h=>h>L.h);
+  const open=slots.filter(h=>L.h>=h).length,cur=open?open-1:null,nextSlot=slots.find(h=>h>L.h),rescue=N("SLOT_RESCUE_MIN",8);
+  let bar=cur!=null?(mins[cur]||0):0;if(cur!=null&&cur>=1&&dayCount===0&&bar>rescue)bar=rescue;   // sem posts até às 18h: fasquia desce para 8
   const exp=e=>e.created?" · caduca às "+hm((e.created+(isPrev(e)?12:maxAge)*3600)*1000):"";
   const lab=e=>{const r=R[String(e.id)];if(!r)return String(e.id).replace(/-/g," ");const w=r["p"+r.winner]||{},l=r["p"+(3-r.winner)]||{};return `${w.name} d. ${l.name} · ${r.tournament}`};
   const kindOf=e=>isPrev(e)?"Antevisão":!isRes(e)?"Especial":(e.reasons||[]).includes("final")?"Título":(e.reasons||[]).includes("upset")?"Surpresa":"Resultado";
@@ -139,7 +140,7 @@ async function tenisPosts(){
     else why="em espera: só sai se for dos melhores do dia";
     return {img:"/posts/"+e.image,kind:kindOf(e),label:lab(e),score:isRes(e)?e.score:"",now:now_,why:why+exp(e)}});
   const slotTxt=slots.map((h,k)=>`${h}h (${mins[k]?mins[k]+"+":"o melhor"})`).join(" · ");
-  const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · publicados hoje: <b>${dayCount} de ${dayMax}</b> (conta tudo, menos os arquivados) · horas: ${slotTxt} · ${nowSc}+ sai logo · resultados caducam ao fim de ${maxAge} h.`;
+  const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · publicados hoje: <b>${dayCount} de ${dayMax}</b> (conta tudo, menos os arquivados) · horas: ${slotTxt} · ${nowSc}+ sai logo · sem nenhum post até às ${slots[1]||18}h, a fasquia desce para ${rescue} · resultados caducam ao fim de ${maxAge} h.`;
   $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("ténis","@beyond100.tennis",on,`Muda em Definições (PUBLISH_AUTO). Máximo ${esc(V.MAX_POSTS_PER_DAY||"3")} resultados por dia; títulos, viragens e surpresas primeiro.`,"/index.html")
     +postsCard("Todos os posts",items,"últimos 14 dias · arquivaste um no Instagram? carrega em \"Arquivei\" e deixa de contar para os 3 do dia")+(car.length?postsCard("Carrosséis",car):"");
   $("#main").querySelectorAll("button.arch").forEach(b=>b.onclick=async()=>{b.disabled=true;
@@ -156,8 +157,8 @@ async function newsletter(){
   $("#main").innerHTML=`<div class="row" style="align-items:stretch">
     ${tile(S.subscribers??"—","inscritos",S.key?"no Buttondown":"falta a chave BUTTONDOWN_API_KEY","#d9f23d","#0e3a2d")}
     ${tile(S.week?"Semana "+S.week:"—","última gerada",S.built_at?"às "+esc(fmtTs(S.built_at.replace(" ","T")+"Z")):"ainda não gerada")}
-    ${tile(S.draft?esc(S.draft.replace(/^\d{4}-W/,"Semana ")):"—","último rascunho",S.draft_at?esc(fmtTs(S.draft_at.replace(" ","T")+"Z")):"nenhum ainda")}</div>
-  <div class="card"><h3>Como funciona</h3><p class="mut">A newsletter é refeita a cada atualização completa com os dados da semana (0 pedidos à API de ténis). No domingo a partir das 19h (próximo: <b>${esc(sunTxt)}</b>) é criada como <b>rascunho</b> no Buttondown: nunca é enviada sem tu carregares em enviar.</p>
+    ${tile(S.draft?esc(S.draft.replace(/^\d{4}-W/,"Semana ")):"—",S.sent?"última enviada":"último rascunho",S.draft_at?esc(fmtTs(S.draft_at.replace(" ","T")+"Z")):"nenhum ainda")}</div>
+  <div class="card"><h3>Como funciona</h3><p class="mut">A newsletter é refeita a cada atualização completa com os dados da semana (0 pedidos à API de ténis). No domingo a partir das 19h (próximo: <b>${esc(sunTxt)}</b>) é <b>enviada sozinha</b> aos inscritos pelo Buttondown. Só fica em rascunho se a semana tiver poucos dados (menos de 30 resultados ou nenhum campeão).</p>
     <p class="mut">Esta semana: ${sm.results??"—"} resultados · ${sm.champions??"—"} campeões · ${sm.upsets??"—"} surpresas · ${sm.padel??"—"} campeões de padel.</p>
     <div class="row"><button class="pri" id="nlTest">Criar rascunho de teste agora</button><a href="https://buttondown.com/emails" target="_blank" rel="noopener"><button>Abrir o Buttondown ↗</button></a><a href="/newsletter/latest.html" target="_blank" rel="noopener"><button>Abrir em ecrã inteiro ↗</button></a></div>
     <p class="mut">O teste cria um rascunho "[TEST]" (não é enviado e não conta para domingo). Para o receberes no teu email, abre-o no Buttondown e carrega em "Send test email".</p>
