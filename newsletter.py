@@ -160,6 +160,7 @@ def _assets(d, out="site/newsletter"):
         if cr:
             dr.text((W_ - 64, 1330), cr, font=mc._fit(dr, cr, "med", 20, 520, 12), fill=P["soft"], anchor="rs")
         img.save(os.path.join(od, "hero.jpg"), quality=86, optimize=True, progressive=True)
+        img.resize((300, 345), Image.LANCZOS).save(os.path.join(out, "cover.jpg"), quality=84)   # capa pequena para os convites do site
         res["hero"] = url("hero.jpg")
     names = [c["name"] for c in d.get("others", [])] + [u["w"] for u in d.get("upsets", [])] + [x["n"] for lg in ("atp", "wta") for x in d["climb"][lg]]
     for n in dict.fromkeys(names):
