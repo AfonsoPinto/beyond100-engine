@@ -88,16 +88,25 @@ CSS = """
 .nls input[type=email]{padding:10px 14px}.nls button[type=submit]{padding:10px 16px}
 @media (max-width:720px){.nls{left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));width:auto}}
 @media (max-width:600px){.nls{left:12px;right:12px;width:auto;padding:12px 12px 10px;border-radius:18px}.nls-t{margin-bottom:8px}.nls-t img{display:none}.nls-t small{display:none}.nls-t b{font-size:.92rem}.nls input[type=email],.nls button[type=submit]{padding:9px 14px}}
+/* 10/11/2026 (Afonso não gostou do cartão grande): começa como um botão pequeno; só abre o formulário se a pessoa tocar */
+.nls.mini{left:auto;right:16px;width:auto;padding:0;border-radius:999px}
+.nls.mini>:not(.nls-pill):not(.x){display:none}
+.nls:not(.mini) .nls-pill{display:none}
+.nls-pill{display:flex;align-items:center;gap:9px;border:0;background:none;color:var(--c);font:inherit;font-weight:700;font-size:.88rem;padding:8px 42px 8px 9px;cursor:pointer;white-space:nowrap}
+.nls-pill i{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--v);color:#0e3a2d;flex:0 0 auto}
+.nls-pill i svg{width:14px;height:14px}
+.nls.mini .x{top:50%;right:7px;width:26px;height:26px;line-height:26px;margin-top:-13px;font-size:14px}
+@media (max-width:720px){.nls.mini{left:auto;right:12px;width:auto}}
 @media (prefers-reduced-motion:reduce){.nls{transition:none}.nlc-cov{transform:none}}
 """
 
 # textos do cartão que sobe, por língua da página (a newsletter é em inglês: nas outras línguas dizemos isso)
 _TXT = {
-    "en": ("The week beyond the top 100", "Every Sunday · free", "See an issue", "Subscribe", "Thanks! Check your inbox to confirm."),
-    "es": ("La semana más allá del top 100", "Cada domingo · gratis · en inglés", "Ver un número", "Suscribirme", "¡Gracias! Revisa tu correo para confirmar."),
-    "fr": ("La semaine au-delà du top 100", "Chaque dimanche · gratuit · en anglais", "Voir un numéro", "S'abonner", "Merci ! Confirmez dans votre boîte mail."),
-    "de": ("Die Woche jenseits der Top 100", "Jeden Sonntag · kostenlos · auf Englisch", "Ausgabe ansehen", "Abonnieren", "Danke! Bitte bestätige in deinem Postfach."),
-    "it": ("La settimana oltre la top 100", "Ogni domenica · gratis · in inglese", "Vedi un numero", "Iscriviti", "Grazie! Controlla la posta per confermare."),
+    "en": ("The week beyond the top 100", "Every Sunday · free", "See an issue", "Subscribe", "Thanks! Check your inbox to confirm.", "Weekly newsletter"),
+    "es": ("La semana más allá del top 100", "Cada domingo · gratis · en inglés", "Ver un número", "Suscribirme", "¡Gracias! Revisa tu correo para confirmar.", "Newsletter semanal"),
+    "fr": ("La semaine au-delà du top 100", "Chaque dimanche · gratuit · en anglais", "Voir un numéro", "S'abonner", "Merci ! Confirmez dans votre boîte mail.", "Newsletter hebdo"),
+    "de": ("Die Woche jenseits der Top 100", "Jeden Sonntag · kostenlos · auf Englisch", "Ausgabe ansehen", "Abonnieren", "Danke! Bitte bestätige in deinem Postfach.", "Wöchentlicher Newsletter"),
+    "it": ("La settimana oltre la top 100", "Ogni domenica · gratis · in inglese", "Vedi un numero", "Iscriviti", "Grazie! Controlla la posta per confermare.", "Newsletter settimanale"),
 }
 
 
@@ -108,11 +117,12 @@ def slide(sport="tennis"):
         return ""
     import json
     padel = sport == "padel"
-    t_padel = dict(_TXT, en=("The padel week, in one email",) + _TXT["en"][1:],
-                   es=("La semana del pádel, en un correo",) + _TXT["es"][1:])
+    t_padel = dict(_TXT, en=("The padel week, in one email",) + _TXT["en"][1:5] + ("Padel newsletter",),
+                   es=("La semana del pádel, en un correo",) + _TXT["es"][1:5] + ("Newsletter de pádel",))
     tx = json.dumps(t_padel if padel else _TXT, ensure_ascii=False)
     return (f'<style>{CSS}</style>'
-            f'<aside class="nls{" padel" if padel else ""}" id="nls" aria-label="Newsletter" hidden>'
+            f'<aside class="nls mini{" padel" if padel else ""}" id="nls" aria-label="Newsletter" hidden>'
+            f'<button class="nls-pill" type="button" aria-expanded="false"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></i><span data-t="5"></span></button>'
             f'<button class="x" type="button" aria-label="Close">×</button>'
             f'<div class="nls-t"><img src="/newsletter/cover{"-padel" if padel else ""}.jpg" alt="" onerror="this.remove()"><div><b data-t="0"></b><small><span data-t="1"></span> · <a href="/newsletter/latest.html" data-t="2"></a></small></div></div>'
             f'<form action="{esc(url)}" method="post" target="_blank" data-nlf><input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
@@ -128,5 +138,6 @@ var x=+g("b100_nl_x")||0;if(Date.now()-x<14*864e5)return;
 var shown=false;function chk(){if(shown)return;var h=document.documentElement,sc=(h.scrollTop||document.body.scrollTop)/Math.max(1,h.scrollHeight-h.clientHeight);
   if(sc>=.25){shown=true;a.hidden=false;requestAnimationFrame(function(){requestAnimationFrame(function(){a.classList.add("on")})});removeEventListener("scroll",chk)}}
 addEventListener("scroll",chk,{passive:true});
+a.querySelector(".nls-pill").onclick=function(){a.classList.remove("mini");this.setAttribute("aria-expanded","true");var i=a.querySelector("input[type=email]");if(i)setTimeout(function(){i.focus()},250)};
 a.querySelector(".x").onclick=function(){a.classList.remove("on");s("b100_nl_x",String(Date.now()));setTimeout(function(){a.hidden=true},500)};
 })();</script>""")

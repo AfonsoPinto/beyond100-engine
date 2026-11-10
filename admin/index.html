@@ -179,8 +179,8 @@ async function padelEstado(){
 async function padelPosts(){
   const q=await readFile("padel/data/posts.json").catch(()=>({data:null}));
   const KIND={intro:"Apresentação",result:"Resultado",preview:"Antevisão",weekly:"Lista semanal"};
-  const label=e=>{const f=e.facts||{};if(e.kind==="intro")return "Post de apresentação "+e.n;if(f.finals)return f.finals.map(x=>x.category+": "+(x.winners||[]).map(p=>p.name).join(" / ")+" "+x.score).join(" · ");if(e.kind==="result")return (f.winners||[]).map(p=>p.name).join(" / ")+" d. "+(f.losers||[]).map(p=>p.name).join(" / ")+" "+(f.score||"");if(e.kind==="preview")return (f.pair_1||[]).join(" / ")+" vs "+(f.pair_2||[]).join(" / ");return (f.feature||"")+(f.category?" · "+f.category:"")};
-  const items=((q.data||{}).queue||[]).slice().reverse().map(e=>{const f=e.facts||{};return {img:"/posts/"+e.image,link:"/posts/"+e.image,kind:f.finals?"Campeões":(KIND[e.kind]||e.kind),label:label(e),
+  const label=e=>{const f=e.facts||{};if(e.kind==="intro")return "Post de apresentação "+e.n;if(String(e.id||"").startsWith("race-"))return "Race to the Finals"+(typeof f.finals==="string"?" · "+f.finals:"");if(Array.isArray(f.finals))return f.finals.map(x=>x.category+": "+(x.winners||[]).map(p=>p.name).join(" / ")+" "+x.score).join(" · ");if(e.kind==="result")return (f.winners||[]).map(p=>p.name).join(" / ")+" d. "+(f.losers||[]).map(p=>p.name).join(" / ")+" "+(f.score||"");if(e.kind==="preview")return (f.pair_1||[]).join(" / ")+" vs "+(f.pair_2||[]).join(" / ");return (f.feature||"")+(f.category?" · "+f.category:"")};
+  const items=((q.data||{}).queue||[]).slice().reverse().map(e=>{const f=e.facts||{};return {img:"/posts/"+e.image,link:"/posts/"+e.image,kind:String(e.id||"").startsWith("race-")?"Race":Array.isArray(f.finals)?"Campeões":(KIND[e.kind]||e.kind),label:label(e),
     sub:f.tournament?esc(f.tournament)+" · "+esc(f.round||""):"",score:e.score||"",sent:e.sent,skipped:e.skipped,when:e.sent_ts?fmtTs(e.sent_ts*1000):""}});
   if(!cache.vars){cache.vars=await api("vars").catch(()=>({}))}
   const V=cache.vars||{},on=["1","true","yes","on"].includes(String(V.PADEL_PUBLISH||"").toLowerCase());
