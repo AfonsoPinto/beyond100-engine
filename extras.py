@@ -183,6 +183,14 @@ def match_title(r):
     return f'{a} beat {b} {sc} · {webapp.base_tournament(r.get("tournament", ""))} · Beyond100'
 
 
+def _nl_inline(title):
+    try:
+        import nl_cta
+        return nl_cta.inline(title)
+    except Exception:
+        return ""
+
+
 def match_page(r, results, tr, tx):
     tr = dict(tr, _tx=tx)
     w = r["winner"]
@@ -235,7 +243,7 @@ def match_page(r, results, tr, tx):
         vid = ""
     i = board.find('<h2 class="ui-sec"')
     board = board[:i] + facts + board[i:] if i > 0 else board + facts
-    return head + vid + board + hh
+    return head + vid + board + _nl_inline("Enjoyed this match? Get the week's best in one email") + hh
 
 
 # ---------- página de jogador ----------
@@ -551,8 +559,10 @@ def player_page(e, tr, tx, ranks_by_name=None):
         vids = ""
     women = any(r.get("gender") == "women" or r.get("tour") == "wta" for _, r in ms)
     yr = (ms[0][1].get("date") or "")[:4] if ms else ""
+    nl_box = _nl_inline(f"Following {e['name']}? Get the whole week in one email")
     return (hero + profile_block(e, ms, rk_int, women) +
             f'{ranking_block(e["name"], ms, rk_int)}{next_match_block(e["name"])}{vids}{season_line(PSTATS_BY_NAME.get(sl))}<div class="sfs">{sh}</div>{bh}{career_block(e["name"], women)}'
+            f'{nl_box}'
             f'<h2 class="dh">{esc(e["name"])} results{f" {yr}" if yr else ""}</h2><section class="tg">{body}</section>{related_block(e, rk_int)}')
 
 

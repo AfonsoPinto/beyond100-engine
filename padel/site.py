@@ -552,6 +552,22 @@ def winners_html(t, db):
 
 
 # ------------------------------------------------------------------ página
+def _nl_inline(title):
+    try:
+        import nl_cta
+        return nl_cta.inline(title, sport="padel")
+    except Exception:
+        return ""
+
+
+def _nl_slide():
+    try:
+        import nl_cta
+        return nl_cta.slide("padel")
+    except Exception:
+        return ""
+
+
 def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
     try:
         import result_card as rc
@@ -582,7 +598,7 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
             f'<nav><a class="brand" href="/padel/index.html">BEYOND PADEL</a><div>{live_pill}{topnav}<a href="{IG}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>{sport_switch.switch("padel")}'
             f'{site_more.SEARCH_HTML}{body}{LIVE_JS}'
             f'<footer>Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). '
-            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + '</body></html>')
+            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + '</body></html>')
 
 
 def write(out, path, htmltext):
@@ -1208,6 +1224,7 @@ def page_player(db, pid, p):
             f'<tr><td class="pn"><a href="{pair_path(e["team"])}">{esc(e["p"].get("name"))}</a></td><td>{e["n"]}</td><td>{e["w"]}-{e["n"] - e["w"]}</td></tr>'
             for e in sorted(partners.values(), key=lambda e: -e["n"])[:6]) + "</tbody></table>"
     if ms:
+        body += _nl_inline(f"Following {p.get('name') or 'this player'}? Get the padel week in one email")
         body += '<h2 class="dh">Last matches</h2><div class="pd-card">' + "".join(match_html(m, db, show_tour=True) for m, _ in ms[:10]) + "</div>"
         if len(ms) > 10:
             body += (f'<details class="pd-more2"><summary>All {len(ms)} matches</summary><div class="pd-card">'
@@ -1597,6 +1614,7 @@ def page_match(db, m):
                  + (f'<img src="{esc(v["img"])}" alt="" loading="lazy">' if v.get("img") else "")
                  + f'<span>▶ Watch on {esc(v["host"])} ↗</span></a><p class="pd-note">Official broadcast of this round ({esc(v["name"])}). Availability may depend on your country.</p>')
     body += score_html                                                  # o vídeo vem primeiro, logo a seguir o resultado
+    body += _nl_inline("Enjoyed this match? Get the padel week in one email")
     # percurso de cada par no torneio até este jogo
     ms = [x for x in db.by_t.get(str(m.get("tid")), []) if (x.get("draw") or "main") == (m.get("draw") or "main") and x.get("category") == m.get("category")]
     roads = ""
