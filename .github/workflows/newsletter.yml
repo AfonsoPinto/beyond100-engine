@@ -1,0 +1,24 @@
+name: Newsletter (teste)
+# Cria AGORA um rascunho de teste no Buttondown com a newsletter da semana ("[TEST]" no assunto). Nunca envia.
+# 0 pedidos à API de ténis e não guarda nada (o rascunho de domingo continua a ser feito pela atualização normal).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - run: rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf -
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt && sudo apt-get install -y fonts-inter
+      - name: Rascunho de teste
+        env:
+          BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
+          NEWSLETTER_FORCE: "1"
+        run: python newsletter.py

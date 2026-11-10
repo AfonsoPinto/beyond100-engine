@@ -358,7 +358,7 @@ def draft(d, html_out):
     if not key or st.get("draft") == wk or (not force and not (now.weekday() == 6 and now.hour >= 19)):
         return False
     import requests
-    subj = f"The week beyond the top 100 · Week {d['week']}"
+    subj = ("[TEST] " if force else "") + f"The week beyond the top 100 · Week {d['week']}"
     try:
         r = requests.post("https://api.buttondown.com/v1/emails", headers={"Authorization": f"Token {key}"},
                           json={"subject": subj, "body": html_out, "status": "draft"}, timeout=30)
@@ -368,6 +368,9 @@ def draft(d, html_out):
     if r.status_code >= 300:
         print(f"Newsletter: Buttondown respondeu {r.status_code}: {r.text[:200]}")
         return False
+    if force:                                                   # teste manual: não conta como o rascunho da semana
+        print(f"Newsletter: rascunho de TESTE criado no Buttondown ({subj}).")
+        return True
     st["draft"] = wk
     with open(STATE, "w", encoding="utf-8") as f:
         json.dump(st, f)
