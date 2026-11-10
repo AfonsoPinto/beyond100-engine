@@ -461,8 +461,16 @@ def draft(d, html_out):
     import requests
     subj = ("[TEST] " if force else "") + f"The week beyond the top 100 · Week {d['week']}"
     try:
-        r = requests.post("https://api.buttondown.com/v1/emails", headers={"Authorization": f"Token {key}"},
-                          json={"subject": subj, "body": html_out, "status": "draft"}, timeout=30)
+        # 10/11/2026 (Afonso): ao domingo sai SOZINHA. Só fica em rascunho se for um teste ou se a semana estiver vazia/estranha.
+        ok_week = d["n_results"] >= 30 and (d["champs"] or d["pchamps"])
+        auto = not force and ok_week and os.environ.get("NEWSLETTER_AUTOSEND", "1") != "0"
+        if not force and not ok_week:
+            print(f"Newsletter: semana com poucos dados ({d['n_results']} resultados, {len(d['champs'])} campeões): fica em rascunho para veres.")
+        hdr = {"Authorization": f"Token {key}", "X-API-Version": "2026-04-01"}
+        if auto:
+            hdr["X-Buttondown-Live-Dangerously"] = "true"           # o 1.º envio de cada chave pede esta confirmação
+        r = requests.post("https://api.buttondown.com/v1/emails", headers=hdr,
+                          json={"subject": subj, "body": html_out, "status": "about_to_send" if auto else "draft"}, timeout=30)
     except Exception as e:
         print("Newsletter: Buttondown falhou", type(e).__name__)
         return False
@@ -475,9 +483,10 @@ def draft(d, html_out):
     st = _load(STATE, {})
     st["draft"] = wk
     st["draft_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    st["sent"] = bool(auto)
     with open(STATE, "w", encoding="utf-8") as f:
         json.dump(st, f)
-    print(f"Newsletter: rascunho criado no Buttondown ({subj}).")
+    print(f"Newsletter: {'ENVIADA aos inscritos' if auto else 'rascunho criado'} no Buttondown ({subj}).")
     return True
 
 
