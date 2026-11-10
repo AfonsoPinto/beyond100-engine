@@ -1,6 +1,6 @@
 """Story diária "Today on court" (1080x1920), no estilo dos cartões novos (9/11/2026).
-Fica no site em /story/today-tennis.jpg para o Afonso publicar à mão (com o autocolante de link para o site),
-porque a API do Instagram não deixa pôr links em stories e o Make não publica stories.
+DESLIGADA a 10/11/2026 (pedido do Afonso): só volta a ser gerada quando a API oficial do Instagram estiver ligada e a story
+puder sair sozinha (publisher._send_graph_story). Até lá o workflow não a gera.
 
   python story_cards.py out      -> out/story/today-tennis.jpg (sem pedidos à API: usa upcoming.json e fixtures.json)
 """
