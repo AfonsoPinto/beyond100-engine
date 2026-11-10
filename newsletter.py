@@ -103,107 +103,242 @@ def week_data(today=None):
             "climb": climb, "quals": quals, "pchamps": pchamps, "race": race, "next_t": nxt_t, "next_p": nxt_p, "n_results": len(res)}
 
 
-def _photo(name):
-    sl = slug(name)
-    for rel in (f"photos/{sl}.jpg",):
-        if os.path.exists(rel):
-            return f"{SITE}/img/big/{sl}.jpg"
-    return ""
-
-
+CORAL, SKY, CARD, LINE = "#ff8a78", "#9fd3ff", "#0b2e24", "#1f4a3d"
 FONT = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif"
-CARD, LINE = "#0b2e24", "#1f4a3d"
+TIGHT = "font-feature-settings:'tnum';letter-spacing:-0.5px"
 
 
-def _h2(t, c=VOLT):
-    return (f'<tr><td style="padding:34px 28px 10px"><div style="font:800 12px {FONT};letter-spacing:2.5px;color:{c};text-transform:uppercase">{esc(t)}</div></td></tr>')
+def _photo_file(name):
+    """Foto do jogador que passa no filtro de qualidade dos posts (nítida, grande, sem grupo) + crédito."""
+    sl = slug(name)
+    fp = f"photos/{sl}.jpg"
+    if not os.path.exists(fp):
+        return None, None
+    try:
+        import photo_quality
+        if not photo_quality.card_ok(fp, name):
+            return None, None
+    except Exception:
+        pass
+    return fp, _load("photos/credits.json", {}).get(f"{sl}.jpg")
 
 
-def _row(left, title, sub, href="", tag_color=VOLT):
+def _assets(d, out="site/newsletter"):
+    """Imagens próprias da newsletter (renderizadas como os cartões do Instagram, por isso iguais em qualquer cliente de email):
+    a capa do campeão da semana e miniaturas redondas dos jogadores. Vão para o site em /newsletter/w<semana>/."""
+    from PIL import Image, ImageDraw, ImageOps
+    import modern_cards as mc
+    wk = f"w{d['week']}"
+    od = os.path.join(out, wk)
+    os.makedirs(od, exist_ok=True)
+    url = lambda fn: f"{SITE}/newsletter/{wk}/{fn}"
+    res = {"hero": "", "thumbs": {}}
+    top = d.get("top")
+    fp, cr = _photo_file(top["name"]) if top else (None, None)
+    if fp:
+        P = mc.PALETTE["tennis"]
+        W_, H_ = 1200, 1380
+        img = Image.new("RGBA", (W_, H_), P["bg"] + (255,))
+        img.alpha_composite(mc._photo(fp, (W_, H_), (0.5, 0.18)))
+        img = mc._grad(img, 0, 300, (0, 0, 0), 150, 0)
+        img = mc._grad(img, 560, H_, P["bg"], 0, 255).convert("RGB")
+        dr = ImageDraw.Draw(img, "RGBA")
+        mc._chips(dr, 64, 64, ["TITLE", f"#{top['rank']}" if top.get("rank") else "", (top.get("t") or "").upper()], P, 30)
+        nm = top["name"].split()
+        if len(nm) > 1:
+            dr.text((66, 930), " ".join(nm[:-1]).upper(), font=mc.F("bold", 46), fill=P["cream"], anchor="ls")
+        mc._paste_sq(img, nm[-1].upper(), "black", 240, P["cream"] + (255,), 56, 1150, W_ - 120, sx=0.72, anchor="lb")
+        dr = ImageDraw.Draw(img, "RGBA")
+        x = 64
+        for st in (top.get("score") or "").split():
+            a_, _, b_ = st.partition("-")
+            won = a_[:1].isdigit() and b_[:1].isdigit() and int(a_[:1]) > int(b_[:1])
+            f = mc.F("black", 96)
+            dr.text((x, 1270), st, font=f, fill=P["acc"] if won else P["soft"], anchor="ls")
+            x += dr.textlength(st, font=f) + 44
+        dr.text((66, 1330), f"def. {top.get('loser') or ''}", font=mc.F("semi", 32), fill=P["cream"], anchor="ls")
+        if cr:
+            dr.text((W_ - 64, 1330), cr, font=mc._fit(dr, cr, "med", 20, 520, 12), fill=P["soft"], anchor="rs")
+        img.save(os.path.join(od, "hero.jpg"), quality=86, optimize=True, progressive=True)
+        res["hero"] = url("hero.jpg")
+    names = [c["name"] for c in d.get("others", [])] + [u["w"] for u in d.get("upsets", [])] + [x["n"] for lg in ("atp", "wta") for x in d["climb"][lg]]
+    for n in dict.fromkeys(names):
+        fp, _ = _photo_file(n)
+        if not fp:
+            continue
+        s = 160
+        im = ImageOps.fit(Image.open(fp).convert("RGB"), (s, s), Image.LANCZOS, centering=(0.5, 0.2))
+        mk = Image.new("L", (s * 4, s * 4), 0)
+        ImageDraw.Draw(mk).ellipse([0, 0, s * 4 - 1, s * 4 - 1], fill=255)
+        bg = Image.new("RGB", (s, s), (11, 46, 36))          # fundo igual ao cartão (sem transparência, que o Outlook estraga)
+        bg.paste(im, (0, 0), mk.resize((s, s), Image.LANCZOS))
+        fn = f"{slug(n)}.jpg"
+        bg.save(os.path.join(od, fn), quality=85)
+        res["thumbs"][n] = url(fn)
+    return res
+
+
+def _t(inner, pad="0 24px"):
+    return f'<tr><td style="padding:{pad}">{inner}</td></tr>'
+
+
+def _tbl(inner, style=""):
+    return f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;{style}">{inner}</table>'
+
+
+def _h2(t, n="", c=VOLT):
+    num = f'<td align="right" style="font:700 12px {FONT};color:{SOFT};letter-spacing:1.5px">{esc(str(n))}</td>' if n != "" else ""
+    return _t(_tbl(f'<tr><td style="font:800 12px {FONT};letter-spacing:2.5px;color:{c};text-transform:uppercase">'
+                   f'<span style="display:inline-block;width:8px;height:8px;border-radius:8px;background:{c};margin-right:8px;vertical-align:1px"></span>{esc(t)}</td>{num}</tr>'),
+              "40px 24px 14px")
+
+
+def _chip(t, bg, fg=INK):
+    return f'<span style="display:inline-block;background:{bg};color:{fg};font:800 11px {FONT};letter-spacing:1px;padding:5px 10px;border-radius:999px;text-transform:uppercase;white-space:nowrap">{t}</span>'
+
+
+def _avatar(url, label, color):
+    if url:
+        return f'<img src="{url}" width="48" height="48" alt="" style="display:block;width:48px;height:48px;border-radius:48px;border:2px solid {color}">'
+    return (f'<div style="width:48px;height:48px;border-radius:48px;background:{LINE};color:{color};font:900 16px/48px {FONT};text-align:center">{label}</div>')
+
+
+def _item(av, title, sub, right="", href="", last=False):
     a0, a1 = (f'<a href="{esc(href)}" style="color:{CREAM};text-decoration:none">', "</a>") if href else ("", "")
-    return (f'<tr><td style="padding:0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid {LINE}">'
-            f'<tr><td width="64" style="padding:14px 0;font:800 18px {FONT};color:{tag_color};vertical-align:middle;white-space:nowrap">{left}</td>'
-            f'<td style="padding:14px 0 14px 8px"><div style="font:700 17px/1.3 {FONT};color:{CREAM}">{a0}{title}{a1}</div>'
-            f'<div style="font:500 13px/1.4 {FONT};color:{SOFT};margin-top:3px">{sub}</div></td></tr></table></td></tr>')
+    return (f'<tr><td width="60" style="padding:12px 0;vertical-align:middle{"" if last else f";border-bottom:1px solid {LINE}"}">{av}</td>'
+            f'<td style="padding:12px 0;vertical-align:middle{"" if last else f";border-bottom:1px solid {LINE}"}"><div style="font:700 16px/1.3 {FONT};color:{CREAM}">{a0}{title}{a1}</div>'
+            f'<div style="font:500 13px/1.45 {FONT};color:{SOFT};margin-top:2px">{sub}</div></td>'
+            f'<td align="right" style="padding:12px 0 12px 10px;vertical-align:middle;white-space:nowrap{"" if last else f";border-bottom:1px solid {LINE}"}">{right}</td></tr>')
 
 
-def _stats(items):
-    cells = "".join(f'<td width="{100 // len(items)}%" style="padding:16px 8px;text-align:center;border-right:1px solid {LINE}">'
-                    f'<div style="font:900 30px {FONT};color:{VOLT};letter-spacing:-1px">{v}</div>'
-                    f'<div style="font:700 11px {FONT};color:{SOFT};letter-spacing:1.5px;text-transform:uppercase;margin-top:4px">{esc(k)}</div></td>'
-                    for v, k in items)
-    return (f'<tr><td style="padding:6px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            f'style="background:{CARD};border:1px solid {LINE};border-radius:18px"><tr>{cells}</tr></table></td></tr>')
+def _panel(rows, bg=CARD, line=LINE):
+    return _t(_tbl(f'<tr><td style="padding:6px 18px">{_tbl(rows)}</td></tr>', f"background:{bg};border:1px solid {line};border-radius:22px"))
 
 
-def render(d):
-    rows = _stats([(d["n_results"], "results"), (len(d["champs"]), "champions"), (len(d["upsets"]), "upsets")])
-    # destaque: o campeão com o ranking mais "beyond" da semana
-    top = (d["beyond"] or d["champs"] or [None])[0]
+def _bento(d):
+    cell = lambda v, k, bg, fg, sub: (f'<td width="33%" valign="top" style="padding:0 4px"><div style="background:{bg};border-radius:20px;padding:18px 16px 16px">'
+                                       f'<div style="font:900 38px/1 {FONT};color:{fg};{TIGHT}">{v}</div>'
+                                       f'<div style="font:800 11px {FONT};color:{fg};letter-spacing:1.5px;text-transform:uppercase;margin-top:10px;opacity:.85">{k}</div>'
+                                       f'<div style="font:500 12px/1.35 {FONT};color:{fg};margin-top:4px;opacity:.7">{sub}</div></div></td>')
+    beyond = len(d["beyond"])
+    return _t(_tbl('<tr>' + cell(d["n_results"], "results", VOLT, INK, "tracked this week")
+                   + cell(len(d["champs"]), "champions", "#174a3a", CREAM, f"{beyond} from outside the top 100" if beyond else "on tour")
+                   + cell(len(d["upsets"]), "upsets", CORAL, "#3a0d06", "150+ ranking places") + '</tr>'), "8px 20px 0")
+
+
+def _date(s):
+    try:
+        x = dt.date.fromisoformat((s or "")[:10])
+        return f'<div style="font:900 22px/1 {FONT};color:{CREAM};{TIGHT}">{x.day}</div><div style="font:800 10px {FONT};color:{SOFT};letter-spacing:1.5px;margin-top:3px">{x.strftime("%b").upper()}</div>'
+    except ValueError:
+        return ""
+
+
+def render(d, assets=None):
+    A = assets or {"hero": "", "thumbs": {}}
+    th = A["thumbs"]
+    top = d.get("top")
+    rows = _bento(d)
     if top:
-        ph = _photo(top["name"])
         rows += _h2("Champion of the week")
-        img = (f'<tr><td style="padding:0 28px"><img src="{ph}" width="544" alt="{esc(top["name"])}" style="display:block;width:100%;max-width:544px;height:auto;border-radius:22px 22px 0 0"></td></tr>'
-               if ph else "")
-        rows += img + (f'<tr><td style="padding:0 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{CARD};border:1px solid {LINE};border-radius:{"0 0 22px 22px" if ph else "22px"}">'
-                       f'<tr><td style="padding:22px 22px 24px">'
-                       f'<div style="font:900 34px/1.05 {FONT};color:{CREAM};letter-spacing:-1px;text-transform:uppercase">{esc(top["name"])}</div>'
-                       f'<div style="font:600 15px/1.5 {FONT};color:{SOFT};margin-top:10px">' + (f'<span style="color:{VOLT};font-weight:800">#{top["rank"]}</span> · ' if top.get("rank") else "")
-                       + f'won <b style="color:{CREAM}">{esc(top["t"] or "")}</b>, beating {esc(top["loser"])}</div>'
-                       f'<div style="font:900 30px {FONT};color:{VOLT};margin-top:12px;letter-spacing:-0.5px">{esc(top["score"])}</div>'
-                       f'<div style="margin-top:16px"><a href="{SITE}/m/{top["id"]}.html" style="display:inline-block;background:{VOLT};color:{INK};font:800 13px {FONT};padding:10px 18px;border-radius:999px;text-decoration:none">Full match →</a></div>'
-                       f'</td></tr></table></td></tr>')
-    others = [c for c in d["champs"] if c is not top][:6]
-    if others:
-        rows += _h2("More champions")
-        for c in others:
-            rows += _row("TITLE", esc(c["name"]), esc(f'{c["t"]} · ' + (f'#{c["rank"]} · ' if c.get("rank") else "") + c["score"]), f'{SITE}/m/{c["id"]}.html')
+        if A["hero"]:
+            rows += _t(f'<a href="{SITE}/m/{top["id"]}.html"><img src="{A["hero"]}" width="552" alt="{esc(top["name"])}, champion in {esc(top.get("t") or "")}: {esc(top["score"])}" '
+                       f'style="display:block;width:100%;max-width:552px;height:auto;border-radius:24px;border:0"></a>')
+        else:
+            rows += _panel(_item(_avatar("", "T", VOLT), esc(top["name"]), esc(f'{top.get("t")} · def. {top["loser"]}'), f'<span style="font:900 18px {FONT};color:{VOLT}">{esc(top["score"])}</span>', last=True))
+        rows += _t(_tbl(f'<tr><td style="font:500 15px/1.55 {FONT};color:{SOFT}">'
+                        + (f'Ranked <b style="color:{CREAM}">#{top["rank"]}</b> and still the last one standing in <b style="color:{CREAM}">{esc(top.get("t") or "")}</b>. ' if top.get("rank") else "")
+                        + f'Final: {esc(top["score"])} against {esc(top["loser"])}.</td>'
+                        f'<td align="right" width="130" style="vertical-align:middle"><a href="{SITE}/m/{top["id"]}.html" style="display:inline-block;background:{CREAM};color:{INK};font:800 13px {FONT};padding:11px 16px;border-radius:999px;text-decoration:none">Full match →</a></td></tr>'),
+                   "16px 24px 0")
+    if d["others"]:
+        rows += _h2("More champions", f'{len(d["champs"])} TITLES')
+        it = ""
+        for i, c in enumerate(d["others"]):
+            beyond = isinstance(c.get("rank"), int) and c["rank"] > 100
+            it += _item(_avatar(th.get(c["name"]), "T", VOLT), esc(c["name"]), esc(c["t"] or "") + f' · <span style="color:{CREAM}">{esc(c["score"])}</span>',
+                        _chip(f'#{c["rank"]}', VOLT if beyond else LINE, INK if beyond else CREAM) if c.get("rank") else "",
+                        f'{SITE}/m/{c["id"]}.html', i == len(d["others"]) - 1)
+        rows += _panel(it)
     if d["upsets"]:
-        rows += _h2("Upsets of the week")
+        rows += _h2("Upsets of the week", "", CORAL)
         for u in d["upsets"]:
-            rows += _row(f'#{u["wr"]}', esc(f'{u["w"]} beat {u["l"]}') + f' <span style="color:{SOFT};font-weight:600">#{u["lr"]}</span>',
-                         esc(f'{u["t"]} · {u["score"]}'), f'{SITE}/m/{u["id"]}.html', "#ff8a78")
+            gap = u["wr"] - u["lr"]
+            rows += _t(f'<a href="{SITE}/m/{u["id"]}.html" style="text-decoration:none">' + _tbl(
+                f'<tr><td style="padding:18px 20px">' + _tbl(
+                    f'<tr><td>{_chip(f"{gap} places apart", CORAL, "#3a0d06")}</td><td align="right" style="font:600 12px {FONT};color:{SOFT}">{esc(u["t"] or "")}</td></tr>')
+                + _tbl(f'<tr><td width="50%" style="padding-top:14px;vertical-align:top"><div style="font:900 34px/1 {FONT};color:{CORAL};{TIGHT}">#{u["wr"]}</div>'
+                       f'<div style="font:700 15px/1.3 {FONT};color:{CREAM};margin-top:6px">{esc(u["w"])}</div></td>'
+                       f'<td width="50%" align="right" style="padding-top:14px;vertical-align:top"><div style="font:900 34px/1 {FONT};color:{SOFT};{TIGHT};text-decoration:line-through">#{u["lr"]}</div>'
+                       f'<div style="font:600 15px/1.3 {FONT};color:{SOFT};margin-top:6px">{esc(u["l"])}</div></td></tr>')
+                + f'<div style="font:800 15px {FONT};color:{CREAM};margin-top:12px;{TIGHT}">{esc(u["score"]).replace(" ", "&nbsp;&nbsp;")}</div></td></tr>',
+                f"background:{CARD};border:1px solid {LINE};border-left:4px solid {CORAL};border-radius:20px") + '</a>', "0 24px 10px")
     if any(d["climb"].values()):
-        rows += _h2("Climbers · official rankings")
-        for lg in ("atp", "wta"):
-            for x in d["climb"][lg]:
-                rows += _row(f'▲{x["prev"] - x["r"]}', esc(x["n"]), esc(f'{lg.upper()} · No. {x["prev"]} → No. {x["r"]}' + (f' · {x["age"]} years old' if isinstance(x.get("age"), int) and x["age"] <= 21 else "")),
-                             f'{SITE}/rankings.html')
+        rows += _h2("Climbers", "OFFICIAL RANKINGS")
+        allc = [(lg, x) for lg in ("atp", "wta") for x in d["climb"][lg]]
+        mx = max(x["prev"] - x["r"] for _, x in allc) or 1
+        it = ""
+        for i, (lg, x) in enumerate(allc):
+            up = x["prev"] - x["r"]
+            w = max(8, round(100 * up / mx))
+            bar = (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:7px"><tr>'
+                   f'<td width="{w}%" style="height:5px;background:{VOLT};border-radius:5px;font-size:0;line-height:0">&nbsp;</td>'
+                   f'<td style="height:5px;font-size:0;line-height:0">&nbsp;</td></tr></table>')
+            young = f' · {x["age"]} yo' if isinstance(x.get("age"), int) and x["age"] <= 21 else ""
+            it += _item(_avatar(th.get(x["n"]), lg.upper(), VOLT), esc(x["n"]), f'{lg.upper()} · No. {x["prev"]} → <b style="color:{CREAM}">No. {x["r"]}</b>{young}{bar}',
+                        f'<span style="font:900 20px {FONT};color:{VOLT};{TIGHT}">▲{up}</span>', f'{SITE}/rankings.html', i == len(allc) - 1)
+        rows += _panel(it)
     if d["quals"]:
-        rows += _h2("Qualifier watch")
-        for q in d["quals"]:
-            rows += _row("Q", esc(q["name"]), esc(f'{q["tournament"]} · {q["wins"]} main-draw win{"s" if q["wins"] > 1 else ""}' + ("" if q["alive"] else " · out")))
-    # padel (azul, como o site do padel)
-    prow = ""
+        rows += _h2("Qualifier watch", "FROM QUALIFYING")
+        it = ""
+        for i, q in enumerate(d["quals"]):
+            it += _item(_avatar("", "Q", VOLT), esc(q["name"]), esc(q["tournament"]),
+                        _chip(f'{q["wins"]} win{"s" if q["wins"] > 1 else ""}' + ("" if q["alive"] else " · out"), VOLT if q["alive"] else LINE, INK if q["alive"] else CREAM),
+                        "", i == len(d["quals"]) - 1)
+        rows += _panel(it)
+    # padel: bloco azul, como o site do padel
+    pit = []
     for c in d["pchamps"][:4]:
         if c.get("nation"):
-            prow += _row("WORLD", esc(f'{c["pair"]}: world champions'), esc(f'{c["t"]} · {c["cat"]}'), f"{SITE}/padel/", "#9fd3ff")
+            pit.append((_avatar("", "WC", SKY), esc(f'{c["pair"]}: world champions'), esc(f'{c["t"]} · {c["cat"]}'), _chip("World", SKY, "#06233a")))
         else:
-            prow += _row("TITLE", esc(c["pair"]), esc(f'{c["t"]} · {c["cat"]}'), f"{SITE}/padel/", "#9fd3ff")
+            pit.append((_avatar("", "T", SKY), esc(c["pair"]), esc(f'{c["t"]} · {c["cat"]}'), _chip("Title", SKY, "#06233a")))
     rr = (d["race"].get("men") or {}).get("rows") or []
     if rr:
-        prow += _row("RACE", "Race to the Finals", esc("Top 8 pairs qualify · " + ", ".join(x["name"].split()[-1] for x in sorted(rr, key=lambda x: x["ranking"])[6:10]) + " on the bubble"), f"{SITE}/padel/rankings.html", "#9fd3ff")
+        bub = ", ".join(x["name"].split()[-1] for x in sorted(rr, key=lambda x: x["ranking"])[6:10])
+        pit.append((_avatar("", "8", SKY), "Race to the Finals", esc(f"Top 8 pairs qualify · on the bubble: {bub}"), _chip("Race", "#173f61", CREAM)))
     for t in d["next_p"][:3]:
-        prow += _row("NEXT", esc(t.get("name")), esc(f'Starts {t.get("start_date")} · {t.get("location") or ""}'), f"{SITE}/padel/tournaments.html", "#9fd3ff")
-    if prow:
-        rows += _h2("Padel", "#9fd3ff") + prow
+        pit.append((f'<div style="width:48px;text-align:center">{_date(t.get("start_date"))}</div>', esc(t.get("name")), esc(t.get("location") or ""), _chip("Next", "#173f61", CREAM)))
+    if pit:
+        rows += _h2("Padel", "BEYOND PADEL", SKY)
+        rows += _panel("".join(_item(a, b, c, r, f"{SITE}/padel/", i == len(pit) - 1) for i, (a, b, c, r) in enumerate(pit)), "#0b2740", "#1d4466")
     if d["next_t"]:
         rows += _h2("Coming up in tennis")
-        for e in d["next_t"][:4]:
-            rows += _row("NEXT", esc(e.get("name")), esc(f'Starts {(e.get("start") or "")[:10]} · {e.get("city") or ""}'), f"{SITE}/order-of-play.html")
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Beyond100 Weekly · Week {d['week']}</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet"></head>
-<body style="margin:0;background:#04150f"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#04150f"><tr><td align="center" style="padding:24px 8px">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:{G};border-radius:28px">
-<tr><td style="padding:30px 28px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="font:900 15px {FONT};color:{CREAM};letter-spacing:1px">BEYOND100</td>
-<td align="right" style="font:700 12px {FONT};color:{SOFT};letter-spacing:1.5px">WEEK {d['week']}</td></tr></table></td></tr>
-<tr><td style="padding:22px 28px 4px;font:900 44px/0.98 {FONT};color:{CREAM};letter-spacing:-1.5px;text-transform:uppercase">The week<br><span style="color:{VOLT}">beyond the top 100</span></td></tr>
-<tr><td style="padding:12px 28px 18px;font:500 15px/1.5 {FONT};color:{SOFT}">Tennis and padel from the Challenger, ITF, WTA and FIP courts, in two minutes.</td></tr>
+        nx = d["next_t"][:4]
+        rows += _panel("".join(_item(f'<div style="width:48px;text-align:center">{_date(e.get("start"))}</div>', esc(e.get("name")), esc(e.get("city") or ""),
+                                     "", f"{SITE}/order-of-play.html", i == len(nx) - 1) for i, e in enumerate(nx)))
+    try:
+        when = dt.date.fromisoformat(d["date"]).strftime("%-d %b %Y").upper()
+    except ValueError:
+        when = ""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">
+<title>The week beyond the top 100 · Week {d['week']}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<style>@media (max-width:480px){{.h1{{font-size:46px!important}}}}</style></head>
+<body style="margin:0;padding:0;background:#03110c">
+<div style="display:none;max-height:0;overflow:hidden">{len(d['champs'])} champions, {len(d['upsets'])} upsets and the week's biggest climbers, from the courts beyond the top 100.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#03110c"><tr><td align="center" style="padding:20px 8px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:{DEEP};border-radius:32px;border:1px solid {LINE}">
+<tr><td style="padding:26px 24px 0">{_tbl(f'<tr><td style="font:900 14px {FONT};color:{CREAM};letter-spacing:1px">BEYOND100</td><td align="right">{_chip(f"Weekly · No. {d['week']}", LINE, CREAM)}</td></tr>')}</td></tr>
+<tr><td style="padding:30px 24px 0;font:700 12px {FONT};color:{SOFT};letter-spacing:2px">{when}</td></tr>
+<tr><td class="h1" style="padding:8px 24px 0;font:900 56px/0.92 {FONT};color:{CREAM};letter-spacing:-2.5px;text-transform:uppercase">The week<br><span style="color:{VOLT}">beyond<br>the top 100</span></td></tr>
+<tr><td style="padding:16px 24px 22px;font:500 16px/1.5 {FONT};color:{SOFT}">Challenger, ITF, WTA 125 and FIP padel. Everything that mattered, in two minutes.</td></tr>
 {rows}
-<tr><td style="padding:34px 28px 10px"><a href="{SITE}" style="display:block;text-align:center;background:{VOLT};color:{INK};font:800 15px {FONT};padding:15px 22px;border-radius:999px;text-decoration:none">All results on beyond100tennis.com →</a></td></tr>
-<tr><td style="padding:14px 28px 30px;font:500 12px/1.6 {FONT};color:{SOFT}">Follow <a href="https://www.instagram.com/beyond100.tennis/" style="color:{CREAM}">@beyond100.tennis</a> and <a href="https://www.instagram.com/beyond100.padel/" style="color:{CREAM}">@beyond100.padel</a>.<br>
-Photos: licensed (Wikimedia Commons / authorised), credits on the site. You get this because you subscribed on our site. <a href="{{{{unsubscribe_url}}}}" style="color:{SOFT}">Unsubscribe</a></td></tr>
+<tr><td style="padding:40px 24px 0">{_tbl(f'<tr><td style="background:{VOLT};border-radius:24px;padding:26px 24px"><div style="font:900 26px/1.05 {FONT};color:{INK};letter-spacing:-1px">Every player.<br>Every draw.</div>'
+    f'<div style="font:600 14px/1.5 {FONT};color:{INK};margin:8px 0 16px;opacity:.8">Live scores, draws and rankings for over 2,000 players.</div>'
+    f'<a href="{SITE}" style="display:inline-block;background:{INK};color:{VOLT};font:800 14px {FONT};padding:12px 20px;border-radius:999px;text-decoration:none">Open beyond100tennis.com →</a></td></tr>')}</td></tr>
+<tr><td style="padding:22px 24px 4px">{_tbl(f'<tr><td><a href="https://www.instagram.com/beyond100.tennis/" style="text-decoration:none">{_chip("@beyond100.tennis", LINE, CREAM)}</a> <a href="https://www.instagram.com/beyond100.padel/" style="text-decoration:none">{_chip("@beyond100.padel", "#173f61", CREAM)}</a></td></tr>')}</td></tr>
+<tr><td style="padding:14px 24px 30px;font:500 12px/1.6 {FONT};color:{SOFT}">Photos: licensed (Wikimedia Commons / authorised), credits on the site. You get this because you subscribed on our site. <a href="{{{{unsubscribe_url}}}}" style="color:{SOFT}">Unsubscribe</a></td></tr>
 </table></td></tr></table></body></html>"""
 
 
@@ -242,7 +377,15 @@ def draft(d, html_out):
 
 def main():
     d = week_data()
-    out = render(d)
+    d["top"] = (d["beyond"] or d["champs"] or [None])[0]
+    rest = [c for c in d["beyond"] + d["champs"] if c is not d["top"]]
+    d["others"] = list({id(c): c for c in rest}.values())[:6]          # primeiro os de fora do top 100
+    try:
+        assets = _assets(d)
+    except Exception as e:
+        print("Newsletter: imagens falharam", type(e).__name__, e)
+        assets = None
+    out = render(d, assets)
     with open("newsletter.html", "w", encoding="utf-8") as f:
         f.write(out)
     os.makedirs("site/newsletter", exist_ok=True)
