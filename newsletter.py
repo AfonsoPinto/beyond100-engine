@@ -90,7 +90,10 @@ def week_data(today=None):
                         ties.setdefault(k, set()).add(m.get("category"))
                     continue
                 ps = ((m.get("players") or {}).get(m["winner"]) or [])
-                pchamps.append({"t": t.get("name"), "cat": m.get("category"), "pair": " / ".join(p.get("name") for p in ps)})
+                pchamps.append({"t": t.get("name"), "cat": m.get("category"), "pair": " / ".join(p.get("name") for p in ps),
+                                "pids": [p.get("id") for p in ps], "short": [p.get("short_name") or (p.get("name") or "").split()[-1] for p in ps],
+                                "score": " ".join(f'{(x or {}).get(m["winner"])}-{(x or {}).get("team_2" if m["winner"] == "team_1" else "team_1")}'
+                                                  for x in (m.get("score") or []) if isinstance(x, dict))})
         for (tn, nation), cats in ties.items():
             pchamps.insert(0, {"t": tn, "cat": " and ".join(sorted(cats, key=lambda c: c != "men")), "pair": nation, "nation": True})
     except Exception as e:
@@ -162,6 +165,10 @@ def _assets(d, out="site/newsletter"):
         img.save(os.path.join(od, "hero.jpg"), quality=86, optimize=True, progressive=True)
         img.resize((300, 345), Image.LANCZOS).save(os.path.join(out, "cover.jpg"), quality=84)   # capa pequena para os convites do site
         res["hero"] = url("hero.jpg")
+    try:
+        _padel_cover(d, out)
+    except Exception as e:
+        print("Newsletter: capa do padel falhou", type(e).__name__, e)
     names = [c["name"] for c in d.get("others", [])] + [u["w"] for u in d.get("upsets", [])] + [x["n"] for lg in ("atp", "wta") for x in d["climb"][lg]]
     for n in dict.fromkeys(names):
         fp, _ = _photo_file(n)
@@ -177,6 +184,78 @@ def _assets(d, out="site/newsletter"):
         bg.save(os.path.join(od, fn), quality=85)
         res["thumbs"][n] = url(fn)
     return res
+
+
+def _padel_cover(d, out):
+    """Capa do padel para os convites do site (/newsletter/cover-padel.jpg), 10/11/2026: os campeões de padel da semana.
+    Com foto boa (licenciada, filtro dos posts) dos DOIS jogadores do par: foto dividida ao meio. Senão: capa desenhada com os
+    nomes e o resultado. Sem campeões de padel na semana: não há ficheiro e o site mostra a capa fixa "The padel week"."""
+    from PIL import Image, ImageDraw
+    import modern_cards as mc
+    fp_out = os.path.join(out, "cover-padel.jpg")
+    if os.path.exists(fp_out):
+        os.remove(fp_out)
+    pc = d.get("pchamps") or []
+    if not pc:
+        return
+    P = mc.PALETTE["padel"]
+    W_, H_ = 600, 690
+    photos, top = None, None
+    try:
+        import padel.cards as pcards
+        for c in pc:
+            if c.get("nation") or len(c.get("pids") or []) != 2:
+                continue
+            ph = [pcards.photo_of(i) for i in c["pids"]]
+            if all(x[0] and not x[2] for x in ph):
+                photos, top = ph, c
+                break
+    except Exception:
+        pass
+    top = top or pc[0]
+    img = Image.new("RGBA", (W_, H_), P["bg"] + (255,))
+    if photos:
+        for k, (fp, _, _) in enumerate(photos):
+            img.alpha_composite(mc._photo(fp, (W_ // 2, H_), (0.5, 0.2)), (k * W_ // 2, 0))
+        img = mc._grad(img, 0, 160, (0, 0, 0), 140, 0)
+        img = mc._grad(img, 300, H_, P["bg"], 0, 255)
+    else:                                                       # capa desenhada: gradiente azul e o campo de padel em linhas
+        g = Image.new("RGBA", (W_, H_))
+        gd = ImageDraw.Draw(g)
+        for y in range(H_):
+            k = y / H_
+            gd.line([(0, y), (W_, y)], fill=(int(22 - 14 * k), int(80 - 46 * k), int(127 - 69 * k), 255))
+        img.alpha_composite(g)
+        ov = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+        od = ImageDraw.Draw(ov)
+        lc = (255, 255, 255, 34)
+        od.rectangle([70, 40, W_ - 70, 520], outline=lc, width=4)
+        od.line([(70, 280), (W_ - 70, 280)], fill=(255, 255, 255, 60), width=6)
+        for y in (130, 430):
+            od.line([(70, y), (W_ - 70, y)], fill=lc, width=3)
+        od.line([(W_ // 2, 130), (W_ // 2, 430)], fill=lc, width=3)
+        img.alpha_composite(ov)
+    img = img.convert("RGB")
+    dr = ImageDraw.Draw(img, "RGBA")
+    nation = bool(top.get("nation"))
+    mc._chips(dr, 30, 30, ["WORLD CHAMPIONS" if nation else "PADEL TITLE", (top.get("cat") or "").upper() if not nation else ""], P, 18)
+    if nation:
+        lines = [top["pair"].upper()]
+    else:
+        lines = [x.upper() for x in (top.get("short") or top["pair"].split(" / "))]
+    y = 600 - (len(lines) - 1) * 92 - (60 if top.get("score") else 0)
+    for i, ln in enumerate(lines):
+        mc._paste_sq(img, ln + (" /" if i < len(lines) - 1 else ""), "black", 104, P["cream"] + (255,), 28, y + i * 92, W_ - 56, sx=0.74, anchor="lb")
+    dr = ImageDraw.Draw(img, "RGBA")
+    if top.get("score") and not nation:
+        dr.text((30, 600), top["score"].replace(" ", "  "), font=mc.F("black", 50), fill=P["acc"], anchor="ls")
+    tn = (top.get("t") or "").upper()
+    dr.text((30, 650), tn, font=mc._fit(dr, tn, "semi", 22, W_ - 60, 12), fill=P["soft"], anchor="ls")
+    if photos:
+        cr = " · ".join(x[1] for x in photos if x[1])
+        if cr:
+            dr.text((W_ - 30, 676), cr, font=mc._fit(dr, cr, "med", 12, W_ - 60, 8), fill=P["soft"], anchor="rs")
+    img.resize((300, 345), Image.LANCZOS).save(fp_out, quality=86)
 
 
 def _t(inner, pad="0 24px"):
