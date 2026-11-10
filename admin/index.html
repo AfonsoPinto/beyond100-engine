@@ -42,7 +42,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 8px;b
 const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 try{localStorage.setItem("b100_owner","1")}catch(e){}
 // o mesmo molde nas duas vertentes: Estado · Posts · Visitas · Definições, e depois o que é só de uma delas
-const TABS_T=[["estado","Estado"],["posts","Posts"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"],["noticias","Notícias"],["jogos","Jogos"],["handles","Perfis"],["cats","Categorias"],["acoes","Ações"]];
+const TABS_T=[["estado","Estado"],["posts","Posts"],["newsletter","Newsletter"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"],["noticias","Notícias"],["jogos","Jogos"],["handles","Perfis"],["cats","Categorias"],["acoes","Ações"]];
 const TABS_P=[["estado","Estado"],["posts","Posts"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"]];
 let _h=(location.hash||"#tenis/estado").slice(1).split("/"), sport=(_h[0]==="padel"?"padel":"tenis"), tab=_h[1]||"estado", cache={};
 if(_h.length===1&&_h[0]==="padel"){sport="padel";tab="estado"}
@@ -64,7 +64,7 @@ function nav(){ if(!TABS().some(([k])=>k===tab))tab=TABS()[0][0];
   $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){tab=b.dataset.t;location.hash=sport+"/"+tab;show()}};
   $("#sport").onclick=e=>{const b=e.target.closest("button");if(b&&b.dataset.s!==sport){sport=b.dataset.s;tab=TABS()[0][0];location.hash=sport+"/"+tab;show()}}}
 async function show(){nav();$("#main").innerHTML='<p class="mut">A carregar…</p>';
-  const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
+  const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
   try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
 
 setInterval(()=>{if(tab==="estado"&&sport!=="padel"&&!document.hidden){estado().catch(()=>{})}},15000);
@@ -74,7 +74,7 @@ const fmtTs=t=>t?new Date(t).toLocaleString("pt-PT",{day:"2-digit",month:"2-digi
 const stTag=p=>p.skipped?`<span class="tag">não saiu (${esc(p.skipped)})</span>`:p.sent?`<span class="tag ok">publicado ${esc(p.when||"")}</span>`:`<span class="tag" style="background:var(--v);color:#0e3a2d">na fila</span>`;
 function postsCard(title,items,note){   // items: {img, kind, label, sub, score, sent, skipped, when, link}
   const rows=items.slice(0,80).map(p=>`<tr><td><a href="${esc(p.link||p.img)}" target="_blank" rel="noopener"><img src="${esc(p.img)}" alt="" width="54" height="68" style="border-radius:6px;object-fit:cover" loading="lazy"></a></td>
-    <td><b>${esc(p.kind)}</b>${p.score!=null&&p.score!==""?` <span class="mut">interesse ${esc(p.score)}</span>`:""}<br>${esc(p.label||"")}${p.sub?`<br><span class="mut">${p.sub}</span>`:""}</td><td>${stTag(p)}</td></tr>`).join("");
+    <td><b>${esc(p.kind)}</b>${p.score!=null&&p.score!==""?` <span class="mut">interesse ${esc(p.score)}</span>`:""}<br>${esc(p.label||"")}${p.sub?`<br><span class="mut">${p.sub}</span>`:""}</td><td>${stTag(p)}${p.id&&p.sent&&!p.skipped?`<br><button class="arch" data-id="${esc(p.id)}" style="margin-top:6px;font-size:12px;padding:4px 9px">${p.archived?"Arquivado ✓ (desfazer)":"Arquivei"}</button>`:""}</td></tr>`).join("");
   const q=items.filter(p=>!p.sent&&!p.skipped).length,sent=items.filter(p=>p.sent&&!p.skipped).length;
   return `<div class="card"><h3>${esc(title)}</h3><p class="mut">${q} na fila · ${sent} publicados${note?" · "+note:""}</p>${rows?`<table>${rows}</table>`:'<p class="mut">Ainda sem posts.</p>'}</div>`}
 function nextCard(title,rows,head){   // rows: {img, kind, label, when, now(bool), why}
@@ -87,7 +87,8 @@ function runsCard(runs){return `<div class="card"><h3>Últimas execuções</h3><
 function pubCard(name,handle,on,how,site){return `<div class="card"><h3>Publicação no ${esc(handle)}: ${on?'<span class="ok">ligada</span>':'<span class="bad">desligada</span>'}</h3><p class="mut">${how}</p><p><a href="${esc(site)}" target="_blank" rel="noopener">Abrir o site ↗</a> · <a href="https://www.instagram.com/${esc(handle.replace("@",""))}/" target="_blank" rel="noopener">Instagram ↗</a></p></div>`}
 
 async function tenisPosts(){
-  const [pf,cf,rf]=await Promise.all([readFile("posts.json").catch(()=>({data:{}})),readFile("carousels.json").catch(()=>({data:[]})),readFile("results.json").catch(()=>({data:[]}))]);
+  const [pf,cf,rf,af]=await Promise.all([readFile("posts.json").catch(()=>({data:{}})),readFile("carousels.json").catch(()=>({data:[]})),readFile("results.json").catch(()=>({data:[]})),readFile("archived_posts.json").catch(()=>({data:[],sha:null}))]);
+  const ARCH=new Set((af.data||[]).map(String));
   const R={};(rf.data||[]).forEach(r=>{R[String(r.id)]=r});
   const KIND={news:"Notícia",preview:"Antevisão",final:"Resultado"};
   const items=[];
@@ -103,33 +104,66 @@ async function tenisPosts(){
     else if(spk){label=SP[spk]+" · "+id.slice(spk.length+1);sub=esc(d)}
     else{label=id.replace(/^(news|preview)-\d{4}-\d{2}-\d{2}-?/,"").replace(/-/g," ");label=label.replace(/\b\w/g,c=>c.toUpperCase());sub=esc(d)}
     const img=e.image?"/posts/"+e.image:"";
-    items.push({img,link:img,kind:k,label,sub:sub+(e.image?` · <a href="/posts/${esc(e.image.replace(/\.jpg$/,".txt"))}" target="_blank" rel="noopener">legenda</a>`:""),score:e.score===99?"":e.score,sent:e.sent,skipped:e.skipped,when:e.sent_at?e.sent_at.slice(5).replace("-","/"):""})}));
+    items.push({img,link:img,kind:k,label,sub:sub+(e.image?` · <a href="/posts/${esc(e.image.replace(/\.jpg$/,".txt"))}" target="_blank" rel="noopener">legenda</a>`:""),id:String(e.id),archived:ARCH.has(String(e.id)),score:e.score===99?"":e.score,sent:e.sent,skipped:e.skipped,when:e.sent_at?e.sent_at.slice(5).replace("-","/"):""})}));
   const car=(cf.data||[]).slice().reverse().map(c=>({img:"/posts/"+(c.images||[])[0],link:"/posts/"+(c.images||[])[0],kind:"Carrossel ("+(c.images||[]).length+")",label:(c.caption||"").split("\n")[0].slice(0,110),sub:esc(c.id||""),sent:c.sent,when:(c.sent_at||"").slice(5)}));
   if(!cache.vars){cache.vars=await api("vars").catch(()=>({}))}
   const V=cache.vars||{},on=["1","true","yes","on"].includes(String(V.PUBLISH_AUTO||"").toLowerCase());
-  // ---- a seguir: as mesmas regras do publisher.py (mantém em sintonia)
+  // ---- a seguir: as mesmas regras do publisher.py de 9/11/2026 (mantém em sintonia)
   const N=(k,d)=>{const x=parseFloat(V[k]);return isNaN(x)?d:x};
-  const sFrom=N("SEND_FROM",8),sTo=N("SEND_TO",23),weak=N("SEND_WEAK_FROM",20),mUntil=N("SEND_MORNING_UNTIL",16),mMax=N("SEND_MORNING_MAX",2),strong=N("SEND_STRONG_SCORE",8),exc=N("EXCEPTION_SCORE",9),late=N("SEND_LATE_SCORE",10),maxD=N("MAX_POSTS_PER_DAY",3),extra=N("EXTRA_POSTS",2);
-  const menFirst=String(V.MEN_FIRST||"1")!=="0",L=lisbonNow(),morning=L.h<mUntil,inWin=L.h>=sFrom&&L.h<sTo;
+  const dayMax=N("DAY_MAX_POSTS",3),nowSc=N("SEND_NOW_SCORE",12),prevSc=N("PREVIEW_SCORE",9),maxAge=N("RESULT_MAX_AGE_H",16),sFrom=N("SEND_FROM",8),sTo=N("SEND_TO",23);
+  const slots=String(V.POST_SLOTS||"13,18,21").split(",").map(Number).filter(x=>!isNaN(x)).sort((a,b)=>a-b),mins=String(V.SLOT_MIN||"10,9,0").split(",").map(Number);
+  const L=lisbonNow(),inWin=L.h>=sFrom&&L.h<sTo;
   const all=[];Object.keys(pf.data||{}).forEach(d=>(pf.data[d]||[]).forEach(e=>all.push(e)));
-  const isRes=e=>{const id=String(e.id);return !id.startsWith("news-")&&!id.startsWith("preview-")};
-  const resToday=all.filter(e=>isRes(e)&&e.sent&&!e.skipped&&(e.sent_at||"").slice(0,10)===L.day).length;
-  const pend=all.filter(e=>!e.sent&&!e.skipped&&e.image&&!(isRes(e)&&e.created&&Date.now()/1000-e.created>20*3600));
-  const others=pend.filter(e=>!isRes(e)),res=pend.filter(isRes).sort((a,b)=>((menFirst&&a.gender==="women")-(menFirst&&b.gender==="women"))||((b.score||0)-(a.score||0)));
+  const isPrev=e=>String(e.id).startsWith("preview-"),isRes=e=>{const id=String(e.id);return !id.startsWith("news-")&&!isPrev(e)};
+  const lday=t=>{if(!t)return "";const d=new Date(t.replace(" ","T")+"Z");return new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Lisbon"}).format(d)};
+  const sentToday=all.filter(e=>e.sent&&!e.skipped&&!ARCH.has(String(e.id))&&lday(e.sent_at)===L.day);
+  const carToday=(cf.data||[]).filter(c=>c.sent&&lday(c.sent_at)===L.day).length,dayCount=sentToday.length+carToday;
+  const now=Date.now()/1000,pend=all.filter(e=>!e.sent&&!e.skipped&&e.image&&!(e.created&&now-e.created>(isPrev(e)?12:maxAge)*3600));
+  const val=e=>isPrev(e)?prevSc:isRes(e)?(e.score||0):(e.score||9);
+  const excDone=sentToday.some(e=>isRes(e)&&(e.score||0)>=nowSc);
+  const order=pend.slice().sort((a,b)=>val(b)-val(a)||(a.created||0)-(b.created||0));
+  const open=slots.filter(h=>L.h>=h).length,cur=open?open-1:null,bar=cur!=null?(mins[cur]||0):0,nextSlot=slots.find(h=>h>L.h);
+  const exp=e=>e.created?" · caduca às "+hm((e.created+(isPrev(e)?12:maxAge)*3600)*1000):"";
   const lab=e=>{const r=R[String(e.id)];if(!r)return String(e.id).replace(/-/g," ");const w=r["p"+r.winner]||{},l=r["p"+(3-r.winner)]||{};return `${w.name} d. ${l.name} · ${r.tournament}`};
-  const why=e=>{const sc=e.score||0,exp=e.created?" · expira às "+hm((e.created+20*3600)*1000):"";
-    if(sc>=late)return "excecional: sai a qualquer hora, mesmo de noite"+exp;
-    if(!inWin)return `fora do horário: só a partir das ${sFrom}h`+exp;
-    if(sc>=exc&&resToday<maxD+extra)return "sai já (vale um lugar extra)"+exp;
-    if(morning)return (sc>=strong&&resToday<mMax?"pode sair já":`de manhã só ${mMax} e só fortes (${strong}+): espera pelas ${mUntil}h`)+exp;
-    if(resToday>=maxD)return `limite do dia cheio (${maxD}); extra só com ${exc}+`+exp;
-    return (sc>=strong||L.h>=weak?"pode sair já":`fraco (abaixo de ${strong}): só a partir das ${weak}h`)+exp};
-  const canNow=e=>{const sc=e.score||0;if(sc>=late)return true;if(!inWin)return false;if(sc>=exc&&resToday<maxD+extra)return true;if(morning)return resToday<mMax&&sc>=strong;return resToday<maxD&&(sc>=strong||L.h>=weak)};
-  const nxt=[...others.map(e=>({img:"/posts/"+e.image,kind:String(e.id).startsWith("preview-")?"Antevisão":"Especial",label:String(e.id).replace(/-/g," "),now:inWin,why:inWin?"especiais saem antes dos resultados":`fora do horário: só a partir das ${sFrom}h`})),
-             ...res.map(e=>({img:"/posts/"+e.image,kind:(e.reasons||[]).includes("final")?"Título":(e.reasons||[]).includes("upset")?"Surpresa":"Resultado",label:lab(e),score:e.score,now:canNow(e),why:why(e)}))];
-  const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · resultados publicados hoje: <b>${resToday}</b> (limite ${maxD}, mais ${extra} extra só para interesse ${exc}+) · horário ${sFrom}h–${sTo}h · sai no máximo 1 post a cada atualização (às :07), com pelo menos ${esc(V.SEND_GAP_MIN||"45")} min entre posts.`;
+  const kindOf=e=>isPrev(e)?"Antevisão":!isRes(e)?"Especial":(e.reasons||[]).includes("final")?"Título":(e.reasons||[]).includes("upset")?"Surpresa":"Resultado";
+  let firstRes=true;
+  const nxt=order.map(e=>{const v=val(e);let why,now_=false;
+    if(dayCount>=dayMax&&!(v>=nowSc&&!excDone))why=`o dia já tem ${dayCount} de ${dayMax}: só um 12+ ainda sairia`;
+    else if(!inWin)why=`fora do horário: só a partir das ${sFrom}h`;
+    else if(isPrev(e)){why="antevisão: sai na próxima atualização (antes do jogo)";now_=true}
+    else if(v>=nowSc){why=`excecional (${nowSc}+): sai na próxima atualização`;now_=true}
+    else if(firstRes){firstRes=false;
+      if(open&&dayCount<open&&v>=bar){why=`hora de publicação das ${slots[cur]}h: sai na próxima atualização`;now_=true}
+      else if(open&&dayCount<open)why=`às ${slots[cur]}h só sai ${bar}+; se nada melhor aparecer, sai ${nextSlot?"às "+nextSlot+"h":"mais tarde"}`;
+      else why=nextSlot?`o melhor da fila: sai às ${nextSlot}h se continuar a ser o melhor`:"o melhor da fila, mas as horas de hoje já passaram"}
+    else why="em espera: só sai se for dos melhores do dia";
+    return {img:"/posts/"+e.image,kind:kindOf(e),label:lab(e),score:isRes(e)?e.score:"",now:now_,why:why+exp(e)}});
+  const slotTxt=slots.map((h,k)=>`${h}h (${mins[k]?mins[k]+"+":"o melhor"})`).join(" · ");
+  const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · publicados hoje: <b>${dayCount} de ${dayMax}</b> (conta tudo, menos os arquivados) · horas: ${slotTxt} · ${nowSc}+ sai logo · resultados caducam ao fim de ${maxAge} h.`;
   $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("ténis","@beyond100.tennis",on,`Muda em Definições (PUBLISH_AUTO). Máximo ${esc(V.MAX_POSTS_PER_DAY||"3")} resultados por dia; títulos, viragens e surpresas primeiro.`,"/index.html")
-    +postsCard("Todos os posts",items,"últimos 14 dias")+(car.length?postsCard("Carrosséis",car):"")}
+    +postsCard("Todos os posts",items,"últimos 14 dias · arquivaste um no Instagram? carrega em \"Arquivei\" e deixa de contar para os 3 do dia")+(car.length?postsCard("Carrosséis",car):"");
+  $("#main").querySelectorAll("button.arch").forEach(b=>b.onclick=async()=>{b.disabled=true;
+    try{const f=await readFile("archived_posts.json").catch(()=>({data:[],sha:null}));const L2=(f.data||[]).map(String),id=b.dataset.id,on=L2.includes(id);
+      await saveFile("archived_posts.json",on?L2.filter(x=>x!==id):[...L2,id].slice(-500),f.sha);toast(on?"Voltou a contar.":"Arquivado: deixa de contar para os 3 do dia.");tenisPosts()}
+    catch(err){toast(err.message,true);b.disabled=false}})}
+
+async function newsletter(){
+  const [sf,runs]=await Promise.all([readFile("newsletter_state.json").catch(()=>({data:{}})),api("runs").catch(()=>[])]);
+  const S=sf.data||{},sm=S.summary||{},L=lisbonNow();
+  const d=new Date(L.day+"T12:00:00Z"),toSun=(7-d.getUTCDay())%7,sun=new Date(d.getTime()+toSun*864e5),sunTxt=sun.toLocaleDateString("pt-PT",{weekday:"long",day:"numeric",month:"long"});
+  const tile=(v,k,sub,bg,fg)=>`<div class="card" style="flex:1;min-width:140px;background:${bg||"var(--card)"};${fg?"color:"+fg+";border-color:"+bg:""}"><div style="font:800 34px/1 system-ui">${v}</div><div style="font-weight:700;margin-top:6px">${k}</div><div style="font-size:13px;opacity:.75">${sub}</div></div>`;
+  const nr=(runs||[]).filter(r=>/newsletter/i.test(r.name)).slice(0,3);
+  $("#main").innerHTML=`<div class="row" style="align-items:stretch">
+    ${tile(S.subscribers??"—","inscritos",S.key?"no Buttondown":"falta a chave BUTTONDOWN_API_KEY","#d9f23d","#0e3a2d")}
+    ${tile(S.week?"Semana "+S.week:"—","última gerada",S.built_at?"às "+esc(fmtTs(S.built_at.replace(" ","T")+"Z")):"ainda não gerada")}
+    ${tile(S.draft?esc(S.draft.replace(/^\d{4}-W/,"Semana ")):"—","último rascunho",S.draft_at?esc(fmtTs(S.draft_at.replace(" ","T")+"Z")):"nenhum ainda")}</div>
+  <div class="card"><h3>Como funciona</h3><p class="mut">A newsletter é refeita a cada atualização completa com os dados da semana (0 pedidos à API de ténis). No domingo a partir das 19h (próximo: <b>${esc(sunTxt)}</b>) é criada como <b>rascunho</b> no Buttondown: nunca é enviada sem tu carregares em enviar.</p>
+    <p class="mut">Esta semana: ${sm.results??"—"} resultados · ${sm.champions??"—"} campeões · ${sm.upsets??"—"} surpresas · ${sm.padel??"—"} campeões de padel.</p>
+    <div class="row"><button class="pri" id="nlTest">Criar rascunho de teste agora</button><a href="https://buttondown.com/emails" target="_blank" rel="noopener"><button>Abrir o Buttondown ↗</button></a><a href="/newsletter/latest.html" target="_blank" rel="noopener"><button>Abrir em ecrã inteiro ↗</button></a></div>
+    <p class="mut">O teste cria um rascunho "[TEST]" (não é enviado e não conta para domingo). Para o receberes no teu email, abre-o no Buttondown e carrega em "Send test email".</p>
+    ${nr.length?`<table>${nr.map(r=>`<tr><td>${esc(r.name)}</td><td class="${r.conclusion==="success"?"ok":r.conclusion?"bad":""}">${esc(r.conclusion||r.status)}</td><td class="mut">${new Date(r.at).toLocaleString("pt-PT")}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">ver</a></td></tr>`).join("")}</table>`:""}</div>
+  <div class="card" style="padding:0;overflow:hidden"><iframe src="/newsletter/latest.html" title="Pré-visualização" style="width:100%;height:1100px;border:0;display:block;background:#03110c"></iframe></div>`;
+  $("#nlTest").onclick=async e=>{e.target.disabled=true;try{await api("run",{method:"POST",body:{workflow:"newsletter.yml",inputs:{}}});toast("A criar o rascunho de teste (1–2 min)…")}catch(err){toast(err.message,true);e.target.disabled=false}}}
 
 async function padelEstado(){
   const [st,runs]=await Promise.all([readFile("padel/data/state.json").catch(()=>({data:{}})),api("runs").catch(()=>[])]);
@@ -476,7 +510,7 @@ async function defs(){
     ["SEND_TO","n","23","Publicar até às (Lisboa)","Depois desta hora os resultados esperam pela manhã seguinte (resultados com mais de 20h já não saem)."],
     ["SEND_GAP_MIN","n","45","Minutos entre posts","Intervalo mínimo entre dois posts. As atualizações correm de 30 em 30 min, por isso na prática o intervalo é arredondado a 30/60/90 min. Mais alto: posts mais espaçados ao longo do dia."],
     ["SEND_MORNING_UNTIL","n","16","Manhã até às","Até esta hora só sai um número limitado de resultados (abaixo), para guardar lugares para os jogos da tarde."],
-    ["SEND_MORNING_MAX","n","2","Resultados máximos de manhã","Quantos resultados podem sair antes da hora acima. Só um resultado com a pontuação da "Exceção de manhã" passa deste limite. Mais alto: menos lugares guardados para a tarde."],
+    ["SEND_MORNING_MAX","n","2","Resultados máximos de manhã","Quantos resultados podem sair antes da hora acima. Só um resultado com a pontuação da “Exceção de manhã” passa deste limite. Mais alto: menos lugares guardados para a tarde."],
     ["SEND_MORNING_EXC","n","12","Exceção de manhã (pontos)","Antes das 16h só passa do limite da manhã um resultado com esta pontuação ou mais (título, surpresa gigante)."],
     ["SEND_STRONG_SCORE","n","8","Interesse “forte”","Resultados abaixo disto são “fracos” e só saem a partir da hora abaixo, se ainda houver lugar no dia."],
     ["SEND_WEAK_FROM","n","20","Resultados fracos só a partir das","Hora (Lisboa) a partir da qual os resultados fracos podem preencher os lugares que sobraram."],

@@ -204,7 +204,7 @@ def _avatar(url, label, color):
 
 
 def _item(av, title, sub, right="", href="", last=False):
-    a0, a1 = (f'<a href="{esc(href)}" style="color:{CREAM};text-decoration:none">', "</a>") if href else ("", "")
+    a0, a1 = (f'<a href="{esc(href)}" style="color:{CREAM};text-decoration:none"><span style="color:{CREAM}">', "</span></a>") if href else ("", "")
     return (f'<tr><td width="60" style="padding:12px 0;vertical-align:middle{"" if last else f";border-bottom:1px solid {LINE}"}">{av}</td>'
             f'<td style="padding:12px 0;vertical-align:middle{"" if last else f";border-bottom:1px solid {LINE}"}"><div style="font:700 16px/1.3 {FONT};color:{CREAM}">{a0}{title}{a1}</div>'
             f'<div style="font:500 13px/1.45 {FONT};color:{SOFT};margin-top:2px">{sub}</div></td>'
@@ -249,7 +249,7 @@ def render(d, assets=None):
         rows += _t(_tbl(f'<tr><td style="font:500 15px/1.55 {FONT};color:{SOFT}">'
                         + (f'Ranked <b style="color:{CREAM}">#{top["rank"]}</b> and still the last one standing in <b style="color:{CREAM}">{esc(top.get("t") or "")}</b>. ' if top.get("rank") else "")
                         + f'Final: {esc(top["score"])} against {esc(top["loser"])}.</td>'
-                        f'<td align="right" width="130" style="vertical-align:middle"><a href="{SITE}/m/{top["id"]}.html" style="display:inline-block;background:{CREAM};color:{INK};font:800 13px {FONT};padding:11px 16px;border-radius:999px;text-decoration:none">Full match →</a></td></tr>'),
+                        f'<td align="right" width="130" style="vertical-align:middle"><a href="{SITE}/m/{top["id"]}.html" style="display:inline-block;background:{CREAM};color:{INK};font:800 13px {FONT};padding:11px 16px;border-radius:999px;text-decoration:none"><span style="color:{INK}">Full match →</span></a></td></tr>'),
                    "16px 24px 0")
     if d["others"]:
         rows += _h2("More champions", f'{len(d["champs"])} TITLES')
@@ -336,13 +336,34 @@ def render(d, assets=None):
 {rows}
 <tr><td style="padding:40px 24px 0">{_tbl(f'<tr><td style="background:{VOLT};border-radius:24px;padding:26px 24px"><div style="font:900 26px/1.05 {FONT};color:{INK};letter-spacing:-1px">Every player.<br>Every draw.</div>'
     f'<div style="font:600 14px/1.5 {FONT};color:{INK};margin:8px 0 16px;opacity:.8">Live scores, draws and rankings for over 2,000 players.</div>'
-    f'<a href="{SITE}" style="display:inline-block;background:{INK};color:{VOLT};font:800 14px {FONT};padding:12px 20px;border-radius:999px;text-decoration:none">Open beyond100tennis.com →</a></td></tr>')}</td></tr>
+    f'<a href="{SITE}" style="display:inline-block;background:{INK};color:{VOLT};font:800 14px {FONT};padding:12px 20px;border-radius:999px;text-decoration:none"><span style="color:{VOLT}">Open beyond100tennis.com →</span></a></td></tr>')}</td></tr>
 <tr><td style="padding:22px 24px 4px">{_tbl(f'<tr><td><a href="https://www.instagram.com/beyond100.tennis/" style="text-decoration:none">{_chip("@beyond100.tennis", LINE, CREAM)}</a> <a href="https://www.instagram.com/beyond100.padel/" style="text-decoration:none">{_chip("@beyond100.padel", "#173f61", CREAM)}</a></td></tr>')}</td></tr>
-<tr><td style="padding:14px 24px 30px;font:500 12px/1.6 {FONT};color:{SOFT}">Photos: licensed (Wikimedia Commons / authorised), credits on the site. You get this because you subscribed on our site. <a href="{{{{unsubscribe_url}}}}" style="color:{SOFT}">Unsubscribe</a></td></tr>
+<tr><td style="padding:14px 24px 30px;font:500 12px/1.6 {FONT};color:{SOFT}">Photos: licensed (Wikimedia Commons / authorised), credits on the site. You get this because you subscribed on our site. <a href="{{{{unsubscribe_url}}}}" style="color:{SOFT}"><span style="color:{SOFT}">Unsubscribe</span></a></td></tr>
 </table></td></tr></table></body></html>"""
 
 
 STATE = "newsletter_state.json"
+
+
+def _status(d):
+    """Para o separador Newsletter do admin: número de inscritos (1 pedido ao Buttondown, grátis) e a semana gerada."""
+    st = _load(STATE, {})
+    key = (os.environ.get("BUTTONDOWN_API_KEY") or "").strip()
+    st["key"] = bool(key)
+    st["built_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
+    st["week"] = d["week"]
+    st["summary"] = {"results": d["n_results"], "champions": len(d["champs"]), "upsets": len(d["upsets"]), "padel": len(d["pchamps"])}
+    if key:
+        try:
+            import requests
+            r = requests.get("https://api.buttondown.com/v1/subscribers", params={"type": "regular", "page_size": 1},
+                             headers={"Authorization": f"Token {key}"}, timeout=20)
+            if r.ok:
+                st["subscribers"] = r.json().get("count")
+        except Exception:
+            pass
+    with open(STATE, "w", encoding="utf-8") as f:
+        json.dump(st, f)
 
 
 def draft(d, html_out):
@@ -371,7 +392,9 @@ def draft(d, html_out):
     if force:                                                   # teste manual: não conta como o rascunho da semana
         print(f"Newsletter: rascunho de TESTE criado no Buttondown ({subj}).")
         return True
+    st = _load(STATE, {})
     st["draft"] = wk
+    st["draft_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M")
     with open(STATE, "w", encoding="utf-8") as f:
         json.dump(st, f)
     print(f"Newsletter: rascunho criado no Buttondown ({subj}).")
@@ -395,6 +418,7 @@ def main():
     with open("site/newsletter/latest.html", "w", encoding="utf-8") as f:
         f.write(out.replace("<head>", "<head><meta name=robots content=noindex>", 1))
     print(f"Newsletter: semana {d['week']}, {len(d['champs'])} campeões, {len(d['upsets'])} surpresas, {len(d['pchamps'])} campeões de padel.")
+    _status(d)
     try:
         draft(d, out.replace("{{unsubscribe_url}}", "{{ unsubscribe_url }}"))
     except Exception as e:

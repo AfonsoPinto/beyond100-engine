@@ -367,6 +367,11 @@ def send():
             archived = {ln.split("#")[0].strip() for ln in f if ln.split("#")[0].strip()}
     except OSError:
         pass
+    try:                                        # 10/11/2026: o botão "Arquivei" do admin grava aqui (repositório de dados)
+        with open("archived_posts.json", encoding="utf-8") as f:
+            archived |= {str(x) for x in json.load(f) if x}
+    except (OSError, ValueError, TypeError):
+        pass
     sent = [(e, sent_dt(e)) for es in posts.values() for e in es if e.get("sent") and not e.get("skipped") and str(e.get("id")) not in archived]
     sent = [(e, t) for e, t in sent if t]
     res_today = sum(1 for e, t in sent if is_res(e) and t.date() == now_l.date())
