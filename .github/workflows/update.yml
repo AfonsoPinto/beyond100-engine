@@ -80,6 +80,7 @@ jobs:
           PREVIEW_MAX_PER_DAY: ${{ vars.PREVIEW_MAX_PER_DAY }}
           PREVIEW_H2H: ${{ vars.PREVIEW_H2H }}
           NEWSLETTER_USER: ${{ vars.NEWSLETTER_USER }}
+          BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
           RISING_ENABLED: ${{ vars.RISING_ENABLED }}
           RISING_DAY: ${{ vars.RISING_DAY }}
           RISING_HOUR: ${{ vars.RISING_HOUR }}
@@ -128,6 +129,7 @@ jobs:
           if [ "$FAST" != "1" ]; then python -m padel.fetch || echo "padel: sincronização falhou (ignorado)"; fi
           python -m padel.site site || echo "padel: site falhou (ignorado)"
           python -m padel.posts make || echo "padel: posts falharam (ignorado)"
+          if [ "$FAST" != "1" ]; then python newsletter.py || echo "newsletter: falhou (ignorado)"; fi
           python clean_links.py site || echo "links: falhou (ignorado)"
       - name: Keep new cards and captions (7 days)
         uses: actions/upload-artifact@v4
@@ -139,7 +141,7 @@ jobs:
           if-no-files-found: ignore
       - name: Save state (public display data only)
         run: |
-          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json posts photos padel/data
+          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json posts photos padel/data
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
