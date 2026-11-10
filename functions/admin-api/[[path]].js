@@ -13,12 +13,13 @@ const EDIT_FILES = {            // ficheiros que o admin pode ler e gravar
   "handles_torneios.json": "obj",
   "qualifying_ids.json": "ids",
   "categorias_manual.json": "cats",
+  "archived_posts.json": "pids",   // posts arquivados no Instagram (não contam para o máximo do dia)
   "photos/aliases.json": "names",
   "padel/photos/aliases.json": "names",
   "photos/photographers.json": "names",
   "padel/photos/photographers.json": "names",
 };
-const READ_FILES = ["results.json", "categorias_faltam.json", "categorias_torneios.json", "posts.json", "carousels.json", "stats.json", "spend.json", "news_log.json", "usage.json", "api_calls.json", "padel/data/posts.json", "padel/data/state.json", "padel/photos/scan_log.json", "photos/inbox_log.json", "padel/photos/inbox_log.json", "gsc.json", "popular.json", "reach.json", "photos/handles_cache.json", "espn_rank.json"];
+const READ_FILES = ["results.json", "categorias_faltam.json", "categorias_torneios.json", "posts.json", "carousels.json", "stats.json", "spend.json", "news_log.json", "usage.json", "api_calls.json", "padel/data/posts.json", "padel/data/state.json", "padel/photos/scan_log.json", "photos/inbox_log.json", "padel/photos/inbox_log.json", "gsc.json", "popular.json", "reach.json", "photos/handles_cache.json", "espn_rank.json", "newsletter_state.json"];
 const WORKFLOWS = {             // workflow -> inputs permitidos
   "update.yml": ["checks", "min_age"],
   "photo_inbox.yml": ["sport", "url_b64", "credit", "fallback", "dry", "replace"],
@@ -30,6 +31,7 @@ const WORKFLOWS = {             // workflow -> inputs permitidos
   "categorias.yml": [],
   "torneios_ig.yml": ["apply"],
   "test_photos.yml": [],
+  "newsletter.yml": [],
 };
 const VARS = ["PADEL_PUBLISH", "PADEL_MAX_POSTS_PER_DAY", "PADEL_FIP_MAX_PER_DAY", "PADEL_SEND_FROM", "PADEL_SEND_TO", "PADEL_SEND_GAP_MIN", "PADEL_MIN_SCORE", "PADEL_QF", "PADEL_SURPRISE_GAP", "PADEL_MAX_REQ", "POST_MIN_SCORE", "STORY_PENALTY", "STORY_COMEBACK", "TITLE_STYLE", "MAX_POSTS_PER_DAY", "NO_PHOTO_EXTRA", "PHOTO_BONUS", "WEEKLY_HOUR", "WEEKLY_DAY",
   "STORY_HOUR", "TRACK_MAX_PRIO", "KEEP_ARCHIVE", "HISTORY", "CAPTION_WEB_CONTEXT", "CAPTION_MODEL", "CAPTION_WEB_MIN_SCORE", "ANTHROPIC_CREDIT_USD", "ANTHROPIC_CREDIT_DATE", "ANTHROPIC_ALERT_USD", "NEWS_ENABLED", "NEWS_MAX_PER_DAY", "NEWS_SCAN_HOURS", "CF_BEACON_TOKEN", "CAPTION_LITE_BELOW", "PREVIEW_ENABLED", "PREVIEW_MAX_PER_DAY", "PREVIEW_H2H", "NEWSLETTER_USER", "CARD_STYLE", "RISING_ENABLED", "RISING_DAY", "RISING_HOUR", "THROWBACK_ENABLED", "THROWBACK_DAY", "THROWBACK_HOUR", "FIRST_COMMENT", "ROAD_ENABLED", "POWER_ENABLED", "PHOTO_GALLERY", "PHOTO_MAX_AGE_Y", "RECORDS_ENABLED", "HISTORY_MIRROR", "SEND_FROM", "SEND_TO", "SEND_GAP_MIN", "SEND_WEAK_FROM", "SEND_STRONG_SCORE", "EXTRA_POSTS", "EXCEPTION_SCORE", "SEND_LATE_SCORE", "MEN_FIRST", "SEND_MORNING_UNTIL", "SEND_MORNING_MAX", "SEND_MORNING_EXC", "SEND_MORNING_MIN"];
@@ -89,6 +91,8 @@ function validate(kind, data) {
     }
   } else if (kind === "ids") {
     if (!Array.isArray(data) || !data.every(n => Number.isInteger(n) && n > 0)) return "Tem de ser uma lista de números.";
+  } else if (kind === "pids") {
+    if (!Array.isArray(data) || data.length > 500 || !data.every(n => typeof n === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(n))) return "Tem de ser uma lista de ids de posts.";
   } else if (kind === "cats") {
     if (!Array.isArray(data)) return "Tem de ser uma lista.";
     for (const e of data) {
@@ -117,7 +121,7 @@ export async function onRequest({ request, env, params }) {
       if (!(name in EDIT_FILES) && !READ_FILES.includes(name)) return J({ error: "Ficheiro não permitido." }, 403);
       if (name in EDIT_FILES) {
         const r = await gh(env, `/contents/${name}?ref=${BRANCH}`);
-        if (r.status === 404) return J({ content: name.endsWith("ids.json") || name.includes("cats") || name.includes("manual") ? "[]" : "{}", sha: null });
+        if (r.status === 404) return J({ content: name.endsWith("ids.json") || name.includes("cats") || name.includes("manual") || name.includes("archived") ? "[]" : "{}", sha: null });
         if (!r.ok) return J({ error: "GitHub: " + r.status }, 502);
         const j = await r.json();
         return J({ content: utf8(j.content), sha: j.sha });
