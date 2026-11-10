@@ -36,8 +36,9 @@ def inline(title, sub=None, sport="tennis"):
         return ""
     sub = sub or (SUB_PADEL if sport == "padel" else SUB)
     return (f'<section class="nlc{" padel" if sport == "padel" else ""}" data-nl>'
-            f'<a class="nlc-cov" href="/newsletter/latest.html" aria-label="See last week\'s issue"><img src="/newsletter/cover.jpg" alt="" width="150" height="172" loading="lazy" onerror="this.parentNode.remove()"></a>'
-            f'<div class="nlc-b"><p class="nlc-k">Weekly · free</p><h2>{esc(title)}</h2><p class="nlc-s">{esc(sub)}</p>'
+            + (f'<a class="nlc-cov nlc-ty" href="/newsletter/latest.html" aria-label="See last week\'s issue"><b>The<br>padel<br><i>week</i></b><span>Every Sunday</span></a>' if sport == "padel" else
+               f'<a class="nlc-cov" href="/newsletter/latest.html" aria-label="See last week\'s issue"><img src="/newsletter/cover.jpg" alt="" width="150" height="172" loading="lazy" onerror="this.parentNode.remove()"></a>')
+            + f'<div class="nlc-b"><p class="nlc-k">Weekly · free</p><h2>{esc(title)}</h2><p class="nlc-s">{esc(sub)}</p>'
             f'<form action="{esc(url)}" method="post" target="_blank" data-nlf><input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
             f'<input type="hidden" name="embed" value="1"><button type="submit">Subscribe</button></form>'
             f'<p class="nlc-f"><a href="/newsletter/latest.html">See last week\'s issue →</a><span>No spam. Unsubscribe in one click.</span></p></div></section>')
@@ -52,6 +53,10 @@ CSS = """
 .nlc-cov{flex:0 0 auto;display:block;transform:rotate(-4deg);transition:transform .25s}
 .nlc-cov:hover{transform:rotate(0) scale(1.03)}
 .nlc-cov img{display:block;width:150px;height:auto;border-radius:16px;box-shadow:0 14px 34px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.12)}
+.nlc-ty{width:150px;height:172px;box-sizing:border-box;padding:18px 16px;border-radius:16px;text-decoration:none;
+  background:linear-gradient(160deg,#16507f,#08223a 70%);border:1px solid rgba(255,255,255,.14);box-shadow:0 14px 34px rgba(0,0,0,.45);display:flex!important;flex-direction:column;justify-content:space-between}
+.nlc-ty b{font-size:1.65rem;line-height:.92;font-weight:900;letter-spacing:-.03em;text-transform:uppercase;color:var(--c)}.nlc-ty i{font-style:normal;color:var(--v)}
+.nlc-ty span{font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--s)}
 .nlc-b{flex:1;min-width:0}
 .nlc-k{margin:0 0 6px;font-size:.72rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--v)}
 .nlc h2{margin:0;font-size:1.55rem;line-height:1.08;letter-spacing:-.02em;color:var(--c);text-transform:none}
@@ -107,7 +112,7 @@ def slide(sport="tennis"):
     return (f'<style>{CSS}</style>'
             f'<aside class="nls{" padel" if padel else ""}" id="nls" aria-label="Newsletter" hidden>'
             f'<button class="x" type="button" aria-label="Close">×</button>'
-            f'<div class="nls-t"><img src="/newsletter/cover.jpg" alt="" onerror="this.remove()"><div><b data-t="0"></b><small><span data-t="1"></span> · <a href="/newsletter/latest.html" data-t="2"></a></small></div></div>'
+            f'<div class="nls-t">{"" if padel else chr(60) + 'img src="/newsletter/cover.jpg" alt="" onerror="this.remove()">'}<div><b data-t="0"></b><small><span data-t="1"></span> · <a href="/newsletter/latest.html" data-t="2"></a></small></div></div>'
             f'<form action="{esc(url)}" method="post" target="_blank" data-nlf><input type="email" name="email" required placeholder="you@example.com" aria-label="Email">'
             f'<input type="hidden" name="embed" value="1"><button type="submit" data-t="3"></button></form><p class="nl-ok" data-t="4"></p></aside>'
             "<script>(function(){var T=" + tx + r""",L=(document.documentElement.lang||"en").slice(0,2),t=T[L]||T.en;
