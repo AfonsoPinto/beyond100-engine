@@ -122,8 +122,8 @@ async function tenisPosts(){
   const val=e=>isPrev(e)?prevSc:isRes(e)?(e.score||0):(e.score||9);
   const excDone=sentToday.some(e=>isRes(e)&&(e.score||0)>=nowSc);
   const order=pend.slice().sort((a,b)=>val(b)-val(a)||(a.created||0)-(b.created||0));
-  const open=slots.filter(h=>L.h>=h).length,cur=open?open-1:null,nextSlot=slots.find(h=>h>L.h),rescue=N("SLOT_RESCUE_MIN",7);
-  let bar=cur!=null?(mins[cur]||0):0;if(cur!=null&&cur>=1&&dayCount===0&&bar>rescue)bar=rescue;   // sem posts até às 18h: fasquia desce para 7
+  const open=slots.filter(h=>L.h>=h).length,cur=open?open-1:null,nextSlot=slots.find(h=>h>L.h),rescue=N("SLOT_RESCUE_MIN",8);
+  let bar=cur!=null?(mins[cur]||0):0;if(cur!=null&&cur>=1&&dayCount===0&&bar>rescue)bar=rescue;   // sem posts até às 18h: fasquia desce para 8
   const exp=e=>e.created?" · caduca às "+hm((e.created+(isPrev(e)?12:maxAge)*3600)*1000):"";
   const lab=e=>{const r=R[String(e.id)];if(!r)return String(e.id).replace(/-/g," ");const w=r["p"+r.winner]||{},l=r["p"+(3-r.winner)]||{};return `${w.name} d. ${l.name} · ${r.tournament}`};
   const kindOf=e=>isPrev(e)?"Antevisão":!isRes(e)?"Especial":(e.reasons||[]).includes("final")?"Título":(e.reasons||[]).includes("upset")?"Surpresa":"Resultado";

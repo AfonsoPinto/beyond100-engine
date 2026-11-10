@@ -472,8 +472,8 @@ def send():
     cur = max((k for k, h in enumerate(slots) if now_l.hour >= h), default=None)
     bar = mins[cur] if cur is not None and cur < len(mins) else 0
     # 10/11/2026 (Afonso: "não queremos dias em branco, só se for péssimo"): se à 2.ª hora (18h) ainda não saiu nenhum post
-    # hoje, a fasquia desce para SLOT_RESCUE_MIN (7). Abaixo de 7 é "péssimo" e continua a não sair.
-    rescue = float(env("SLOT_RESCUE_MIN", "7"))
+    # hoje, a fasquia desce para SLOT_RESCUE_MIN (8). Abaixo de 8 é "péssimo" e continua a não sair.
+    rescue = float(env("SLOT_RESCUE_MIN", "8"))
     if cur is not None and cur >= 1 and day_count == 0 and bar > rescue:
         print(f"Ainda nenhum post hoje: às {slots[cur]}h a fasquia desce de {bar:g} para {rescue:g}.")
         bar = rescue
