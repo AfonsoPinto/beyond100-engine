@@ -43,7 +43,7 @@ const $=s=>document.querySelector(s), esc=s=>String(s??"").replace(/[&<>"']/g,c=
 try{localStorage.setItem("b100_owner","1")}catch(e){}
 // o mesmo molde nas duas vertentes: Estado · Posts · Visitas · Definições, e depois o que é só de uma delas
 const TABS_T=[["estado","Estado"],["posts","Posts"],["newsletter","Newsletter"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"],["noticias","Notícias"],["jogos","Jogos"],["handles","Perfis"],["cats","Categorias"],["acoes","Ações"]];
-const TABS_P=[["estado","Estado"],["posts","Posts"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"]];
+const TABS_P=[["estado","Estado"],["posts","Posts"],["newsletter","Newsletter"],["visitas","Visitas"],["google","Google"],["defs","Definições"],["fotos","Fotos"]];
 let _h=(location.hash||"#tenis/estado").slice(1).split("/"), sport=(_h[0]==="padel"?"padel":"tenis"), tab=_h[1]||"estado", cache={};
 if(_h.length===1&&_h[0]==="padel"){sport="padel";tab="estado"}
 if(sport==="padel"&&tab==="padel")tab="estado";
@@ -64,7 +64,7 @@ function nav(){ if(!TABS().some(([k])=>k===tab))tab=TABS()[0][0];
   $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){tab=b.dataset.t;location.hash=sport+"/"+tab;show()}};
   $("#sport").onclick=e=>{const b=e.target.closest("button");if(b&&b.dataset.s!==sport){sport=b.dataset.s;tab=TABS()[0][0];location.hash=sport+"/"+tab;show()}}}
 async function show(){nav();$("#main").innerHTML='<p class="mut">A carregar…</p>';
-  const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
+  const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,newsletter,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
   try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
 
 setInterval(()=>{if(tab==="estado"&&sport!=="padel"&&!document.hidden){estado().catch(()=>{})}},15000);
