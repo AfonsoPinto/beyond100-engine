@@ -173,7 +173,7 @@ async function padelEstado(){
   const S=st.data||{},rd=S.req_by_day||{},days=Object.keys(rd).sort().slice(-7);
   const reqs=days.length?`<table>${days.map(d=>`<tr><td>${esc(d)}</td><td style="text-align:right">${rd[d]} pedidos</td></tr>`).join("")}</table>`:'<p class="mut">Sem dados.</p>';
   const lastlog=(S.last_log||[]).map(x=>`<div class="mut">${esc(Array.isArray(x)?x.join(" → "):String(x))}</div>`).join("");
-  $("#main").innerHTML=pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Só saem jogos com foto livre de um dos vencedores: Premier Padel e FIP Platinum/Gold a partir dos quartos, FIP Silver a partir das meias, e surpresas. Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"4")} resultados por dia (${esc(V.PADEL_FIP_MAX_PER_DAY||"2")} nos dias só com FIP).`,"/padel/index.html")
+  $("#main").innerHTML=pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Só saem jogos com foto livre de um dos vencedores: Premier Padel e FIP Platinum/Gold a partir dos quartos, FIP Silver a partir das meias, e surpresas. Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"3")} resultados por dia (${esc(V.PADEL_FIP_MAX_PER_DAY||"2")} nos dias só com FIP).`,"/padel/index.html")
     +`<div class="card"><h3>Quota da Padel API (limite 2000/dia)</h3>${reqs}${lastlog?`<details><summary class="mut">Últimos pedidos</summary>${lastlog}</details>`:""}</div>`+runsCard(runs)}
 
 async function padelPosts(){
@@ -186,7 +186,7 @@ async function padelPosts(){
   const V=cache.vars||{},on=["1","true","yes","on"].includes(String(V.PADEL_PUBLISH||"").toLowerCase());
   // ---- a seguir: as mesmas regras do padel/posts.py send()
   const N=(k,d)=>{const x=parseFloat(V[k]);return isNaN(x)?d:x};
-  const sFrom=N("PADEL_SEND_FROM",9),sTo=N("PADEL_SEND_TO",23),maxD=N("PADEL_MAX_POSTS_PER_DAY",4),L=lisbonNow(),inWin=L.h>=sFrom&&L.h<sTo;
+  const sFrom=N("PADEL_SEND_FROM",9),sTo=N("PADEL_SEND_TO",23),maxD=N("PADEL_MAX_POSTS_PER_DAY",3),L=lisbonNow(),inWin=L.h>=sFrom&&L.h<sTo;
   const Qa=(q.data||{}).queue||[],day0=new Date(L.day+"T00:00:00").getTime()/1000;
   const resToday=Qa.filter(e=>e.kind==="result"&&e.sent&&!e.skipped&&(e.sent_ts||0)>=day0).length;
   const pend=Qa.filter(e=>!e.sent&&!(e.kind==="result"&&Date.now()/1000-e.created>20*3600));
@@ -196,7 +196,7 @@ async function padelPosts(){
     return {img:"/posts/"+e.image,kind:(e.facts||{}).finals?"Campeões":(KIND[e.kind]||e.kind),label:label(e),score:e.score||"",now:inWin&&!full,
       why:(!inWin?`fora do horário: só a partir das ${sFrom}h`:full?`limite do dia cheio (${maxD} resultados)`:"pode sair já")+exp}});
   const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · resultados publicados hoje: <b>${resToday}</b> (limite ${maxD}) · horário ${sFrom}h–${sTo}h · 1 post por atualização (às :07), apresentação → antevisões → listas semanais → resultados (maior interesse primeiro).`;
-  $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"4")} resultados por dia.`,"/padel/index.html")+postsCard("Todos os posts",items)}
+  $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"3")} resultados por dia.`,"/padel/index.html")+postsCard("Todos os posts",items)}
 
 // ---------- importar fotos com autorização (comum): cola o link, o robô identifica e guarda
 async function importCard(sp){
@@ -556,7 +556,7 @@ async function defs(){
     ["ANTHROPIC_ALERT_USD","n","1.5","Avisar abaixo de (USD)","Quando o saldo estimado desce disto aparece um aviso."]]],
    ["Padel (@beyond100.padel)",[
     ["PADEL_PUBLISH","b","0","Publicar no Instagram do padel","Ligado: os posts do padel são enviados ao Make (rota “Padel” → @beyond100.padel). Desligado: os cartões são feitos e ficam na fila, nada é publicado."],
-    ["PADEL_MAX_POSTS_PER_DAY","n","4","Resultados de padel por dia","Quantos cartões de resultados do padel saem por dia (apresentação, antevisões e listas semanais não contam)."],
+    ["PADEL_MAX_POSTS_PER_DAY","n","3","Resultados de padel por dia","Quantos cartões de resultados do padel saem por dia (apresentação, antevisões e listas semanais não contam)."],
     ["PADEL_FIP_MAX_PER_DAY","n","2","Resultados de padel por dia (só FIP)","Nos dias sem nenhum torneio Premier Padel a decorrer, este é o máximo de resultados por dia."],
     ["PADEL_SEND_FROM","n","9","Padel: publicar a partir das (Lisboa)","Antes desta hora os posts do padel esperam."],
     ["PADEL_SEND_TO","n","23","Padel: publicar até às (Lisboa)","Depois desta hora esperam pela manhã (resultados com mais de 20h já não saem)."],
