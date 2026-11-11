@@ -256,11 +256,11 @@ def _send_carousels():
         return
     pending = [c for c in queue if not c.get("sent")]
     if not pending:
-        return
+        return False
     url = os.environ.get("MAKE_WEBHOOK_CAROUSEL_URL")
     if _backend() != "graph" and not url:
         print(f"{len(pending)} carrosséis na fila, mas falta MAKE_WEBHOOK_CAROUSEL_URL: nada enviado.")
-        return
+        return False
     import requests
     for c in pending:
         urls = [f"{SITE_URL}/posts/{n}" for n in c["images"]]
@@ -280,6 +280,8 @@ def _send_carousels():
         with open(CAROUSELS_FILE, "w", encoding="utf-8") as f:
             json.dump(queue, f, ensure_ascii=False, indent=2)
         print(f"Carrossel {c['id']}: enviado.")
+        return True                              # 11/11/2026: um de cada vez (conta como um post do dia)
+    return False
 
 
 def _send_stories():
@@ -326,11 +328,7 @@ def send():
     if os.environ.get("PUBLISH_AUTO") != "1":
         print(f"{len(pending)} posts na fila, mas PUBLISH_AUTO não está a 1: nada enviado.")
         return
-    _send_carousels()
     _send_stories()
-    if not pending:
-        print("Fila vazia.")
-        return
     backend = os.environ.get("PUBLISH_BACKEND", "webhook")
     limit = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 36 * 3600))
     from datetime import datetime
@@ -384,7 +382,30 @@ def send():
     sent = [(e, t) for e, t in sent if t]
     res_today = sum(1 for e, t in sent if is_res(e) and t.date() == now_l.date())
     last = max([t for e, t in sent if not is_prev(e)], default=None)
+    # 11/11/2026 (Afonso: o carrossel e o Power Ranking saíram ao mesmo tempo): os carrosséis contam como post do dia,
+    # respeitam o intervalo e as horas de publicação, e quando sai um nada mais sai nesta execução.
+    try:
+        with open(CAROUSELS_FILE, encoding="utf-8") as f:
+            _cq = json.load(f)
+    except (OSError, ValueError):
+        _cq = []
+    _ct = [sent_dt(c) for c in _cq if c.get("sent")]
+    _ct = [t for t in _ct if t]
+    last = max([t for t in [last] + _ct if t], default=None)
     gap_ok = last is None or (now_l - last).total_seconds() >= gap_min * 60
+    _slots = sorted(int(x) for x in env("POST_SLOTS", "13,18,21").split(",") if x.strip().isdigit())
+    _day_now = sum(1 for e, t in sent if t.date() == now_l.date()) + sum(1 for t in _ct if t.date() == now_l.date())
+    _open = sum(1 for h in _slots if now_l.hour >= h)
+    if any(not c.get("sent") for c in _cq):
+        if in_window and gap_ok and _day_now < min(_open, int(env("DAY_MAX_POSTS", "3"))):
+            if _send_carousels():
+                print("Carrossel publicado: o resto da fila espera pela próxima hora de publicação.")
+                return
+        else:
+            print(f"Carrossel na fila: espera pela próxima hora de publicação ({_day_now} publicados hoje, intervalo {'ok' if gap_ok else 'curto'}).")
+    if not pending:
+        print("Fila vazia.")
+        return
 
     # 10/11/2026: modelos a rodar. Um resultado com variantes sai no modelo que não apareceu nos 2 últimos posts.
     recent_styles = [x.get("style") or "C" for x, _ in sorted(((x, t) for x, t in sent if is_res(x)), key=lambda p: p[1])][-2:]
