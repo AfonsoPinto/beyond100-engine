@@ -1280,6 +1280,38 @@ def clean_url(u):
     return u[:-5] if u.endswith(".html") else u
 
 
+_TT = None
+
+
+def _title_test(slug, name, rk, has_next):
+    """Título e frase de abertura do teste (gsc.json -> title_tests, estado 'running' ou 'won'), ou None."""
+    global _TT
+    if _TT is None:
+        try:
+            _TT = json.load(open("gsc.json", encoding="utf-8")).get("title_tests") or {}
+        except (OSError, ValueError):
+            _TT = {}
+    t = _TT.get(slug)
+    if not t or t.get("status") not in ("running", "won"):
+        return None
+    er = _load_json("espn_rank.json", {})
+    hit, lg = None, ""
+    for k in ("atp", "wta"):
+        for x in er.get(k) or []:
+            if (x.get("n") or "").lower() == (name or "").lower():
+                hit, lg = x, k.upper()
+    r = (hit or {}).get("r") or rk
+    if not r:
+        return None
+    mv = ""
+    if hit and isinstance(hit.get("prev"), int) and hit["prev"] != r:
+        mv = f" (▲{hit['prev'] - r} this week)" if hit["prev"] > r else f" (▼{r - hit['prev']} this week)"
+    day = time.strftime("%-d %b %Y")
+    title = f"{name} ranking: No. {r}{mv} · updated {day}"
+    lead = f"{name} is No. {r} in the {lg + ' ' if lg else ''}ranking{mv}, updated {day}." + (" Next match, live score and results." if has_next else " Latest results and form.")
+    return title, lead
+
+
 def _nl_slide():
     try:
         import nl_cta
@@ -1896,6 +1928,9 @@ def build_site(out_dir="site", player=None):
                  + (f", {', '.join(_bits)}" if _bits else "")
                  + f": {_wins}-{len(_ms) - _wins} in the matches we tracked" + (f", last at {_lt} on {_last}" if _lt and _last else "")
                  + (". Next match, results" if _nx else ". Results") + ", ranking history and career stats.")
+        _test = _title_test(slug_p, e["name"], _rk, _nx)              # 11/11/2026: teste de título nas páginas "Ninguém clica"
+        if _test:
+            _desc = _test[1] + " " + _desc
         _person = {"@context": "https://schema.org", "@type": "Person", "name": e["name"], "url": f"{SITE_BASE}/p/{slug_p}",
                    "jobTitle": "Professional tennis player", "description": _desc}
         if e.get("country"):
@@ -1919,6 +1954,8 @@ def build_site(out_dir="site", player=None):
             _yr = (_last or time.strftime("%Y"))[:4]
             # título no formato que as pessoas pesquisam ("<nome> ranking"), com o número logo à vista (Search Console, 5/11/2026)
             _tt = (f"{e['name']} ranking {_yr}: No. {_rk}" if _rk else f"{e['name']} ranking {_yr}") + (" · results and next match" if _nx else " · results and stats")
+            if _test:
+                _tt = _test[0]
             f.write(_shell(_tt + " | Beyond100",
                            extras.player_page(e, tr, tx, ranks_by_name), tx,
                            root="../", path="p/" + slug_p + ".html", desc=_desc, noindex=_thin,
