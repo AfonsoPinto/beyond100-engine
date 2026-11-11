@@ -1406,6 +1406,10 @@ def _iso(s):
 
 
 STREAM_ALT_JS = r"""<script>(function(){var el=document.getElementById('pd-alt');if(!el)return;var vid=el.dataset.vid;
+el.addEventListener('click',function(e){var a=e.target.closest('a[data-v]');if(!a)return;e.preventDefault();   // 11/11/2026: toca aqui no site
+ var box=document.querySelector('.pd-video');if(!box){box=document.createElement('div');box.className='pd-video';el.parentNode.insertBefore(box,el)}
+ box.innerHTML='<iframe src="https://www.youtube-nocookie.com/embed/'+a.dataset.v+'?autoplay=1&mute=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="'+a.textContent.replace(/[<>"]/g,'')+'"></iframe>';
+ [].forEach.call(el.querySelectorAll('a[data-v]'),function(b){b.style.background=b===a?'var(--v)':'';b.style.color=b===a?'#08223a':''});box.scrollIntoView({behavior:'smooth',block:'center'})});
 function bad(r,c){return !!(r&&c&&((r.b||[]).indexOf(c)>=0||((r.a||[]).length&&(r.a||[]).indexOf(c)<0)))}
 Promise.all([fetch('/api/geo').then(function(r){return r.json()}).catch(function(){return{}}),fetch('/padel/yt-regions.json').then(function(r){return r.json()}).catch(function(){return{}})]).then(function(x){
  var c=x[0].c,R=x[1]||{};if(!c||!R[vid])return;
@@ -1427,7 +1431,7 @@ def _stream_alts(db, m, v):
         xid = _yt_id(x.get("url") or "")
         if xid and xid != v["id"] and (x.get("started_at") or "")[:10] == m["played_at"] and (emb.get(xid) or [0])[0] == 200:
             alts.append((xid, re.sub(r"^.*?:\s*", "", x.get("name") or "").strip() or "Other court"))
-    chips = "".join(f'<a class="pd-btn" data-v="{esc(i)}" style="display:inline-block;width:auto;padding:8px 14px;margin:4px 6px 0 0" href="https://www.youtube.com/watch?v={esc(i)}" target="_blank" rel="noopener">▶ {esc(n)} ↗</a>' for i, n in alts[:4])
+    chips = "".join(f'<a class="pd-btn" data-v="{esc(i)}" style="display:inline-block;width:auto;padding:8px 14px;margin:4px 6px 0 0" href="https://www.youtube.com/watch?v={esc(i)}" target="_blank" rel="noopener">▶ {esc(n)}</a>' for i, n in alts[:4])
     chips += '<a class="pd-btn" style="display:inline-block;width:auto;padding:8px 14px;margin:4px 6px 0 0" href="/padel/live.html">Live page</a>'
     return (f'<div class="pd-card" id="pd-alt" data-vid="{esc(v["id"])}" style="margin:10px 0 14px"><p class="pd-note" data-t>'
             f'This court\'s stream is blocked in some countries. If YouTube says it is unavailable, watch live on the other courts:</p>{chips}</div>' + STREAM_ALT_JS)
