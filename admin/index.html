@@ -338,22 +338,23 @@ async function google(){
   const btn=`<button id="gsc-run">Ler agora</button>`;
   if(!d||!d.queries){$("#main").innerHTML=`<div class="card"><h3>Google (Search Console)</h3><p class="mut">Ainda sem dados. A leitura corre às segundas de manhã.</p>${btn}</div>`;wireG();return}
   const pages=(d.pages||[]).filter(x=>pd?x.page.includes("/padel/"):!x.page.includes("/padel/"));
-  const Q=d.queries||[], imp=Q.reduce((a,x)=>a+x.impressions,0), clk=Q.reduce((a,x)=>a+x.clicks,0);
+  const BS=(d.by_sport||{})[pd?"padel":"tennis"]||null;   // 11/11/2026: cada desporto com os seus números (quando já houver leitura nova)
+  const Q=(BS&&BS.queries)||d.queries||[], imp=Q.reduce((a,x)=>a+x.impressions,0), clk=Q.reduce((a,x)=>a+x.clicks,0);
   const ap=imp?Q.reduce((a,x)=>a+x.position*x.impressions,0)/imp:0;
   const opp=Q.filter(x=>x.impressions>=5&&x.position<=20&&x.clicks===0).slice(0,15);
   const row=x=>`<tr><td>${esc(x.q)}</td><td style="text-align:right">${n(x.impressions)}</td><td style="text-align:right">${n(x.clicks)}</td><td style="text-align:right">${pos(x.position)}</td></tr>`;
   const head=`<tr><th>Pesquisa</th><th style="text-align:right">Vezes que aparecemos</th><th style="text-align:right">Cliques</th><th style="text-align:right">Posição</th></tr>`;
   const short=u=>u.replace(/^https?:\/\/[^/]+/,"")||"/";
   const pop=p.data?Object.entries((pd?p.data.padel:p.data.tennis)||{}).sort((a,b)=>b[1]-a[1]).slice(0,15):[];
-  $("#main").innerHTML=`<div class="row"><div class="card" style="flex:1"><h3>${n(imp)}</h3><span class="mut">vezes que aparecemos no Google (28 dias)</span></div>
+  $("#main").innerHTML=`<div class="row"><div class="card" style="flex:1"><h3>${n(imp)}</h3><span class="mut">vezes que aparecemos no Google (28 dias${BS?(pd?", padel":", ténis"):""})</span></div>
    <div class="card" style="flex:1"><h3>${n(clk)}</h3><span class="mut">cliques</span></div><div class="card" style="flex:1"><h3>${pos(ap)}</h3><span class="mut">posição média</span></div></div>
-   ${todoCard(d.todo)}${testsCard(d.title_tests)}
-   ${trendCard(d.daily)}
+   ${pd?todoCard(BS&&BS.todo):todoCard(d.todo)+testsCard(d.title_tests)}
+   ${trendCard((BS&&BS.daily)||d.daily)}
    ${healthCard(d.health)}
    <div class="card" style="border:2px solid var(--v)"><h3>Oportunidades</h3><p class="mut">Pesquisas em que já aparecemos na 1.ª ou 2.ª página mas ninguém clicou: melhorar o título e a página destes jogadores dá cliques.</p>
     ${opp.length?`<table>${head}${opp.map(row).join("")}</table>`:'<p class="mut">Nenhuma de momento.</p>'}</div>
    ${idxCard(d.index)}
-   <div class="card"><h3>O que as pessoas pesquisam</h3><p class="mut">Todo o site (o Google não separa ténis e padel nas pesquisas).</p><table>${head}${Q.slice(0,25).map(row).join("")}</table></div>
+   <div class="card"><h3>O que as pessoas pesquisam</h3><p class="mut">${BS?(pd?"Só as pesquisas que levam a páginas de padel.":"Só as pesquisas que levam a páginas de ténis."):"Todo o site (a separação ténis/padel aparece na próxima leitura)."}</p><table>${head}${Q.slice(0,25).map(row).join("")}</table></div>
    <div class="card"><h3>Páginas que aparecem no Google${pd?" (padel)":" (ténis)"}</h3>${pages.length?`<table>${pages.slice(0,20).map(x=>`<tr><td><a href="${esc(x.page)}" target="_blank" rel="noopener">${esc(short(x.page))}</a></td><td style="text-align:right">${n(x.impressions)}</td><td style="text-align:right">${n(x.clicks)} cliques</td></tr>`).join("")}</table>`:'<p class="mut">Ainda nenhuma.</p>'}</div>
    <div class="card"><h3>Mais procurados no nosso site (14 dias)</h3><p class="mut">Estes jogadores ganham +0,5 de prioridade nos posts ("searched").</p>${pop.length?`<table>${pop.map(([k,v])=>`<tr><td>${esc(((pd?(p.data.padel_names||{})[k]:k)||k).replace(/-/g," "))}</td><td style="text-align:right">${n(v)} visitas</td></tr>`).join("")}</table>`:'<p class="mut">Ainda sem dados (atualiza a cada hora).</p>'}</div>
    <p class="mut">Leitura do Google: ${esc(new Date(d.ts*1000).toLocaleString("pt-PT"))} · corre às segundas. ${btn}</p>`;

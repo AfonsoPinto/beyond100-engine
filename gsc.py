@@ -30,13 +30,16 @@ def _query(tok, dims, n):
     return r.json().get("rows") or []
 
 
-def daily(tok, days=90):
-    """Evolução dia a dia (vezes que aparecemos, cliques, posição média), últimos 'days' dias: dá logo um gráfico com história."""
+def daily(tok, days=90, padel=None):
+    """Evolução dia a dia (vezes que aparecemos, cliques, posição média), últimos 'days' dias: dá logo um gráfico com história.
+    padel=True/False: só as páginas de padel (/padel/) ou só as de ténis (11/11/2026)."""
     end = dt.date.today() - dt.timedelta(days=2)
     start = end - dt.timedelta(days=days - 1)
+    body = {"startDate": str(start), "endDate": str(end), "dimensions": ["date"], "rowLimit": days}
+    if padel is not None:
+        body["dimensionFilterGroups"] = [{"filters": [{"dimension": "page", "operator": "contains" if padel else "notContains", "expression": "/padel/"}]}]
     r = requests.post(f"https://www.googleapis.com/webmasters/v3/sites/{requests.utils.quote(SITE, safe='')}/searchAnalytics/query",
-                      headers={"Authorization": f"Bearer {tok}"}, timeout=30,
-                      json={"startDate": str(start), "endDate": str(end), "dimensions": ["date"], "rowLimit": days})
+                      headers={"Authorization": f"Bearer {tok}"}, timeout=30, json=body)
     r.raise_for_status()
     return [{"d": x["keys"][0], "i": x.get("impressions", 0), "c": x.get("clicks", 0), "p": round(x.get("position", 0), 1)}
             for x in sorted(r.json().get("rows") or [], key=lambda x: x["keys"][0])]
@@ -205,6 +208,73 @@ def title_tests(tok, out, old):
     return tests
 
 
+def split_queries(rows):
+    """Pesquisas por desporto (11/11/2026): com as dimensões pesquisa+página, cada pesquisa conta para o ténis ou para o padel
+    conforme a página que o Google mostrou (/padel/ = padel). Posição média pesada pelas aparições."""
+    acc = {"tennis": {}, "padel": {}}
+    for x in rows:
+        q, page = x["keys"][0], x["keys"][1]
+        sp = "padel" if "/padel/" in page else "tennis"
+        a = acc[sp].setdefault(q, {"q": q, "clicks": 0, "impressions": 0, "_pw": 0.0})
+        a["clicks"] += x.get("clicks", 0)
+        a["impressions"] += x.get("impressions", 0)
+        a["_pw"] += x.get("position", 0) * x.get("impressions", 0)
+    out = {}
+    for sp, d in acc.items():
+        L = []
+        for a in d.values():
+            a["position"] = round(a.pop("_pw") / a["impressions"], 1) if a["impressions"] else 0
+            L.append(a)
+        out[sp] = sorted(L, key=lambda a: -a["impressions"])
+    return out
+
+
+def todo_padel(queries):
+    """'O que fazer esta semana' do padel: pesquisas de jogadores de padel (lista oficial) cruzadas com as nossas fichas."""
+    try:
+        pl = json.load(open("padel/data/players.json", encoding="utf-8"))
+        pl = list(pl.values()) if isinstance(pl, dict) else pl
+    except (OSError, ValueError):
+        pl = []
+    names = {}
+    for p in pl:
+        if isinstance(p, dict) and p.get("name") and p.get("id"):
+            names[_norm(p["name"])] = p
+    acts, seen = [], set()
+    for x in queries:
+        qn = _norm(x["q"]).replace(" padel", "").replace(" ranking", "").replace(" 2026", "").strip()
+        p = names.get(qn)
+        if not p:
+            hits = [v for k, v in names.items() if set(qn.split()) and set(qn.split()) <= set(k.split()) and len(qn.split()) >= 2]
+            if not hits and len(qn.split()) == 1:                # só o apelido: vale se houver um único jogador com esse apelido
+                hits = [v for k, v in names.items() if k.split()[-1] == qn]
+            p = hits[0] if len(hits) == 1 else None
+        key = (p or {}).get("name") or x["q"]
+        if key in seen or x["impressions"] < 10:
+            continue
+        if p:
+            try:
+                from padel.site import ppath
+                url = ppath(p).replace(".html", "")
+            except Exception:
+                url = f"/padel/p/{p['id']}-" + "-".join(_norm(p["name"]).split())
+            if x["position"] > 20:
+                seen.add(key)
+                acts.append({"kind": "page2", "q": x["q"], "who": p["name"], "impr": x["impressions"], "pos": x["position"], "url": url,
+                             "text": f"\"{x['q']}\": {x['impressions']} pesquisas mas estamos na posição {str(x['position']).replace('.', ',')} (2.ª página ou pior). Reforçar a ficha de {p['name']}."})
+            elif x["clicks"] == 0:
+                seen.add(key)
+                acts.append({"kind": "noclick", "q": x["q"], "who": p["name"], "impr": x["impressions"], "pos": x["position"], "url": url,
+                             "text": f"\"{x['q']}\": aparecemos {x['impressions']} vezes na posição {str(x['position']).replace('.', ',')} e ninguém clicou. Título e topo da ficha de {p['name']}."})
+        elif x["impressions"] >= 15:
+            seen.add(key)
+            acts.append({"kind": "missing", "q": x["q"], "impr": x["impressions"], "pos": x["position"],
+                         "text": f"\"{x['q']}\": {x['impressions']} pesquisas e não temos uma página certa para isto."})
+    order = {"playing": 0, "page2": 1, "noclick": 2, "missing": 3}
+    acts.sort(key=lambda a: (order[a["kind"]], -a["impr"]))
+    return acts[:20]
+
+
 INSPECT_N = int(os.environ.get("GSC_INSPECT_N") or "100")
 
 
@@ -276,10 +346,25 @@ def main():
         out["daily"] = daily(tok)
     except Exception as e:
         print("Search Console: evolução diária falhou", type(e).__name__)
+    try:                                                    # 11/11/2026: ténis e padel separados (pesquisas, gráfico e ações)
+        sq = split_queries(_query(tok, ["query", "page"], 5000))
+        out["by_sport"] = {sp: {"queries": sq[sp]} for sp in ("tennis", "padel")}
+        for sp in ("tennis", "padel"):
+            try:
+                out["by_sport"][sp]["daily"] = daily(tok, padel=(sp == "padel"))
+            except Exception:
+                pass
+    except Exception as e:
+        print("Search Console: separação ténis/padel falhou", type(e).__name__, str(e)[:200])
     try:
-        out["todo"] = todo(out)
+        out["todo"] = todo({"queries": (out.get("by_sport") or {}).get("tennis", {}).get("queries") or out["queries"], "pages": out["pages"]})
     except Exception as e:
         print("Search Console: lista de ações falhou", type(e).__name__, e)
+    try:
+        if out.get("by_sport"):
+            out["by_sport"]["padel"]["todo"] = todo_padel(out["by_sport"]["padel"]["queries"])
+    except Exception as e:
+        print("Search Console: ações do padel falharam", type(e).__name__, e)
     try:
         try:
             old = json.load(open("gsc.json", encoding="utf-8"))
