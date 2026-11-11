@@ -27,9 +27,17 @@ from captions import API_URL, MODEL, _credit_check, _record
 LOG = "news_log.json"
 POSTS_FILE = "posts.json"
 OFFICIAL = {"atptour.com", "wtatennis.com", "itftennis.com", "rolandgarros.com", "wimbledon.com", "usopen.org", "ausopen.com",
-            "daviscup.com", "billiejeankingcup.com", "atpchallengertour.com", "olympics.com"}
+            "daviscup.com", "billiejeankingcup.com", "atpchallengertour.com", "olympics.com",
+            # 11/11/2026: federações nacionais (fonte oficial para os seus jogadores)
+            "fft.fr", "lta.org.uk", "usta.com", "tennis.com.au", "rfet.es", "federtennis.it", "dtb-tennis.de", "tennisportugal.pt",
+            "cbt-tenis.com.br", "tenniscanada.com", "tennis.de", "tennis.nl", "tennisbelgium.be", "swisstennis.ch", "tennis.be"}
 MAJOR = {"reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "theguardian.com", "lequipe.fr", "espn.com", "tennis.com",
-         "skysports.com", "eurosport.com", "nytimes.com", "washingtonpost.com", "marca.com", "as.com", "tennismajors.com"}
+         "skysports.com", "eurosport.com", "nytimes.com", "washingtonpost.com", "marca.com", "as.com", "tennismajors.com",
+         # 11/11/2026: a lista era curta e recusava histórias verdadeiras (Hijikata d. Djokovic com ABC e Dawn, Tubello, Naná Silva)
+         "abc.net.au", "cnn.com", "cnnbrasil.com.br", "independent.co.uk", "telegraph.co.uk", "elpais.com", "lemonde.fr", "lefigaro.fr",
+         "gazzetta.it", "corrieredellosport.it", "mundodeportivo.com", "globo.com", "dawn.com", "theathletic.com", "nbcsports.com",
+         "cbssports.com", "smh.com.au", "theage.com.au", "rtp.pt", "record.pt", "ojogo.pt", "abola.pt", "publico.pt", "francetvinfo.fr",
+         "ubitennis.net", "ubitennis.com", "tennisnet.com", "puntodebreak.com", "tennisactu.net", "welovetennis.fr", "tennis365.com"}
 CATS = {"comeback": "COMEBACK", "first_title": "FIRST TITLE", "ranking": "RISING", "retirement": "NEWS", "injury": "NEWS", "upset": "UPSET"}
 SENSITIVE = {"retirement", "injury"}
 TOOL = lambda n: {"type": "web_search_20250305", "name": "web_search", "max_uses": n}
@@ -39,7 +47,7 @@ def domain(url):
     h = (urlparse(url).hostname or "").lower()
     h = re.sub(r"^(www|m|amp)\.", "", h)
     parts = h.split(".")
-    return ".".join(parts[-3:]) if len(parts) >= 3 and parts[-2] in ("co", "com") else ".".join(parts[-2:])
+    return ".".join(parts[-3:]) if len(parts) >= 3 and parts[-2] in ("co", "com", "net", "org", "gov", "edu", "ac") else ".".join(parts[-2:])
 
 
 def source_ok(story):
@@ -96,8 +104,26 @@ VERIFY = (
     "You are a strict fact-checker. You get a draft tennis news story (headline, summary, players, sources). Use web search (at most 3 searches) "
     "to check every claim independently: right person, right event, dates, numbers and wording. Reject anything unsupported, exaggerated, "
     "speculative, outdated (older than 3 days) or that reveals private details. Reply with JSON only: "
-    '{"verdict":"pass|fail","problems":["..."]}. Use "pass" only if every claim is confirmed.'
+    '{"verdict":"pass|fail","problems":["..."]}. Use "pass" only if every claim is confirmed. '
+    "If the input has official_rankings, those are the official ATP/WTA rankings: they are authoritative for ranking numbers, so a ranking "
+    "claim that matches them is confirmed even if some media give a different number."
 )
+
+
+def official_ranks(names):
+    """11/11/2026: ranking oficial (ESPN, já guardado em espn_rank.json) dos jogadores da notícia, para a verificação não falhar
+    quando os jornais não concordam (caso Dart: 83 vs 84)."""
+    import unicodedata
+    plain = lambda t: "".join(c for c in unicodedata.normalize("NFKD", t or "") if not unicodedata.combining(c)).lower().strip()
+    er = load("espn_rank.json", {})
+    want = {plain(n) for n in names}
+    out = []
+    for lg in ("atp", "wta"):
+        upd = er.get(f"{lg}_upd") or ""
+        for x in er.get(lg) or []:
+            if plain(x.get("n")) in want:
+                out.append(f'{x["n"]}: {lg.upper()} No. {x["r"]}' + (f' (previous No. {x["prev"]})' if x.get("prev") else "") + (f", ranking of {upd}" if upd else ""))
+    return out
 
 
 def find_photo(players):
@@ -201,7 +227,11 @@ def main():
             print(f"Notícia recusada ({head[:60]}): {why}.")
             log["items"].append({"date": today, "status": "rejected", "reason": why, "headline": head, "category": cat, "players": names, "sources": st.get("sources", [])})
             continue
-        v = ask(VERIFY, json.dumps({k: x for k, x in st.items() if k != "_photo"}, ensure_ascii=False), 2, 1200, model=captions.FALLBACK_MODEL, feature="news-verify") or {}
+        vin = {k: x for k, x in st.items() if k != "_photo"}
+        orank = official_ranks(names)
+        if orank:
+            vin["official_rankings"] = orank
+        v = ask(VERIFY, json.dumps(vin, ensure_ascii=False), 2, 1200, model=captions.FALLBACK_MODEL, feature="news-verify") or {}
         if v.get("verdict") != "pass":
             why = "verificação falhou: " + "; ".join(v.get("problems") or ["sem resposta"])[:200]
             print(f"Notícia recusada ({head[:60]}): {why}")
