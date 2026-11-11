@@ -347,7 +347,7 @@ async function google(){
   const pop=p.data?Object.entries((pd?p.data.padel:p.data.tennis)||{}).sort((a,b)=>b[1]-a[1]).slice(0,15):[];
   $("#main").innerHTML=`<div class="row"><div class="card" style="flex:1"><h3>${n(imp)}</h3><span class="mut">vezes que aparecemos no Google (28 dias)</span></div>
    <div class="card" style="flex:1"><h3>${n(clk)}</h3><span class="mut">cliques</span></div><div class="card" style="flex:1"><h3>${pos(ap)}</h3><span class="mut">posição média</span></div></div>
-   ${todoCard(d.todo)}
+   ${todoCard(d.todo)}${testsCard(d.title_tests)}
    ${trendCard(d.daily)}
    ${healthCard(d.health)}
    <div class="card" style="border:2px solid var(--v)"><h3>Oportunidades</h3><p class="mut">Pesquisas em que já aparecemos na 1.ª ou 2.ª página mas ninguém clicou: melhorar o título e a página destes jogadores dá cliques.</p>
@@ -358,6 +358,11 @@ async function google(){
    <div class="card"><h3>Mais procurados no nosso site (14 dias)</h3><p class="mut">Estes jogadores ganham +0,5 de prioridade nos posts ("searched").</p>${pop.length?`<table>${pop.map(([k,v])=>`<tr><td>${esc(((pd?(p.data.padel_names||{})[k]:k)||k).replace(/-/g," "))}</td><td style="text-align:right">${n(v)} visitas</td></tr>`).join("")}</table>`:'<p class="mut">Ainda sem dados (atualiza a cada hora).</p>'}</div>
    <p class="mut">Leitura do Google: ${esc(new Date(d.ts*1000).toLocaleString("pt-PT"))} · corre às segundas. ${btn}</p>`;
   wireG()}
+function testsCard(T){
+  const E=Object.entries(T||{});if(!E.length)return "";
+  const st={running:["a testar","#7fb3e0"],won:["melhorou: fica","var(--v)"],lost:["não melhorou: voltou ao título normal","#e5484d"]};
+  return `<div class="card"><h3>Testes de títulos (páginas "Ninguém clica")</h3><p class="mut">Título novo com a subida da semana e a data de atualização. Ao fim de 14 dias compara os cliques com os 14 dias antes; se não melhorar, volta sozinho ao título normal.</p>
+   <table>${E.sort((a,b)=>(a[1].start<b[1].start)-(a[1].start>b[1].start)).map(([k,t])=>`<tr><td><a href="/p/${esc(k)}" target="_blank" rel="noopener">${esc(t.who||k)}</a><br><span class="mut">"${esc(t.q||"")}" · desde ${esc(t.start)}</span></td><td class="mut">antes: ${t.before?t.before.clicks+" cliques / "+t.before.impr:"—"}${t.after?"<br>depois: "+t.after.clicks+" cliques / "+t.after.impr:""}</td><td><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:${(st[t.status]||st.running)[1]};color:#0b2b20">${(st[t.status]||st.running)[0]}</span></td></tr>`).join("")}</table></div>`}
 function todoCard(T){
   if(!T||!T.length)return "";
   const L={playing:["Joga esta semana","var(--v)"],page2:["Subir no Google","#f0b429"],noclick:["Ninguém clica","#7fb3e0"],missing:["Página em falta","#e5484d"]};

@@ -154,6 +154,57 @@ def todo(out):
     return acts[:20]
 
 
+TEST_DAYS, TEST_MAX = 14, 15
+
+
+def _page_stats(tok, slug, start, end):
+    """Cliques e aparições de uma página de jogador entre duas datas (Search Console, por página)."""
+    r = requests.post(f"https://www.googleapis.com/webmasters/v3/sites/{requests.utils.quote(SITE, safe='')}/searchAnalytics/query",
+                      headers={"Authorization": f"Bearer {tok}"}, timeout=30,
+                      json={"startDate": str(start), "endDate": str(end), "dimensions": ["page"], "rowLimit": 10,
+                            "dimensionFilterGroups": [{"filters": [{"dimension": "page", "operator": "contains", "expression": f"/p/{slug}"}]}]})
+    r.raise_for_status()
+    rows = r.json().get("rows") or []
+    c, i = sum(x.get("clicks", 0) for x in rows), sum(x.get("impressions", 0) for x in rows)
+    return {"clicks": c, "impr": i, "ctr": round(c / i, 4) if i else 0}
+
+
+def title_tests(tok, out, old):
+    """11/11/2026 (Afonso: "se achas benéfico, avança"): páginas da lista "Ninguém clica" passam a ter um título com o que o Google
+    não mostra (subida/descida da semana, data de atualização, próximo jogo). Ao fim de 14 dias compara com os 14 dias antes:
+    se os cliques/CTR não melhorarem, o teste fica 'lost' e o site volta ao título normal. Guardado em gsc.json -> title_tests."""
+    tests = dict(old.get("title_tests") or {})
+    today = dt.date.today()
+    lag = dt.timedelta(days=2)                                  # o Search Console tem ~2 dias de atraso
+    for a in out.get("todo") or []:
+        if a.get("kind") != "noclick" or not (a.get("url") or "").startswith("/p/"):
+            continue
+        slug = a["url"][3:]
+        if slug in tests or sum(1 for t in tests.values() if t.get("status") == "running") >= TEST_MAX:
+            continue
+        try:
+            before = _page_stats(tok, slug, today - lag - dt.timedelta(days=TEST_DAYS - 1), today - lag)
+        except Exception:
+            continue
+        tests[slug] = {"q": a.get("q"), "who": a.get("who"), "start": str(today), "status": "running", "before": before}
+    for slug, t in tests.items():
+        if t.get("status") != "running":
+            continue
+        st = dt.date.fromisoformat(t["start"])
+        if today - lag < st + dt.timedelta(days=TEST_DAYS - 1):
+            continue
+        try:
+            after = _page_stats(tok, slug, st, st + dt.timedelta(days=TEST_DAYS - 1))
+        except Exception:
+            continue
+        b = t.get("before") or {}
+        t["after"] = after
+        won = after["clicks"] > b.get("clicks", 0) and (after["ctr"] >= b.get("ctr", 0))
+        t["status"] = "won" if won else "lost"
+        t["ended"] = str(today)
+    return tests
+
+
 INSPECT_N = int(os.environ.get("GSC_INSPECT_N") or "100")
 
 
@@ -229,6 +280,15 @@ def main():
         out["todo"] = todo(out)
     except Exception as e:
         print("Search Console: lista de ações falhou", type(e).__name__, e)
+    try:
+        try:
+            old = json.load(open("gsc.json", encoding="utf-8"))
+        except (OSError, ValueError):
+            old = {}
+        out["title_tests"] = title_tests(tok, out, old)
+        print("Search Console: testes de títulos", {k: v.get("status") for k, v in out["title_tests"].items()})
+    except Exception as e:
+        print("Search Console: testes de títulos falharam", type(e).__name__, e)
     try:
         out["health"] = health()
     except Exception as e:
