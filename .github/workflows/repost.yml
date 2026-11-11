@@ -29,7 +29,8 @@ jobs:
         run: |
           mkdir -p fonts
           [ -f fonts/BarlowCondensed-Bold.ttf ] || curl -sSfL -o fonts/BarlowCondensed-Bold.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf || echo "fonte não descarregada (usa a de recurso)"
-      - run: sudo apt-get install -y fonts-dejavu-core fonts-liberation
+      - name: System fonts (retries; the cards also ship Inter in fonts/)
+        run: for i in 1 2 3; do timeout 120 sudo apt-get update -qq && timeout 180 sudo apt-get install -y fonts-dejavu-core fonts-liberation && break; echo "apt falhou, nova tentativa"; sleep 15; done || true
       - name: Rebuild the post
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

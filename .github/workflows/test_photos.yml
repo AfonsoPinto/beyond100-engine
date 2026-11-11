@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt
-      - run: sudo apt-get install -y fonts-dejavu-core fonts-liberation
+      - name: System fonts (retries; the cards also ship Inter in fonts/)
+        run: for i in 1 2 3; do timeout 120 sudo apt-get update -qq && timeout 180 sudo apt-get install -y fonts-dejavu-core fonts-liberation && break; echo "apt falhou, nova tentativa"; sleep 15; done || true
       - name: Fetch free-licence photos and render sample cards
         env:
           WIKI_CONTACT: ${{ secrets.WIKI_CONTACT }}
