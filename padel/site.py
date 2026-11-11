@@ -1405,6 +1405,34 @@ def _iso(s):
         return None
 
 
+STREAM_ALT_JS = r"""<script>(function(){var el=document.getElementById('pd-alt');if(!el)return;var vid=el.dataset.vid;
+function bad(r,c){return !!(r&&c&&((r.b||[]).indexOf(c)>=0||((r.a||[]).length&&(r.a||[]).indexOf(c)<0)))}
+Promise.all([fetch('/api/geo').then(function(r){return r.json()}).catch(function(){return{}}),fetch('/padel/yt-regions.json').then(function(r){return r.json()}).catch(function(){return{}})]).then(function(x){
+ var c=x[0].c,R=x[1]||{};if(!c||!R[vid])return;
+ if(bad(R[vid],c)){el.hidden=false;var t=el.querySelector('[data-t]');if(t)t.textContent="This court's stream isn't available in your country. Watch live on the other courts:";
+  [].forEach.call(el.querySelectorAll('a[data-v]'),function(a){if(bad(R[a.dataset.v],c))a.remove()})}else{el.hidden=true}})})();</script>"""
+
+
+def _stream_alts(db, m, v):
+    """Se a transmissão do court deste jogo está bloqueada em vários países (código 451), mostra os outros courts do mesmo dia
+    que passam em todo o lado. O script confirma pelo país do visitante (/api/geo + /padel/yt-regions.json) e esconde se não for preciso."""
+    if not v or not v.get("id") or not m.get("played_at"):
+        return ""
+    emb = yt_player._emb_load()
+    if (emb.get(v["id"]) or [0])[0] != 451:
+        return ""
+    rows = (db.videos.get(str(m.get("tid"))) or {}).get("rows") or []
+    alts = []
+    for x in rows:
+        xid = _yt_id(x.get("url") or "")
+        if xid and xid != v["id"] and (x.get("started_at") or "")[:10] == m["played_at"] and (emb.get(xid) or [0])[0] == 200:
+            alts.append((xid, re.sub(r"^.*?:\s*", "", x.get("name") or "").strip() or "Other court"))
+    chips = "".join(f'<a class="pd-btn" data-v="{esc(i)}" style="display:inline-block;width:auto;padding:8px 14px;margin:4px 6px 0 0" href="https://www.youtube.com/watch?v={esc(i)}" target="_blank" rel="noopener">▶ {esc(n)} ↗</a>' for i, n in alts[:4])
+    chips += '<a class="pd-btn" style="display:inline-block;width:auto;padding:8px 14px;margin:4px 6px 0 0" href="/padel/live.html">Live page</a>'
+    return (f'<div class="pd-card" id="pd-alt" data-vid="{esc(v["id"])}" style="margin:10px 0 14px"><p class="pd-note" data-t>'
+            f'This court\'s stream is blocked in some countries. If YouTube says it is unavailable, watch live on the other courts:</p>{chips}</div>' + STREAM_ALT_JS)
+
+
 def video_for(db, m):
     """A transmissão (YouTube oficial) onde o jogo foi mostrado: mesmo dia e mesmo court (ou o vídeo único das meias/final),
     com o ponto de partida aproximado (hora marcada do jogo menos o início da transmissão). Devolve dict ou None."""
@@ -1613,6 +1641,7 @@ def page_match(db, m):
         body += (f'<h2 class="dh">Watch</h2><a class="pd-vlink" href="{esc(v["url"])}" target="_blank" rel="noopener">'
                  + (f'<img src="{esc(v["img"])}" alt="" loading="lazy">' if v.get("img") else "")
                  + f'<span>▶ Watch on {esc(v["host"])} ↗</span></a><p class="pd-note">Official broadcast of this round ({esc(v["name"])}). Availability may depend on your country.</p>')
+    body += _stream_alts(db, m, v)                                      # 11/11/2026: transmissão bloqueada no país -> outros courts
     body += score_html                                                  # o vídeo vem primeiro, logo a seguir o resultado
     body += _nl_inline("Enjoyed this match? Get the padel week in one email")
     # percurso de cada par no torneio até este jogo
@@ -1728,11 +1757,13 @@ function play(i){cur=i;var s=streams[i];if(!s)return;var id=yt(s.url);
   :'<a class="pd-vlink" href="'+esc(s.url)+'" target="_blank" rel="noopener">'+(s.photo_url?'<img src="'+esc(s.photo_url)+'" alt="">':'')+'<span>▶ Watch on Red Bull TV ↗</span></a>';
  [].forEach.call(ch.querySelectorAll('button'),function(b){b.className=+b.dataset.i===i?'on':''})}
 function court(n){return String(n||'').replace(/^.*?:\s*/,'').replace(/\s*\(.*?\)\s*/g,' ').trim()||n}
-Promise.all(T.map(function(t){return fetch('/api/padel/videos/'+t.id).then(function(r){return r.ok?r.json():{videos:[]}}).catch(function(){return {videos:[]}})})).then(function(rs){
- rs.forEach(function(r,k){(r.videos||[]).forEach(function(v){if((v.started_at||'').slice(0,10)===today){v.t=T[k];streams.push(v)}})});
- streams.sort(function(a,b){function sc(v){return (yt(v.url)?0:2)+(/🇬🇧|cent/i.test(v.name)?0:1)+(v.t.premier?0:3)}return sc(a)-sc(b)});
+var GEO=Promise.all([fetch('/api/geo').then(function(r){return r.json()}).catch(function(){return{}}),fetch('/padel/yt-regions.json').then(function(r){return r.json()}).catch(function(){return{}})]);
+function blocked(v,g){var r=g[1][yt(v.url)],c=g[0].c;return !!(r&&c&&((r.b||[]).indexOf(c)>=0||((r.a||[]).length&&(r.a||[]).indexOf(c)<0)))}
+GEO.then(function(g){return Promise.all(T.map(function(t){return fetch('/api/padel/videos/'+t.id).then(function(r){return r.ok?r.json():{videos:[]}}).catch(function(){return {videos:[]}})})).then(function(rs){return [rs,g]})}).then(function(x){var rs=x[0],g=x[1];
+ rs.forEach(function(r,k){(r.videos||[]).forEach(function(v){if((v.started_at||'').slice(0,10)===today){v.t=T[k];v.bl=blocked(v,g);streams.push(v)}})});
+ streams.sort(function(a,b){function sc(v){return (v.bl?10:0)+(yt(v.url)?0:2)+(/🇬🇧|cent/i.test(v.name)?0:1)+(v.t.premier?0:3)}return sc(a)-sc(b)});
  if(!streams.length){pl.innerHTML='<p class="pd-note">No live video for today\'s tournaments: the scores below update every 2 minutes.</p>';return}
- ch.innerHTML=streams.map(function(s,i){return '<button data-i="'+i+'">'+esc(s.t.loc)+' · '+esc(court(s.name))+(yt(s.url)?'':' ↗')+'</button>'}).join('');
+ ch.innerHTML=streams.map(function(s,i){return '<button data-i="'+i+'">'+esc(s.t.loc)+' · '+esc(court(s.name))+(yt(s.url)?'':' ↗')+(s.bl?' · not in your country':'')+'</button>'}).join('');
  ch.onclick=function(e){var b=e.target.closest('button');if(b)play(+b.dataset.i)};play(0)});
 function load(){Promise.all(T.map(function(t){return fetch('/api/padel/matches/'+t.id+'?date='+today).then(function(r){return r.ok?r.json():{matches:[]}}).catch(function(){return {matches:[]}})})).then(function(rs){
  var html='';rs.forEach(function(r,k){var t=T[k],ms=(r.matches||[]).filter(function(m){return m.players&&m.players.team_1&&m.players.team_1.length});if(!ms.length)return;
@@ -1880,6 +1911,11 @@ def build(out_dir="site"):
     paths.append(write(out, "/padel/countries.html", page_countries(db)))
     paths.append(write(out, "/padel/highlights.html", page_highlights(db)))
     paths.append(write(out, "/padel/live.html", page_live(db)))
+    try:                                                               # 11/11/2026: países de cada transmissão (dados do YouTube)
+        with open(os.path.join(out, "padel", "yt-regions.json"), "w", encoding="utf-8") as f:
+            json.dump({k: {"a": v.get("a") or [], "b": v.get("b") or []} for k, v in yt_player.regions().items()}, f, separators=(",", ":"))
+    except Exception as e:
+        print("Padel: yt-regions falhou", type(e).__name__, e)
     for fn, fnc in (("/padel/next-week.html", sx.page_next_week), ("/padel/stats.html", sx.page_stats), ("/padel/credits.html", sx.page_credits)):
         try:
             paths.append(write(out, fn, fnc(db)))
