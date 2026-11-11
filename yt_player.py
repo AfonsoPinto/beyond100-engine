@@ -9,6 +9,19 @@ import time
 
 EMBED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "padel", "data", "yt_embed.json")
 EMBED_PER_RUN = int(os.environ.get("YT_EMBED_PER_RUN") or "150")
+REGIONS_FILE = os.path.join(os.path.dirname(EMBED_FILE), "yt_regions.json")   # 11/11/2026: {vid: {"a": [...], "b": [...], "t": ts}}
+_reg = None
+
+
+def regions():
+    global _reg
+    if _reg is None:
+        try:
+            with open(REGIONS_FILE, encoding="utf-8") as f:
+                _reg = json.load(f)
+        except (OSError, ValueError):
+            _reg = {}
+    return _reg
 _emb, _n = None, [0]
 
 
@@ -77,6 +90,16 @@ def _region_locked(vid):
         return False
     rr = (it.get("contentDetails") or {}).get("regionRestriction") or {}
     allowed, blocked = set(rr.get("allowed") or []), set(rr.get("blocked") or [])
+    if it:                                                           # 11/11/2026: guarda os países para o site escolher por visitante
+        R = regions()
+        R[vid] = {"a": sorted(allowed), "b": sorted(blocked), "t": int(time.time())}
+        for k in [k for k, v in R.items() if time.time() - v.get("t", 0) > 30 * 86400]:
+            R.pop(k, None)
+        try:
+            with open(REGIONS_FILE, "w", encoding="utf-8") as f:
+                json.dump(R, f, separators=(",", ":"))
+        except OSError:
+            pass
     return bool((allowed and len(allowed) < 100) or (blocked & KEY_COUNTRIES))
 
 
