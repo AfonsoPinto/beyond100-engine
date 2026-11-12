@@ -222,7 +222,7 @@ function cells(sc,team){return sc.map(function(s){var a=s[team],b=s[team=="team_
 function load(){var want={};rows.forEach(function(r){var d=r.dataset.day;if(d==today()||d==y())want[r.dataset.tid+'|'+d]=1});
  Object.keys(want).forEach(function(k){var p=k.split('|');fetch('/api/padel/matches/'+p[0]+'?date='+p[1]).then(function(x){return x.ok?x.json():null}).then(function(j){
   if(!j||!j.matches)return;j.matches.forEach(function(m){var r=document.querySelector('.pd-m[data-mid="'+m.id+'"]');if(!r)return;
-   if(!m.score){var w=r.querySelector('.pd-when');if(w&&m.status=='live'){w.className='pd-when pd-live';w.textContent='● LIVE'}return}
+   if(!m.score){if(m.status=='live'){var w=r.querySelector('.pd-when,.tm');if(w){w.className=(w.classList.contains('tm')?'tm':'pd-when')+' pd-live';w.textContent='● LIVE'}}return}
    ['team_1','team_2'].forEach(function(t){var c=r.querySelector('.pd-sc[data-team="'+t+'"]');if(c)c.innerHTML=cells(m.score,t)});
    var ts=r.querySelectorAll('.pd-t');if(m.winner&&ts.length==2){ts[0].className='pd-t '+(m.winner=='team_1'?'w':'l');ts[1].className='pd-t '+(m.winner=='team_2'?'w':'l')}
   });var n=document.getElementById('pd-upd');if(n)n.textContent='Scores updated '+new Date(j.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false})}).catch(function(){})})}
@@ -633,6 +633,8 @@ def live_tile(m, db):
         if sets_of(m):
             sc = "".join(f'<b class="{"on" if games(a if team == "team_1" else b) > games(b if team == "team_1" else a) else ""}">'
                          f'{esc(re.sub(r"\(.*\)", "", a if team == "team_1" else b))}</b>' for a, b in sets_of(m))
+        elif m.get("status") == "live":                        # 12/11/2026: a decorrer (a Padel API só dá o resultado no fim)
+            sc = '<span class="tm pd-live">● LIVE</span>' if team == "team_1" else ""
         else:
             sc = (f'<span class="tm">{site_ui.ltime(m.get("scheduled_at"), when_local(m) + " local") if m.get("scheduled_at") else "Later today"}</span>') if team == "team_1" else ""
         return (f'<div class="pl"><div class="who">{f"<div class=pd-avs>{avs}</div>" if avs else ""}<div><span class="nm"><span class="pd-t">{_short_team(m, team)}</span></span>'
@@ -712,8 +714,8 @@ def page_index(db):
     #    antes disso é "Today" com a hora de início (5/11/2026: "Now playing" com jogos por começar confundia)
     tday = [m for t in live for m in db.by_t.get(str(t["id"]), []) if m.get("played_at") == today and (m.get("draw") or "main") == "main"
             and team_players(m, "team_1") and team_players(m, "team_2") and m.get("winner") not in ("team_1", "team_2")]
-    on = [m for m in tday if sets_of(m)]
-    nx = sorted([m for m in tday if not sets_of(m)], key=lambda m: (m.get("scheduled_at") or "9", -(m.get("round") or 0)))
+    on = [m for m in tday if sets_of(m) or m.get("status") == "live"]
+    nx = sorted([m for m in tday if not (sets_of(m) or m.get("status") == "live")], key=lambda m: (m.get("scheduled_at") or "9", -(m.get("round") or 0)))
     on.sort(key=lambda m: (LEVEL_ORDER.get((db.tour(m.get("tid")) or {}).get("level"), 9), m.get("round") or 99))
     tiles = (on + nx)[:6]
     if tiles:
