@@ -60,6 +60,8 @@ body{background:var(--g)}
 .pd-sc b.on{background:var(--v);border-color:var(--v);color:var(--g)}
 .pd-sc i{font-style:normal;font-size:.62rem;vertical-align:super}
 .pd-when{color:var(--v);font:700 .85rem system-ui;white-space:nowrap}
+.pd-live{color:#ff6b6b;animation:pdblink 1.6s ease-in-out infinite}@keyframes pdblink{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.pd-live{animation:none}}
 .pd-rchips{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;margin:0 0 12px}.pd-rchips::-webkit-scrollbar{display:none}
 .pd-rchips button{flex:0 0 auto}
 .pd-bk .rd{display:none}.pd-bk .rd.on{display:block}
@@ -219,7 +221,8 @@ function cells(sc,team){return sc.map(function(s){var a=s[team],b=s[team=="team_
  return '<b class="'+(g(a)>g(b)?'on':'')+'">'+String(a||"").replace(/\\(.*\\)/,'')+(tb?'<i>'+tb[1]+'</i>':'')+'</b>'}).join('')}
 function load(){var want={};rows.forEach(function(r){var d=r.dataset.day;if(d==today()||d==y())want[r.dataset.tid+'|'+d]=1});
  Object.keys(want).forEach(function(k){var p=k.split('|');fetch('/api/padel/matches/'+p[0]+'?date='+p[1]).then(function(x){return x.ok?x.json():null}).then(function(j){
-  if(!j||!j.matches)return;j.matches.forEach(function(m){var r=document.querySelector('.pd-m[data-mid="'+m.id+'"]');if(!r||!m.score)return;
+  if(!j||!j.matches)return;j.matches.forEach(function(m){var r=document.querySelector('.pd-m[data-mid="'+m.id+'"]');if(!r)return;
+   if(!m.score){var w=r.querySelector('.pd-when');if(w&&m.status=='live'){w.className='pd-when pd-live';w.textContent='● LIVE'}return}
    ['team_1','team_2'].forEach(function(t){var c=r.querySelector('.pd-sc[data-team="'+t+'"]');if(c)c.innerHTML=cells(m.score,t)});
    var ts=r.querySelectorAll('.pd-t');if(m.winner&&ts.length==2){ts[0].className='pd-t '+(m.winner=='team_1'?'w':'l');ts[1].className='pd-t '+(m.winner=='team_2'?'w':'l')}
   });var n=document.getElementById('pd-upd');if(n)n.textContent='Scores updated '+new Date(j.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false})}).catch(function(){})})}
@@ -499,6 +502,8 @@ def match_html(m, db, show_round=True, show_tour=False):
     right1 = right2 = ""
     if sets_of(m):
         right1, right2 = score_cells(m, "team_1"), score_cells(m, "team_2")
+    elif st == "live":                                         # 12/11/2026: a Padel API só dá o resultado no fim; durante o jogo, LIVE
+        right1 = '<span class="pd-when pd-live">● LIVE</span>'
     elif st in ("scheduled", "pending", None):
         right1 = f'<span class="pd-when">{esc(m.get("schedule_label") or when_local(m))}</span>'
     cls = lambda team: ("w" if w == team else "l") if w else ""
@@ -643,7 +648,8 @@ def mini_match(m, db, label=True):
     w = m.get("winner") if m.get("winner") in ("team_1", "team_2") else None
     sc = lambda team: "".join(f'<b class="{"on" if games(a if team == "team_1" else b) > games(b if team == "team_1" else a) else ""}">'
                               f'{esc(re.sub(r"\(.*\)", "", a if team == "team_1" else b))}</b>' for a, b in sets_of(m))
-    right = (sc("team_1"), sc("team_2")) if sets_of(m) else (f'<span class="pd-when">{esc(m.get("schedule_label") or when_local(m))}</span>', "")
+    right = (sc("team_1"), sc("team_2")) if sets_of(m) else (
+        ('<span class="pd-when pd-live">● LIVE</span>' if m.get("status") == "live" else f'<span class="pd-when">{esc(m.get("schedule_label") or when_local(m))}</span>'), "")
     cls = lambda team: ("w" if w == team else "l") if w else ""
     head = (f'<div class="mm-r">{esc(m.get("round_name") or "")} · {CAT.get(m.get("category"), "")}</div>' if label
             else f'<div class="mm-r">{CAT.get(m.get("category"), "")}</div>')
