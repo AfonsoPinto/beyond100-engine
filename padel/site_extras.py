@@ -369,8 +369,33 @@ PR_CSS = """<style>
 .pw-cut{display:flex;align-items:center;gap:10px;margin:6px 2px;color:var(--v);font:800 .72rem system-ui;letter-spacing:.12em;text-transform:uppercase}
 .pw-cut:before,.pw-cut:after{content:"";flex:1;height:1px;background:var(--v);opacity:.5}
 .pw-row.out{opacity:.82}.pw-row.out .n{color:var(--s)}
+.pw-pod{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0 10px}
+.pw-top{position:relative;display:block;aspect-ratio:4/5;border-radius:22px;overflow:hidden;background:linear-gradient(160deg,#16507f,#08223a 75%);border:1px solid var(--e);text-decoration:none;color:var(--c)}
+.pw-top:hover{border-color:var(--v)}
+.pw-top .ph{position:absolute;inset:0;display:flex}.pw-top .ph img{flex:1;min-width:0;height:100%;object-fit:cover;object-position:50% 20%}
+.pw-top .ph .ini{flex:1;display:flex;align-items:center;justify-content:center;font:900 3.2rem system-ui;color:rgba(247,242,230,.18)}
+.pw-top:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.25) 0,transparent 30%,transparent 45%,rgba(8,34,58,.96) 88%)}
+.pw-top .rk{position:absolute;z-index:1;top:12px;left:12px;min-width:38px;height:38px;padding:0 8px;border-radius:999px;background:var(--v);color:#08223a;font:900 1.15rem/38px system-ui;text-align:center}
+.pw-top .tx{position:absolute;z-index:1;left:14px;right:14px;bottom:14px}
+.pw-top .tx b{display:block;font:800 1.08rem/1.15 system-ui}.pw-top .tx small{display:block;color:var(--s);font-size:.78rem;margin-top:3px}
+.pw-top .tx em{display:block;font:900 1.5rem system-ui;font-style:normal;color:var(--v);margin-top:6px;font-variant-numeric:tabular-nums}
+.pw-top.first{border-color:var(--v);box-shadow:0 0 0 1px var(--v),0 14px 40px rgba(0,0,0,.35)}
+@media (max-width:560px){.pw-pod{grid-template-columns:1fr 1fr}.pw-top.first{grid-column:1/3;aspect-ratio:16/11}.pw-top .tx b{font-size:.95rem}.pw-top .tx em{font-size:1.25rem}}
 @media (max-width:560px){.pw-row{grid-template-columns:34px auto 1fr auto;gap:9px;padding:10px 11px}.pw-row .avs .pd-av{width:32px;height:32px}}
 </style>"""
+
+
+def _podium(items):
+    """Os 3 primeiros com foto grande (as fotos livres em tamanho de página) ou as iniciais. items: (rank, players, sub, value, href)."""
+    from padel.site import has_photo
+    h = ""
+    for k, (rk, ps, sub, val, href) in enumerate(items[:3]):
+        ph = "".join(f'<img src="/padel/img/{esc(str(p.get("id")))}.jpg" alt="{esc(p.get("name") or "")}" loading="lazy">' if has_photo(p.get("id"))
+                     else f'<span class="ini">{esc("".join(w[0] for w in (p.get("name") or "?").split()[:2]).upper())}</span>' for p in ps[:2])
+        nm = " / ".join(esc(p.get("name") or "") for p in ps)
+        h += (f'<a class="pw-top{" first" if k == 0 else ""}" href="{href}"><span class="ph">{ph}</span><span class="rk">{rk}</span>'
+              f'<span class="tx"><b>{nm}</b><small>{sub}</small><em>{val}</em></span></a>')
+    return f'<div class="pw-pod">{h}</div>' if h else ""
 
 
 def power_rows(db, cat, days=30, n=20):
@@ -402,8 +427,12 @@ def page_power(db):
     for cat in ("men", "women"):
         rows = power_rows(db, cat)
         mx = max([e["score"] for e in rows] or [1]) or 1
+        pod = _podium([(i, [e["p"]], f'{flag(e["p"].get("nationality"), 11)} {esc(country_name(e["p"].get("nationality")))}'
+                        + (f' · {e["t"]} title{"s" if e["t"] > 1 else ""}' if e["t"] else ""), f'{e["w"]}-{e["l"]}', ppath(e["p"])) for i, e in enumerate(rows[:3], 1)])
         h = ""
         for i, e in enumerate(rows, 1):
+            if i <= 3:
+                continue
             p = e["p"]
             rk = rank_str(p.get("id"), db)
             chip = f'<span class="pw-chip">{e["t"]} title{"s" if e["t"] > 1 else ""}</span>' if e["t"] else ""
@@ -412,7 +441,7 @@ def page_power(db):
                   f'<small>{flag(p.get("nationality"), 11)} {esc(country_name(p.get("nationality")))}{(" · " + esc(rk)) if rk else ""}</small></span>'
                   f'<span class="val"><em>{e["w"]}-{e["l"]}</em><small>{e["score"]} pts</small></span>'
                   f'<span class="pw-bar"><i style="width:{max(6, round(100 * e["score"] / mx))}%"></i></span></a>')
-        body += f'<div class="st-pane" data-cat="{cat}"{" hidden" if cat == "women" else ""}><div class="pw-list">{h or "<p class=empty>Not enough matches yet.</p>"}</div></div>'
+        body += f'<div class="st-pane" data-cat="{cat}"{" hidden" if cat == "women" else ""}>{pod}<div class="pw-list">{h or ("" if pod else "<p class=empty>Not enough matches yet.</p>")}</div></div>'
     body += STATS_JS
     return shell("Padel Power Ranking: the players in the best form · Beyond Padel", body, "/padel/power.html", tab="stats",
                  desc="Who is in the best form in padel: wins, titles and losses in Premier Padel and the FIP Tour over the last 30 days.")
@@ -447,8 +476,11 @@ def page_race(db):
     for cat in ("men", "women"):
         pairs, day = race_pairs(db, cat)
         cut_pts = next((x["pts"] for x in reversed(pairs) if x["rank"] and x["rank"] <= 16), None)
+        top = [y for y in pairs if (y["rank"] or 999) <= 24]
+        pod = _podium([(x["rank"], [{"id": p.get("id"), "name": p.get("name")} for p in x["ps"]], " ".join(flag(p.get("nationality"), 11) for p in x["ps"]),
+                        f'{x["pts"]:,} pts'.replace(",", " "), ppath(x["ps"][0])) for x in top[:3]])
         h = ""
-        for x in [y for y in pairs if (y["rank"] or 999) <= 24]:
+        for x in top[3:]:
             if x["rank"] and x["rank"] > 16 and "pw-cut" not in h:
                 h += '<div class="pw-cut">Finals line · top 16 players qualify</div>'
             ps = [{"id": p.get("id"), "name": p.get("name"), "nationality": p.get("nationality")} for p in x["ps"]]
@@ -460,7 +492,7 @@ def page_race(db):
                   f'<span class="who"><b>{names}</b><small>{" ".join(flag(p.get("nationality"), 11) for p in ps)}{(" · " + gap) if gap else ""}</small></span>'
                   f'<span class="val"><em>{x["pts"]:,}</em><small>points</small></span></a>').replace("<em>" + f'{x["pts"]:,}', "<em>" + f'{x["pts"]:,}'.replace(",", " "))
         note = f'<p class="pd-note">Race standings of {esc(day)}.</p>' if day else ""
-        body += f'<div class="st-pane" data-cat="{cat}"{" hidden" if cat == "women" else ""}>{note}<div class="pw-list">{h or "<p class=empty>The Race has not been published yet.</p>"}</div></div>'
+        body += f'<div class="st-pane" data-cat="{cat}"{" hidden" if cat == "women" else ""}>{note}{pod}<div class="pw-list">{h or ("" if pod else "<p class=empty>The Race has not been published yet.</p>")}</div></div>'
     body += STATS_JS
     return shell("Race to the Finals: who qualifies for the Premier Padel Finals · Beyond Padel", body, "/padel/race.html", tab="rankings",
                  desc="Premier Padel Race to the Finals: the top 16 players qualify. Points, the Finals line and how far each player is from the top 16.")
