@@ -259,9 +259,10 @@ def make():
         except (TypeError, ValueError):
             date = ""
         fn = f"padel-r-{mid}.jpg"
+        _vs = {}
         cards.result_card({"kicker": kicker(info, m), "level": level_tag(t), "round": ROUND.get(m.get("round"), m.get("round_name") or ""),
                            "tournament": short_name(t), "city": t.get("location"), "date": date, "winners": W, "losers": L, "sets": sets,
-                           "photo": ph, "ranks": rk, "note": note_for(info, W, L, rk)}, os.path.join(POSTS_DIR, fn))
+                           "photo": ph, "ranks": rk, "note": note_for(info, W, L, rk), "variants": _vs}, os.path.join(POSTS_DIR, fn))
         facts = {"tournament": t.get("name"), "level": level_tag(t), "city": t.get("location"), "country": t.get("country"),
                  "category": m.get("category"), "round": ROUND.get(m.get("round"), m.get("round_name")),
                  "winners": [{"name": p.get("name"), "country": p.get("nationality"), "ranking": rk.get(str(p.get("id")))} for p in W],
@@ -269,6 +270,7 @@ def make():
                  "score": " ".join(f"{a}-{b}" for a, b in sets), "seed_winners": info["seed_w"] or None, "seed_losers": info["seed_l"] or None,
                  "reasons": info["why"], "winners_pre_match_chance_pct_elo_estimate": info.get("elo_w"), "photo_of": next((p.get("name") for p in W if p.get("id") == ph["pid"]), None)}
         q["queue"].append({"id": f"r-{mid}", "kind": "result", "score": info["score"], "created": time.time(), "image": fn,
+                           **({"variants": dict(_vs, C=fn)} if _vs else {}),
                            "facts": facts, "sent": False, "players": [str(p.get("id")) for p in W + L], "photo_pids": [str(ph["pid"])]})
         made += 1
         print(f"Padel {mid}: cartão ({info['score']}: {', '.join(info['why']) or 'round'}).")
@@ -982,7 +984,12 @@ def send():
         if res_today >= cap:
             print(f"Padel: já saíram {res_today} posts hoje (máximo {cap}).")
             break
-        img = f"{SITE}/posts/{e['image']}"
+        style, imgf = None, e["image"]
+        if e.get("variants"):                                      # 12/11/2026: o modelo que não saiu nos 2 últimos resultados
+            recent = [x.get("style") or "C" for x in sorted([x for x in sent if x["kind"] == "result"], key=lambda x: x.get("sent_ts", 0))][-2:]
+            style = next((k for k in ("C", "A", "B") if k in e["variants"] and k not in recent), "C")
+            imgf = e["variants"].get(style, e["image"])
+        img = f"{SITE}/posts/{imgf}"
         try:
             if requests.head(img, timeout=20).status_code != 200:
                 print(f"Padel {e['id']}: imagem ainda não está no site, fica para a próxima.")
@@ -993,7 +1000,9 @@ def send():
             print(f"Padel {e['id']}: falhou ({type(ex).__name__}).")
             break
         e["sent"], e["sent_ts"] = True, time.time()
-        print(f"Padel {e['id']}: enviado.")
+        if style:
+            e["style"], e["sent_image"] = style, imgf
+        print(f"Padel {e['id']}: enviado" + (f" (modelo {style})." if style else "."))
         break
     qsave(q)
 

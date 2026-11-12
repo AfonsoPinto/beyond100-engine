@@ -145,11 +145,21 @@ def result_card(d, out_path):
         side = lambda ps: [{"name": p.get("name"), "short": _sur(p), "country": _code(p), "rank": rk.get(str(p.get("id")))} for p in ps]
         k_ = (d.get("kicker") or "Win").upper()
         fn_ = modern_cards.card_b if k_ in ("CHAMPIONS", "FIRST TITLE") else modern_cards.card_a if k_ == "UPSET" else modern_cards.card_c
-        return fn_({"sport": "padel", "kicker": k_, "level": d.get("level"),
+        dd = {"sport": "padel", "kicker": k_, "level": d.get("level"),
                                     "tournament": " · ".join(x for x in [d.get("tournament"), d.get("city")] if x), "round": d.get("round"),
                                     "date": d.get("date"), "winners": side(d["winners"]), "losers": side(d["losers"]),
                                     "sets": [(int(str(a).split("(")[0] or 0), int(str(b).split("(")[0] or 0)) for a, b in d["sets"]],
-                                    "photo": d["photo"]["path"], "credit": d["photo"].get("credit"), "line": d.get("line") or ""}, out_path)
+                                    "photo": d["photo"]["path"], "credit": d["photo"].get("credit"), "line": d.get("line") or ""}
+        out = fn_(dd, out_path)
+        if fn_ is modern_cards.card_c and d.get("variants") is not None:   # 12/11/2026: resultados normais também nos modelos A e B (rotação)
+            base, ext = os.path.splitext(out_path)
+            for k, f2 in (("A", modern_cards.card_a), ("B", modern_cards.card_b)):
+                try:
+                    f2(dd, f"{base}-{k.lower()}{ext}")
+                    d["variants"][k] = os.path.basename(f"{base}-{k.lower()}{ext}")
+                except Exception as e:
+                    print("Padel: modelo", k, "falhou", type(e).__name__, e)
+        return out
     img = _grad()
     ph = d.get("photo") or {}
     if ph.get("path"):

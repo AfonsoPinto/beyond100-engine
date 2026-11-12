@@ -60,7 +60,7 @@ body{background:var(--g)}
 .pd-sc b.on{background:var(--v);border-color:var(--v);color:var(--g)}
 .pd-sc i{font-style:normal;font-size:.62rem;vertical-align:super}
 .pd-when{color:var(--v);font:700 .85rem system-ui;white-space:nowrap}
-.pd-live{color:#ff6b6b;animation:pdblink 1.6s ease-in-out infinite}@keyframes pdblink{50%{opacity:.45}}
+.pd-live{color:#ff6b6b!important;animation:pdblink 1.6s ease-in-out infinite}@keyframes pdblink{50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.pd-live{animation:none}}
 .pd-rchips{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;margin:0 0 12px}.pd-rchips::-webkit-scrollbar{display:none}
 .pd-rchips button{flex:0 0 auto}
@@ -725,6 +725,10 @@ def page_index(db):
         rest = [t for t in live if str(t["id"]) not in {str(m.get("tid")) for m in tiles}]
         if rest:
             body += '<p class="pd-note">Also today: ' + " · ".join(f'<a href="{tpath(t)}">{esc(t.get("location") or t.get("name"))}</a>' for t in rest) + "</p>"
+    try:                                                               # 12/11/2026: igual ao ténis (jogadores perto da 1.ª página do Google)
+        body += spotlight_block(db)
+    except Exception as e:
+        print("Padel: spotlight falhou", type(e).__name__, e)
     hl = highlight_cards(db, 4)
     if hl:
         body += '<h2 class="sec">Latest highlights<a href="/padel/highlights.html">All highlights</a></h2><div class="pd-hls row">' + "".join(hl_card(db, m, h) for m, h in hl) + "</div>"
@@ -1169,6 +1173,65 @@ def _thin(p, ms, rk):
     return _clean(ppath(p)) not in _SEEN_GSC
 
 
+def spotlight_players(db, n=8, lo=7.5, hi=25):
+    """Fichas de padel que o Google já mostra perto da 1.ª página (gsc.json -> by_sport.padel, posição lo-hi), por aparições."""
+    try:
+        qs = ((json.load(open("gsc.json", encoding="utf-8")).get("by_sport") or {}).get("padel") or {}).get("queries") or []
+    except (OSError, ValueError):
+        qs = []
+    plain = lambda t: " ".join(unicodedata.normalize("NFKD", t or "").encode("ascii", "ignore").decode().lower().split())
+    names = {}
+    for pid, p in (db.players or {}).items():
+        if isinstance(p, dict) and p.get("name"):
+            names[plain(p["name"])] = p
+    agg = {}
+    for q in qs:
+        pos, imp = q.get("position") or 99, q.get("impressions") or 0
+        if not (lo <= pos <= hi):
+            continue
+        t = [x for x in plain(q.get("q")).split() if x not in ("padel", "ranking", "rankings", "2026", "live", "results")]
+        p = names.get(" ".join(t))
+        if not p and t:
+            hits = [v for k, v in names.items() if set(t) <= set(k.split())] if len(t) >= 2 else [v for k, v in names.items() if k.split()[-1] == t[0]]
+            p = hits[0] if len(hits) == 1 else None
+        if p:
+            x = agg.setdefault(str(p.get("id")), [p, 0])
+            x[1] += imp
+    return [v[0] for v in sorted(agg.values(), key=lambda v: -v[1])][:n]
+
+
+def spotlight_block(db):
+    rows = spotlight_players(db)
+    if len(rows) < 3:
+        return ""
+    import extras
+    cards = ""
+    for p in rows:
+        pid, nm = str(p.get("id")), p.get("name") or ""
+        rk = ((db.rank_of.get(pid) or {}).get("ranking"))
+        img = (f'<img src="/padel/img/{pid}.jpg" alt="{esc(nm)}" loading="lazy" width="150" height="188">' if has_photo(pid)
+               else f'<span class="ini">{esc("".join(w[0] for w in nm.split()[:2]).upper())}</span>')
+        cards += (f'<a href="{ppath(p)}">{img}{f"<span class=rk>No. {rk}</span>" if rk else ""}'
+                  f'<span class="ov"><b>{esc(nm)}</b><small>{esc(country_name(p.get("nationality"))) or "Ranking &amp; results"}</small></span></a>')
+    return (f'<style>{extras.SPOT_CSS}.ui-spot .ini{{color:rgba(127,179,224,.28)}}</style><h2 class="sec">Players in the spotlight<a href="/padel/players.html">All players</a></h2>'
+            f'<div class="ui-spot">{cards}</div>')
+
+
+_TT = None
+
+
+def _title_test(path):
+    """Teste de título em curso (ou ganho) para esta ficha? gsc.json -> title_tests, chave = caminho sem .html."""
+    global _TT
+    if _TT is None:
+        try:
+            _TT = json.load(open("gsc.json", encoding="utf-8")).get("title_tests") or {}
+        except (OSError, ValueError):
+            _TT = {}
+    t = _TT.get(path[:-5] if path.endswith(".html") else path)
+    return bool(t and t.get("status") in ("running", "won"))
+
+
 def page_player(db, pid, p):
     ms = player_matches(db, pid)
     done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
@@ -1272,9 +1335,15 @@ def page_player(db, pid, p):
     if has_photo(pid):
         _person["image"] = f"{SITE_BASE}/padel/img/{pid}.jpg"
     _ld = [_person, _crumbs([("Beyond Padel", "/padel/index.html"), ("Rankings", "/padel/rankings.html"), (p.get("name") or "", ppath(p))])]
-    return shell((f"{p.get('name')} padel ranking: No. {_rk}" if _rk else f"{p.get('name')} padel ranking") + " · results and partners | Beyond Padel", body, ppath(p),
-                 desc=(f"{p.get('name')} is ranked No. {_rk} in padel" if _rk else f"{p.get('name')}") + f" ({country_name(p.get('nationality'))}): ranking, points, partners and match results.", tab="players",
-                 noindex=_thin(p, ms, _rk), ld=_ld)
+    _title = (f"{p.get('name')} padel ranking: No. {_rk}" if _rk else f"{p.get('name')} padel ranking") + " · results and partners | Beyond Padel"
+    _desc = (f"{p.get('name')} is ranked No. {_rk} in padel" if _rk else f"{p.get('name')}") + f" ({country_name(p.get('nationality'))}): ranking, points, partners and match results."
+    if _rk and _title_test(ppath(p)):                          # 12/11/2026: teste de título (páginas "Ninguém clica" do padel)
+        _d = r.get("ranking_diff") or 0 if isinstance(r, dict) else 0
+        _mv = f" (▲{_d} this week)" if _d > 0 else f" (▼{-_d} this week)" if _d < 0 else ""
+        _day = time.strftime("%-d %b %Y")
+        _title = f"{p.get('name')} padel ranking: No. {_rk}{_mv} · updated {_day}"
+        _desc = f"{p.get('name')} is No. {_rk} in the padel ranking{_mv}, updated {_day}. " + _desc
+    return shell(_title, body, ppath(p), desc=_desc, tab="players", noindex=_thin(p, ms, _rk), ld=_ld)
 
 
 def page_pair(db, key, team):
@@ -1989,11 +2058,12 @@ def build(out_dir="site"):
             lm[mpath(m)] = (m.get("played_at") or "")[:10]
     try:                                              # páginas principais em espanhol (7/11/2026)
         from padel import es as _es
-        _esp = _es.make(out)
+        _esp = _es.make_all(out)                      # 12/11/2026: espanhol, italiano e francês
         paths += _esp
-        for u in _es.PAGES.values():
-            lm[u] = ""
-        print(f"Padel: {len(_esp)} páginas em espanhol.")
+        for u in _es.EN_PAGES:
+            for lg in _es.LANGS:
+                lm[_es.lpath(u, lg)] = ""
+        print(f"Padel: {len(_esp)} páginas traduzidas (es, it, fr).")
     except Exception as e:
         print("Padel espanhol falhou:", type(e).__name__, e)
     with open(os.path.join(out, "padel", "sitemap.xml"), "w", encoding="utf-8") as f:
