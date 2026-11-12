@@ -304,7 +304,7 @@ STATS_JS = """<script>(function(){var s=document.getElementById('st-seg');if(!s)
 def page_stats(db):
     pl, pairs, countries, upsets = compute_stats(db)
     body = ('<section class="page-h"><h1>Stats &amp; records</h1><p>Every main-draw match in our database: Premier Padel and the '
-            'FIP Tour (Platinum, Gold, Silver) of the last months.</p></section>'
+            'FIP Tour (Platinum, Gold, Silver) of the last months.</p><p class="pd-sub"><a href="/padel/power.html">Power Ranking ›</a> &nbsp; <a href="/padel/race.html">Race to the Finals ›</a></p></section>'
             '<div class="pd-seg" id="st-seg"><button class="on" data-cat="men">Men</button><button data-cat="women">Women</button></div>')
     for cat in ("men", "women"):
         ps = [e for e in pl.values() if e["cat"] == cat]
@@ -351,3 +351,116 @@ def add_to_search(db, out):
     with open(fp, "w", encoding="utf-8") as f:
         json.dump(items, f, ensure_ascii=False, separators=(",", ":"))
     return len(items)
+
+
+# ------------------------------------------------------------------ Power Ranking e Race to the Finals (12/11/2026)
+# Páginas iguais às do ténis (Power Ranking, Road to the Top 100): o padel já tinha estes conteúdos nos posts semanais, faltava-lhes a página.
+PR_CSS = """<style>
+.pw-list{display:flex;flex-direction:column;gap:8px;margin:12px 0 24px}
+.pw-row{display:grid;grid-template-columns:44px auto 1fr auto;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;background:var(--deep);border:1px solid var(--e);text-decoration:none;color:var(--c)}
+.pw-row:hover{border-color:var(--v)}
+.pw-row .n{font:900 1.35rem system-ui;color:var(--v);text-align:center;font-variant-numeric:tabular-nums}
+.pw-row .avs{display:flex}.pw-row .avs .pd-av{width:40px;height:40px;margin-right:-8px;border:2px solid var(--deep)}
+.pw-row .who b{display:block;font-size:1rem;line-height:1.2}.pw-row .who small{color:var(--s);font-size:.8rem}
+.pw-row .val{text-align:right;white-space:nowrap}.pw-row .val em{display:block;font:900 1.15rem system-ui;font-style:normal;color:var(--c)}
+.pw-row .val small{color:var(--s);font-size:.75rem}
+.pw-bar{grid-column:2/5;height:5px;border-radius:5px;background:rgba(255,255,255,.07);overflow:hidden}.pw-bar i{display:block;height:100%;background:var(--v);border-radius:5px}
+.pw-chip{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--v);color:#08223a;font:800 .68rem system-ui;vertical-align:2px}
+.pw-cut{display:flex;align-items:center;gap:10px;margin:6px 2px;color:var(--v);font:800 .72rem system-ui;letter-spacing:.12em;text-transform:uppercase}
+.pw-cut:before,.pw-cut:after{content:"";flex:1;height:1px;background:var(--v);opacity:.5}
+.pw-row.out{opacity:.82}.pw-row.out .n{color:var(--s)}
+@media (max-width:560px){.pw-row{grid-template-columns:34px auto 1fr auto;gap:9px;padding:10px 11px}.pw-row .avs .pd-av{width:32px;height:32px}}
+</style>"""
+
+
+def power_rows(db, cat, days=30, n=20):
+    """Melhor forma nos últimos 30 dias (a mesma fórmula do post semanal): 2 por vitória, +3 por título, -1 por derrota."""
+    cut = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    rec = {}
+    for ms in db.by_t.values():
+        for m in ms:
+            if m.get("category") != cat or (m.get("played_at") or "") < cut or m.get("winner") not in ("team_1", "team_2") or isinstance(m.get("tie"), dict):
+                continue
+            for t in ("team_1", "team_2"):
+                for p in team_players(m, t):
+                    e = rec.setdefault(str(p.get("id")), {"p": p, "w": 0, "l": 0, "t": 0})
+                    if m["winner"] == t:
+                        e["w"] += 1
+                        e["t"] += 1 if m.get("round") == 1 else 0
+                    else:
+                        e["l"] += 1
+    for e in rec.values():
+        e["score"] = e["w"] * 2 + e["t"] * 3 - e["l"]
+    return sorted([e for e in rec.values() if e["w"] >= 3], key=lambda e: (-e["score"], -e["w"]))[:n]
+
+
+def page_power(db):
+    body = (PR_CSS + '<section class="page-h"><h1>Power Ranking</h1><p>The players in the best form over the last 30 days in Premier Padel and the '
+            'FIP Tour (Platinum, Gold, Silver). Score: 2 per win, +3 per title, −1 per loss. At least 3 wins to enter.</p>'
+            '<p class="pd-sub"><a href="/padel/race.html">Race to the Finals ›</a> &nbsp; <a href="/padel/rankings.html">Official ranking ›</a></p></section>'
+            '<div class="pd-seg" id="st-seg"><button class="on" data-cat="men">Men</button><button data-cat="women">Women</button></div>')
+    for cat in ("men", "women"):
+        rows = power_rows(db, cat)
+        mx = max([e["score"] for e in rows] or [1]) or 1
+        h = ""
+        for i, e in enumerate(rows, 1):
+            p = e["p"]
+            rk = rank_str(p.get("id"), db)
+            chip = f'<span class="pw-chip">{e["t"]} title{"s" if e["t"] > 1 else ""}</span>' if e["t"] else ""
+            h += (f'<a class="pw-row" href="{ppath(p)}"><span class="n">{i}</span><span class="avs">{avatar(p, "pd-av sm")}</span>'
+                  f'<span class="who"><b>{esc(p.get("name") or "")}{chip}</b>'
+                  f'<small>{flag(p.get("nationality"), 11)} {esc(country_name(p.get("nationality")))}{(" · " + esc(rk)) if rk else ""}</small></span>'
+                  f'<span class="val"><em>{e["w"]}-{e["l"]}</em><small>{e["score"]} pts</small></span>'
+                  f'<span class="pw-bar"><i style="width:{max(6, round(100 * e["score"] / mx))}%"></i></span></a>')
+        body += f'<div class="st-pane" data-cat="{cat}"{" hidden" if cat == "women" else ""}><div class="pw-list">{h or "<p class=empty>Not enough matches yet.</p>"}</div></div>'
+    body += STATS_JS
+    return shell("Padel Power Ranking: the players in the best form · Beyond Padel", body, "/padel/power.html", tab="stats",
+                 desc="Who is in the best form in padel: wins, titles and losses in Premier Padel and the FIP Tour over the last 30 days.")
+
+
+def race_pairs(db, cat):
+    """Race to the Finals (Padel API, padel/data/race.json): os jogadores com a mesma posição formam o par."""
+    from padel.fetch import DATA
+    try:
+        race = json.load(open(os.path.join(DATA, "race.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        race = {}
+    rows = sorted((race.get(cat) or {}).get("rows") or [], key=lambda x: (x.get("ranking") or 999, x.get("name") or ""))
+    out = []
+    for x in rows:
+        if out and out[-1]["rank"] == x.get("ranking") and len(out[-1]["ps"]) < 2:
+            out[-1]["ps"].append(x)
+        else:
+            out.append({"rank": x.get("ranking"), "pts": x.get("points") or 0, "ps": [x]})
+    return out, (race.get(cat) or {}).get("date")
+
+
+def page_race(db):
+    fin = sorted([t for t in db.tours.values() if t.get("level") == "finals" and (t.get("end_date") or "") >= dt.date.today().isoformat()],
+                 key=lambda t: t.get("start_date") or "")
+    ft = fin[0] if fin else None
+    intro = (f'The Race is individual: the top 16 players of the season (8 pairs) qualify for the <a href="{tpath(ft)}">{esc(ft.get("name") or "Finals")}</a> ({esc(date_range(ft))}).' if ft
+             else "The Race is individual: the top 16 players of the season (8 pairs) qualify for the Premier Padel Finals.")
+    body = (PR_CSS + f'<section class="page-h"><h1>Race to the Finals</h1><p>{intro} Official Race standings, updated every week.</p>'
+            '<p class="pd-sub"><a href="/padel/power.html">Power Ranking ›</a> &nbsp; <a href="/padel/rankings.html">Official ranking ›</a></p></section>'
+            '<div class="pd-seg" id="st-seg"><button class="on" data-cat="men">Men</button><button data-cat="women">Women</button></div>')
+    for cat in ("men", "women"):
+        pairs, day = race_pairs(db, cat)
+        cut_pts = next((x["pts"] for x in reversed(pairs) if x["rank"] and x["rank"] <= 16), None)
+        h = ""
+        for x in [y for y in pairs if (y["rank"] or 999) <= 24]:
+            if x["rank"] and x["rank"] > 16 and "pw-cut" not in h:
+                h += '<div class="pw-cut">Finals line · top 16 players qualify</div>'
+            ps = [{"id": p.get("id"), "name": p.get("name"), "nationality": p.get("nationality")} for p in x["ps"]]
+            out = x["rank"] and x["rank"] > 16
+            gap = (f"{cut_pts - x['pts']:,} pts to #16".replace(",", " ") if out and cut_pts is not None else "")
+            names = " / ".join(esc(p.get("name") or "") for p in ps)
+            href = ppath(ps[0])
+            h += (f'<a class="pw-row{" out" if out else ""}" href="{href}"><span class="n">{x["rank"]}</span><span class="avs">{"".join(avatar(p, "pd-av sm") for p in ps)}</span>'
+                  f'<span class="who"><b>{names}</b><small>{" ".join(flag(p.get("nationality"), 11) for p in ps)}{(" · " + gap) if gap else ""}</small></span>'
+                  f'<span class="val"><em>{x["pts"]:,}</em><small>points</small></span></a>').replace("<em>" + f'{x["pts"]:,}', "<em>" + f'{x["pts"]:,}'.replace(",", " "))
+        note = f'<p class="pd-note">Race standings of {esc(day)}.</p>' if day else ""
+        body += f'<div class="st-pane" data-cat="{cat}"{" hidden" if cat == "women" else ""}>{note}<div class="pw-list">{h or "<p class=empty>The Race has not been published yet.</p>"}</div></div>'
+    body += STATS_JS
+    return shell("Race to the Finals: who qualifies for the Premier Padel Finals · Beyond Padel", body, "/padel/race.html", tab="rankings",
+                 desc="Premier Padel Race to the Finals: the top 16 players qualify. Points, the Finals line and how far each player is from the top 16.")

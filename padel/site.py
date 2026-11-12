@@ -603,7 +603,7 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
             f'<nav><a class="brand" href="/padel/index.html">BEYOND PADEL</a><div>{live_pill}{topnav}<a href="{IG}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>{sport_switch.switch("padel")}'
             f'{site_more.SEARCH_HTML}{body}{LIVE_JS}'
             f'<footer>Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). '
-            f'Scores are for information only and may contain delays or errors. · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + '</body></html>')
+            f'Scores are for information only and may contain delays or errors. · <a href="/padel/power.html">Power Ranking</a> · <a href="/padel/race.html">Race to the Finals</a> · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + '</body></html>')
 
 
 def write(out, path, htmltext):
@@ -1928,7 +1928,8 @@ def build(out_dir="site"):
             json.dump({k: {"a": v.get("a") or [], "b": v.get("b") or []} for k, v in yt_player.regions().items()}, f, separators=(",", ":"))
     except Exception as e:
         print("Padel: yt-regions falhou", type(e).__name__, e)
-    for fn, fnc in (("/padel/next-week.html", sx.page_next_week), ("/padel/stats.html", sx.page_stats), ("/padel/credits.html", sx.page_credits)):
+    for fn, fnc in (("/padel/next-week.html", sx.page_next_week), ("/padel/stats.html", sx.page_stats), ("/padel/credits.html", sx.page_credits),
+                    ("/padel/power.html", sx.page_power), ("/padel/race.html", sx.page_race)):
         try:
             paths.append(write(out, fn, fnc(db)))
         except Exception as e:
@@ -1968,7 +1969,8 @@ def build(out_dir="site"):
         f.write(EMBLEM.replace('<svg viewBox', '<svg xmlns="http://www.w3.org/2000/svg" viewBox'))
     # sitemap próprio (o robots.txt do site aponta para ele)
     urls = ["/padel/index.html", "/padel/results.html", "/padel/tournaments.html", "/padel/order-of-play.html", "/padel/rankings-men.html",
-            "/padel/rankings-women.html", "/padel/players.html", "/padel/countries.html", "/padel/next-week.html", "/padel/stats.html", "/padel/highlights.html", "/padel/live.html"]
+            "/padel/rankings-women.html", "/padel/players.html", "/padel/countries.html", "/padel/next-week.html", "/padel/stats.html", "/padel/highlights.html", "/padel/live.html",
+            "/padel/power.html", "/padel/race.html"]
     # Só as páginas com mais conteúdo (um site novo tem pouca "atenção" do Google: melhor 2000 páginas boas do que 5000 fracas).
     # As outras continuam no site e ligadas entre si; só não são pedidas ao Google no sitemap.
     lm = {u: "" for u in urls}
