@@ -477,6 +477,26 @@ def qualifier_week():
 def qualifier_card(rows, out):
     import feature_card
     top = rows[:6]
+    if _modern_on():                                             # 12/11/2026: o Qualifier watch ainda saía no desenho antigo
+        import modern_cards
+        secs, crs = [], []
+        both = len({r["gender"] for r in rows}) > 1
+        for g, lab in (("men", "ATP"), ("women", "WTA")):
+            xs = [r for r in rows if r["gender"] == g][:4 if both else 7]
+            if not xs:
+                continue
+            fp, cr = _hero_photo(xs[0]["name"])
+            if cr:
+                crs.append(cr)
+            st = lambda r: f'{r["wins"]} main-draw win{"s" if r["wins"] > 1 else ""}' + (" · still in" if r["alive"] else " · out")
+            secs.append({"label": lab, "hero": {"name": xs[0]["name"], "big": f'{xs[0]["wins"]} win{"s" if xs[0]["wins"] > 1 else ""}',
+                                                "sub": f'{xs[0]["tournament"]}' + (f' · #{xs[0]["rank"]}' if xs[0]["rank"] else "") + (" · still in" if xs[0]["alive"] else " · out"),
+                                                "photo": fp},
+                         "rows": [(f'{r["wins"]}W', r["name"], f'{r["tournament"]}' + (" · still in" if r["alive"] else " · out")) for r in xs[1:]]})
+        if secs:
+            return modern_cards.card_list({"sport": "tennis", "kicker": "QUALIFIER WATCH", "date": datetime.date.today().strftime("%-d %b %Y").upper(),
+                                           "title": "Through qualifying", "sub": "Main-draw wins after coming through qualifying",
+                                           "sections": secs, "credits": crs}, out)
     lines = [{"left": "Q", "name": r["name"], "sub": f'{r["tournament"]}' + (f' · #{r["rank"]}' if r["rank"] else ""),
               "right": f'{r["wins"]} win{"s" if r["wins"] > 1 else ""}' + ("" if r["alive"] else " · out"), "hot": r["alive"]} for r in top]
     tours = sorted({r["lg"].upper() for r in top})
@@ -484,7 +504,7 @@ def qualifier_card(rows, out):
     women = [r["name"] for r in top if r["gender"] == "women"][:1]
     return feature_card.feature_card({"tags": ["QUALIFIER WATCH", " · ".join(tours)], "title": "Through qualifying",
                                       "subtitle": "and still winning this week", "place": _place(top[0].get("city")),
-                                      "photos": _photos(men + women + [r["name"] for r in top], 2), "rows": lines,
+                                      "photos": _photos(list(dict.fromkeys(men + women + [r["name"] for r in top])), 2), "rows": lines,
                                       "foot": "Main-draw wins after coming through qualifying. Highlighted: still in."}, out)
 
 

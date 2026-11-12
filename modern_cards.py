@@ -309,6 +309,46 @@ def _circle_photo(img, fp, box, ring=None):
     img.paste(ph, (x0, y0), mk)
 
 
+def _card_list_single(d_, s, P, out):
+    h = s["hero"]
+    img = Image.new("RGBA", (W, H), P["bg"] + (255,))
+    ph = _photo(h["photo"], (W, 760), (0.5, 0.2))
+    img.alpha_composite(ph, (0, 0))
+    img = _grad(img, 0, 260, (0, 0, 0), 150, 0)
+    img = _grad(img, 380, 770, P["bg"], 0, 255).convert("RGB")
+    d = ImageDraw.Draw(img, "RGBA")
+    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, 60, 128, [d_.get("kicker"), d_.get("date")], P)
+    _paste_sq(img, d_["title"].upper(), "black", 118, P["cream"] + (255,), 56, 640, W - 120, anchor="lb")
+    d = ImageDraw.Draw(img, "RGBA")
+    if d_.get("sub"):
+        d.text((60, 690), d_["sub"], font=_fit(d, d_["sub"], "semi", 30, W - 120), fill=P["acc"], anchor="ls")
+    nrows = min(6, len(s.get("rows") or []))
+    box = (48, 730, W - 48, min(H - 110, 730 + 26 + 112 + 52 * nrows + 16))
+    d.rounded_rectangle(box, radius=34, fill=(0, 0, 0, 70), outline=(255, 255, 255, 50), width=2)
+    x0, yy = box[0] + 36, box[1] + 26
+    d.text((x0, yy + 40), h.get("big", ""), font=F("black", 36), fill=P["acc"], anchor="ls")
+    bx = x0 + d.textlength(h.get("big", ""), font=F("black", 36)) + 20
+    d.text((bx, yy + 40), h["name"], font=_fit(d, h["name"], "xb", 40, box[2] - 40 - bx), fill=P["cream"], anchor="ls")
+    if h.get("sub"):
+        d.text((x0, yy + 80), h["sub"], font=_fit(d, h["sub"], "med", 26, box[2] - 40 - x0), fill=P["soft"], anchor="ls")
+    ry = yy + 112
+    for left, name, right in s.get("rows", [])[:6]:
+        if ry + 40 > box[3] - 10:
+            break
+        d.line([(x0, ry - 8), (box[2] - 36, ry - 8)], fill=(255, 255, 255, 40), width=1)
+        d.text((x0, ry + 28), str(left), font=F("black", 28), fill=P["acc"], anchor="ls")
+        nx = x0 + max(70, int(d.textlength(str(left), font=F("black", 28))) + 22)
+        d.text((nx, ry + 28), name, font=_fit(d, name, "semi", 30, 480), fill=P["cream"], anchor="ls")
+        d.text((box[2] - 36, ry + 28), right, font=_fit(d, right, "semi", 24, 320), fill=P["soft"], anchor="rs")
+        ry += 52
+    cr = [c for c in d_.get("credits") or [] if c]
+    import photo_cards
+    _footer(img, d, P, photo_cards.credit_join(*cr) if cr else None)
+    img.convert("RGB").save(out, quality=94)
+    return out
+
+
 def card_list(d_, out):
     """Lista semanal no estilo novo: fundo com a foto do destaque desfocada e escura, título condensado e um painel de vidro
     por secção (destaque com foto + linhas).
@@ -316,6 +356,8 @@ def card_list(d_, out):
     P = PALETTE[d_.get("sport", "tennis")]
     secs = [s for s in d_["sections"] if s.get("hero")][:2]
     bgp = next((s["hero"].get("photo") for s in secs if s["hero"].get("photo")), None)
+    if len(secs) == 1 and bgp:                                       # 12/11/2026: uma só secção -> foto grande em cima, lista em baixo
+        return _card_list_single(d_, secs[0], P, out)
     img = Image.new("RGBA", (W, H), P["bg"] + (255,))
     if bgp:
         bg = _photo(bgp, (W, H)).filter(ImageFilter.GaussianBlur(26))
@@ -352,7 +394,7 @@ def card_list(d_, out):
         if h.get("sub"):
             d.text((hx, yy + 166), h["sub"], font=_fit(d, h["sub"], "med", 26, box[2] - 40 - hx), fill=P["soft"], anchor="ls")
         ry = yy + 200
-        for left, name, right in s.get("rows", [])[:3]:
+        for left, name, right in s.get("rows", [])[:3 if len(secs) > 1 else 8]:
             if ry + 40 > box[3] - 10:
                 break
             d.line([(x0, ry - 8), (box[2] - 36, ry - 8)], fill=(255, 255, 255, 40), width=1)
