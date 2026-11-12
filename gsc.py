@@ -161,11 +161,12 @@ TEST_DAYS, TEST_MAX = 14, 15
 
 
 def _page_stats(tok, slug, start, end):
-    """Cliques e aparições de uma página de jogador entre duas datas (Search Console, por página)."""
+    """Cliques e aparições de uma página de jogador entre duas datas (Search Console, por página).
+    slug: 'nome-do-jogador' (ténis, /p/...) ou um caminho começado por '/' (padel: /padel/p/66-agustin-tapia)."""
     r = requests.post(f"https://www.googleapis.com/webmasters/v3/sites/{requests.utils.quote(SITE, safe='')}/searchAnalytics/query",
                       headers={"Authorization": f"Bearer {tok}"}, timeout=30,
                       json={"startDate": str(start), "endDate": str(end), "dimensions": ["page"], "rowLimit": 10,
-                            "dimensionFilterGroups": [{"filters": [{"dimension": "page", "operator": "contains", "expression": f"/p/{slug}"}]}]})
+                            "dimensionFilterGroups": [{"filters": [{"dimension": "page", "operator": "contains", "expression": slug if slug.startswith("/") else f"/p/{slug}"}]}]})
     r.raise_for_status()
     rows = r.json().get("rows") or []
     c, i = sum(x.get("clicks", 0) for x in rows), sum(x.get("impressions", 0) for x in rows)
@@ -179,11 +180,14 @@ def title_tests(tok, out, old):
     tests = dict(old.get("title_tests") or {})
     today = dt.date.today()
     lag = dt.timedelta(days=2)                                  # o Search Console tem ~2 dias de atraso
-    for a in out.get("todo") or []:
-        if a.get("kind") != "noclick" or not (a.get("url") or "").startswith("/p/"):
+    acts = list(out.get("todo") or []) + list(((out.get("by_sport") or {}).get("padel") or {}).get("todo") or [])   # 12/11/2026: também o padel
+    for a in acts:
+        u = a.get("url") or ""
+        if a.get("kind") != "noclick" or not (u.startswith("/p/") or u.startswith("/padel/p/")):
             continue
-        slug = a["url"][3:]
-        if slug in tests or sum(1 for t in tests.values() if t.get("status") == "running") >= TEST_MAX:
+        slug = u[3:] if u.startswith("/p/") else u
+        padel = slug.startswith("/padel/")
+        if slug in tests or sum(1 for k, t in tests.items() if t.get("status") == "running" and k.startswith("/padel/") == padel) >= TEST_MAX:
             continue
         try:
             before = _page_stats(tok, slug, today - lag - dt.timedelta(days=TEST_DAYS - 1), today - lag)
