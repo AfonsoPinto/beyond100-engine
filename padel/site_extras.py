@@ -345,8 +345,17 @@ def add_to_search(db, out):
     except (OSError, ValueError):
         items = []
     items = [x for x in items if not str(x.get("u", "")).startswith("/padel/")]
-    items += [{"n": p.get("name"), "u": ppath(p), "k": "Padel · " + country_name(p.get("nationality"))}
-              for pid, p in db.pinfo.items() if p.get("name") and db.by_p.get(pid)]
+    for pid, p in db.pinfo.items():                     # 13/11/2026: ranking e foto para a pesquisa instantânea
+        if not (p.get("name") and db.by_p.get(pid)):
+            continue
+        x = {"n": p.get("name"), "u": ppath(p), "k": "Padel · " + country_name(p.get("nationality"))}
+        rk = (db.rank_of.get(str(pid)) or {}).get("ranking")
+        if isinstance(rk, int) and rk > 0:
+            x["r"] = rk
+        from padel.site import has_photo
+        if has_photo(pid):
+            x["i"] = f"/padel/img/{pid}-s.jpg"
+        items.append(x)
     items += [{"n": t.get("name"), "u": tpath(t), "k": "Padel tournament"} for t in db.tours.values() if t.get("name")]
     with open(fp, "w", encoding="utf-8") as f:
         json.dump(items, f, ensure_ascii=False, separators=(",", ":"))

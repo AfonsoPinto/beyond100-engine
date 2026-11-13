@@ -713,6 +713,16 @@ HERO_ANIM = """<div class="pd-anim" aria-hidden="true"><svg id="pdanim" viewBox=
 
 
 def page_index(db):
+    """Página inicial do padel. Desde 13/11/2026 usa o desenho novo comum ao ténis (home_ui); HOME_V2=0 volta à antiga."""
+    if os.environ.get("HOME_V2", "1") != "0":
+        try:
+            return page_index_v2(db)
+        except Exception as ex:
+            print("Padel: página inicial v2 falhou:", type(ex).__name__, ex)
+    return page_index_v1(db)
+
+
+def page_index_v1(db):
     today = time.strftime("%Y-%m-%d", time.gmtime())
     live = sorted([t for t in db.tours.values() if t.get("status") == "live"], key=lambda t: LEVEL_ORDER.get(t.get("level"), 9))
     body = (HERO_ANIM + '<section class="pd-hero2"><div class="pd-em">' + EMBLEM + '</div><div><h1>Every player. <em>Every draw.</em></h1>'
@@ -2120,8 +2130,6 @@ def build(out_dir="site"):
     return paths
 
 
-if __name__ == "__main__":
-    build(sys.argv[1] if len(sys.argv) > 1 else "site")
 
 
 # ---------------------------------------------------------------- ficha do jogador, versão 2 (13/11/2026, igual ao ténis)
@@ -2552,3 +2560,147 @@ def page_match_v2(db, m):
 
 def _ordn(n):
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+# ---------------------------------------------------------------- página inicial, versão 2 (13/11/2026, igual ao ténis)
+def page_index_v2(db):
+    import home_ui
+    import player_ui as pu
+    today = dt.date.today()
+    tstr = today.isoformat()
+    live = sorted([t for t in db.tours.values() if t.get("status") == "live"], key=lambda t: LEVEL_ORDER.get(t.get("level"), 9))
+    names = lambda ps: " / ".join(disp(p) for p in ps)
+    ini = lambda ps: "".join((disp(p).split()[-1] or "?")[0] for p in ps).upper()
+    pic = lambda ps: next((f"/padel/img/{p.get('id')}.jpg" for p in ps if has_photo(p.get("id"))), "")
+
+    # --- finais recentes (campeões) -> acontecimento do dia e cartões
+    finals = []
+    for t in db.tours.values():
+        for m in db.by_t.get(str(t.get("id")), []):
+            if m.get("round") == 1 and (m.get("draw") or "main") == "main" and m.get("winner") in ("team_1", "team_2"):
+                try:
+                    d = dt.date.fromisoformat((m.get("played_at") or t.get("end_date") or "")[:10])
+                except ValueError:
+                    continue
+                if (today - d).days <= 14:
+                    finals.append((t, m, d))
+    finals.sort(key=lambda x: (LEVEL_ORDER.get(x[0].get("level"), 9), -x[2].toordinal(), x[1].get("category") != "men"))
+
+    def sc(m, w):
+        return " ".join(f"{games(a if w == 'team_1' else b)}-{games(b if w == 'team_1' else a)}" for a, b in sets_of(m))
+
+    lead_c = sorted(finals, key=lambda x: (-(30 - 6 * LEVEL_ORDER.get(x[0].get("level"), 9) - 4 * (today - x[2]).days + (15 if pic(team_players(x[1], x[1]["winner"])) else 0))))
+    lead = ""
+    more_rows = ""
+    if lead_c:
+        t, m, d = lead_c[0]
+        w = m["winner"]
+        WP, LP = team_players(m, w), team_players(m, "team_2" if w == "team_1" else "team_1")
+        c = photo_credit(next((p.get("id") for p in WP if has_photo(p.get("id"))), "")) or {}
+        lead = home_ui.lead(mpath(m), pic(WP), ini(WP), [LEVEL_SHORT.get(t.get("level"), "") or "Final", f"{CAT.get(m.get('category'), '')} champions"],
+                            f"{names(WP)} win {t.get('location') or t.get('name')}",
+                            f"Beat {names(LP)} {sc(m, w)} in the final · {d.strftime('%-d %b')}", c.get("credit") or "")
+        for t2, m2, d2 in lead_c[1:4]:
+            w2 = m2["winner"]
+            W2 = team_players(m2, w2)
+            av = "".join(avatar(p, "av") for p in W2[:1])
+            more_rows += (f'<a href="{mpath(m2)}">{av}<span><b>{esc(names(W2))} win {esc(t2.get("location") or t2.get("name") or "")}</b>'
+                          f'<small>{esc(sc(m2, w2))} · {esc(LEVEL_SHORT.get(t2.get("level"), ""))} · {esc(CAT.get(m2.get("category"), ""))}</small></span></a>')
+    week = [m for m in db.matches if (m.get("played_at") or "") >= (today - dt.timedelta(days=6)).isoformat() and m.get("winner") in ("team_1", "team_2")]
+    side = (home_ui.search(placeholder="Search a padel player or tournament", pref="/padel/")
+            + home_ui.intro("Every player.", "Every draw.", "Premier Padel and the CUPRA FIP Tour: results, draws and rankings.",
+                            [("Follow @beyond100.padel", "https://www.instagram.com/beyond100.padel/", True), ("Rankings", "/padel/rankings.html", False)])
+            + (f'<div class="hm-more"><div class="pv-lab">More champions</div>{more_rows}</div>' if more_rows else "")
+            + home_ui.nums([(len(week), "matches in 7 days", "/padel/results.html"), (len(live), "tournaments live", "/padel/tournaments.html"),
+                            (f"{len(db.pinfo):,}".replace(",", " "), "players", "/padel/players.html")]))
+    if not lead:
+        lead, side = side, ""
+
+    # --- ao vivo / hoje (igual à versão anterior)
+    rest = ""
+    tday = [m for t in live for m in db.by_t.get(str(t["id"]), []) if m.get("played_at") == tstr and (m.get("draw") or "main") == "main"
+            and team_players(m, "team_1") and team_players(m, "team_2") and m.get("winner") not in ("team_1", "team_2")]
+    on = [m for m in tday if sets_of(m) or m.get("status") == "live"]
+    nx = sorted([m for m in tday if not (sets_of(m) or m.get("status") == "live")], key=lambda m: (m.get("scheduled_at") or "9", -(m.get("round") or 0)))
+    on.sort(key=lambda m: (LEVEL_ORDER.get((db.tour(m.get("tid")) or {}).get("level"), 9), m.get("round") or 99))
+    tiles = (on + nx)[:4]
+    if tiles:
+        h = ('<span><span class="dot" style="display:inline-block;margin-right:8px"></span>Playing now</span>' if on
+             else f'<span>Today{(" · first match at " + site_ui.ltime(nx[0].get("scheduled_at"), when_local(nx[0]) + " local time")) if nx and nx[0].get("scheduled_at") else ""}</span>')
+        rest += f'<h2 class="sec">{h}<a href="/padel/order-of-play.html">Order of play</a></h2><div class="lvg">' + "".join(live_tile(m, db) for m in tiles) + "</div>"
+
+    # --- campeões com foto (um cartão por categoria e torneio)
+    cards = ""
+    for t, m, d in finals[:8]:
+        w = m["winner"]
+        WP, LP = team_players(m, w), team_players(m, "team_2" if w == "team_1" else "team_1")
+        cards += home_ui.champ(mpath(m), pic(WP), ini(WP), LEVEL_SHORT.get(t.get("level"), ""), CAT.get(m.get("category"), "Champions"),
+                               names(WP), t.get("location") or t.get("name") or "", f"d. {names(LP)} {sc(m, w)} · {d.strftime('%d/%m')}")
+    if cards:
+        rest += site_ui.sec("Latest champions", "/padel/tournaments.html", "All tournaments") + f'<div class="hm-row">{cards}</div>'
+    hl = highlight_cards(db, 4)
+    if hl:
+        rest += site_ui.sec("▶ Latest highlights", "/padel/highlights.html", "All highlights") + '<div class="pd-hls row">' + "".join(hl_card(db, m, h) for m, h in hl) + "</div>"
+
+    # --- últimos resultados por torneio
+    done = sorted([m for m in db.matches if m.get("winner") in ("team_1", "team_2") and team_players(m, "team_1") and (m.get("draw") or "main") == "main"],
+                  key=lambda m: (m.get("played_at") or "", -(m.get("round") or 99)), reverse=True)
+    groups, order = {}, []
+    for m in done:
+        k = (str(m.get("tid")), m.get("category"))
+        if k not in groups:
+            if len(order) >= 4:
+                continue
+            groups[k] = []
+            order.append(k)
+        if len(groups[k]) < 4:
+            groups[k].append(m)
+    evs = ""
+    for k in order:
+        t = db.tour(k[0]) or {}
+        rows = []
+        for m in groups[k]:
+            w = m["winner"]
+            WP, LP = team_players(m, w), team_players(m, "team_2" if w == "team_1" else "team_1")
+            rows.append((RSHORT.get(m.get("round"), ""), " / ".join(f'<a href="{ppath(p)}">{esc(disp(p))}</a>' for p in WP),
+                         "d. " + names(LP), _p_score(m, w), mpath(m), True))
+        evs += pu.event(f'<a href="{tpath(t)}">{esc(t.get("location") or t.get("name") or "")}</a>',
+                        " · ".join(x for x in [LEVEL_SHORT.get(t.get("level"), ""), CAT.get(k[1], ""), (groups[k][0].get("played_at") or "")[:10]] if x), "", rows)
+    if evs:
+        rest += site_ui.sec("Latest results", "/padel/results.html", "All results") + f'<div class="hm-res">{evs}</div>'
+    try:
+        rest += spotlight_block(db)
+    except Exception as e:
+        print("Padel: spotlight falhou", type(e).__name__, e)
+    nxt = sorted([t for t in db.tours.values() if t.get("status") == "pending" and (t.get("start_date") or "") >= tstr],
+                 key=lambda t: (t.get("start_date") or "", LEVEL_ORDER.get(t.get("level"), 9)))[:4]
+    if nxt:
+        rest += site_ui.sec("Coming up", "/padel/next-week.html", "Next week") + '<div class="pd-list">' + "".join(
+            f'<a href="{tpath(t)}"><span class="pd-tag g">{esc(LEVEL_SHORT.get(t.get("level"), ""))}</span><b>{esc(t.get("location") or t.get("name"))}</b>'
+            f'<span class="pd-note">{esc(date_range(t))}</span></a>' for t in nxt) + "</div>"
+    tabs, panes = "", ""
+    for i, cat in enumerate(("men", "women")):
+        rows = ((db.ranks.get(cat) or {}).get("rows") or [])[:5]
+        if not rows:
+            continue
+        tabs += f'<button class="{"on" if i == 0 else ""}" data-c="{cat}">{CAT[cat]}</button>'
+        panes += (f'<div class="pd-rk5" data-c="{cat}"{"" if i == 0 else " hidden"}>' + "".join(
+            f'<a href="{ppath({"id": r.get("id"), "name": r.get("name")})}"><span class="n">{r.get("ranking")}</span>{avatar(r)}{flag(r.get("nationality"), 11)}'
+            f'<span class="nm">{esc(r.get("name"))}</span><span class="pd-note">{(r.get("points") or 0):,}</span></a>'.replace(",", " ") for r in rows)
+                  + f'<a class="pd-more" href="/padel/rankings-{cat}.html">Full ranking →</a></div>')
+    if panes:
+        rest += (site_ui.sec("Rankings", "/padel/rankings.html", "All rankings") + f'<div class="pd-seg">{tabs}</div>{panes}'
+                 '<script>document.querySelector(".pd-seg").onclick=function(e){var b=e.target.closest("button");if(!b)return;'
+                 '[].forEach.call(document.querySelectorAll(".pd-seg button"),function(x){x.className=x===b?"on":""});'
+                 '[].forEach.call(document.querySelectorAll(".pd-rk5"),function(p){p.hidden=p.dataset.c!==b.dataset.c})}</script>')
+    links = [("results", "Results", "Every score, newest first"), ("order-of-play", "Order of play", "Today by court"),
+             ("power", "Power Ranking", "Best form, last 30 days"), ("race", "Race to the Finals", "Who makes Barcelona")]
+    rest += '<div class="pd-quick ui-quick">' + "".join(f'<a href="/padel/{k}.html"><b>{v}</b><span>{d}</span></a>' for k, v, d in links) + "</div>"
+    rest += _nl_inline("Get the padel week in one email")
+    body = f"<style>{pu.CSS}</style>" + home_ui.page(lead, side, rest)
+    return shell("Beyond Padel · Premier Padel and FIP Tour results, draws and rankings", body, "/padel/index.html", tab="index")
+
+
+# no fim do ficheiro: corrido como script (python padel/site.py), todas as funções têm de estar definidas antes (13/11/2026)
+if __name__ == "__main__":
+    build(sys.argv[1] if len(sys.argv) > 1 else "site")
