@@ -1377,7 +1377,7 @@ a.nm{text-decoration:none;color:inherit}a.nm:hover{text-decoration:underline}
 .lv{background:var(--deep);border:1px solid var(--e);border-radius:16px;padding:10px 14px}
 .lv .lh{font-size:.74rem;color:var(--s);margin-bottom:4px}
 .lv .pl{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
-.lv .who{display:flex;align-items:center;gap:8px;min-width:0;flex:1}.lv .who>div{min-width:0}.lv .who .nm{display:block;line-height:1.2}.lv .who small{display:block;margin:0}.lv .sc{display:flex;gap:4px;white-space:nowrap;margin-left:8px;font:700 .95rem Georgia,serif;color:var(--v)}.lv .sc span{min-width:1.3em;text-align:center}
+.lv .who{display:flex;align-items:center;gap:8px;min-width:0;flex:1}.lv .who>div{min-width:0}.lv .who .nm{display:block;line-height:1.2}.lv .who small{display:block;margin:0}.lv .sc{display:flex;gap:4px;white-space:nowrap;margin-left:8px;font:700 .95rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--v)}.lv .sc span{min-width:1.3em;text-align:center}
 .sec small{color:var(--s);font-weight:400;font-size:.75rem}
 @media(max-width:480px){nav div a{margin-left:11px;font-size:.86rem}nav .brand{font-size:1rem;letter-spacing:.16em}}
 .lv.rt .sc{animation:lvp 1s}.lv .sc sup{font-size:.6em;margin-left:1px;color:var(--s)}@keyframes lvp{from{opacity:.4}to{opacity:1}}
@@ -1388,7 +1388,7 @@ a.lv{display:block;text-decoration:none;color:inherit;transition:border-color .1
 .lsb small{display:block;color:var(--s);margin-top:2px}
 .upw{background:var(--v);color:var(--g);border-radius:14px;padding:10px 14px;margin:12px 0;font-weight:600}.upw b{text-transform:uppercase;letter-spacing:.08em;font-size:.8rem;margin-right:6px}
 .lpg{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.lpc{background:var(--deep);border:1px solid var(--e);border-radius:18px;padding:14px 16px}.lpc h3{margin:0;font:700 1.25rem Georgia,serif}.lpc h3 a{text-decoration:none}
+.lpc{background:var(--deep);border:1px solid var(--e);border-radius:18px;padding:14px 16px}.lpc h3{margin:0;font:700 1.25rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}.lpc h3 a{text-decoration:none}
 .lpc .ph{align-items:center}.lpc .numgrid{grid-template-columns:repeat(3,1fr);gap:8px}.lpc .nbox{padding:10px 6px}.lpc .nbox b{font-size:1.35rem}.lpc .nbox span{font-size:.62rem}.lsb .pn a{text-decoration:none}.lpc p{margin:2px 0;color:var(--s)}.lpc .numgrid{margin:10px 0 4px}.lmore{color:var(--v);font-size:.9rem;text-decoration:none}
 .rpts{color:var(--s);font-size:.85em}
 .ops{display:grid;gap:2px}.op{display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--e)}.op:last-child{border:0}
@@ -1400,7 +1400,7 @@ a.lv{display:block;text-decoration:none;color:inherit;transition:border-color .1
 .rs{display:flex;gap:8px;align-items:baseline;background:var(--deep);border:1px solid var(--e);border-radius:12px;padding:8px 14px}
 .rs b{margin-left:auto;color:var(--v)}
 .nl{background:var(--deep);border:1px solid var(--e);border-radius:18px;padding:18px;margin:26px 0;text-align:center}
-.nl h2{margin:0 0 6px;font:700 1.25rem Georgia,serif}.nl p{color:var(--s);margin:0 0 12px}
+.nl h2{margin:0 0 6px;font:700 1.25rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}.nl p{color:var(--s);margin:0 0 12px}
 .nl form{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .nl input{flex:1 1 200px;max-width:320px;padding:10px 14px;border-radius:999px;border:1px solid var(--e);background:var(--g);color:var(--c)}
 .nl button{background:var(--v);color:var(--g);border:0;border-radius:999px;padding:10px 18px;font:700 .9rem system-ui;cursor:pointer}
@@ -1412,9 +1412,9 @@ SPOT_CSS = """.ui-spot{display:grid;grid-auto-flow:column;grid-auto-columns:150p
 .ui-spot a{position:relative;display:block;aspect-ratio:4/5;border-radius:18px;overflow:hidden;border:1px solid var(--e);scroll-snap-align:start;text-decoration:none;
 background:radial-gradient(120% 90% at 80% 10%,var(--e) 0,var(--deep) 65%)}
 .ui-spot img{width:100%;height:100%;object-fit:cover;object-position:50% 18%;display:block}
-.ui-spot .ini{position:absolute;inset:0;display:grid;place-items:center;font:800 3.4rem Georgia,serif;color:var(--v);opacity:.25}
+.ui-spot .ini{position:absolute;inset:0;display:grid;place-items:center;font:800 3.4rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--v);opacity:.25}
 .ui-spot .ov{position:absolute;left:0;right:0;bottom:0;padding:34px 10px 10px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78))}
-.ui-spot b{display:block;font:800 .95rem/1.15 Georgia,serif;color:#fff}
+.ui-spot b{display:block;font:800 .95rem/1.15 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff}
 .ui-spot small{display:block;margin-top:3px;font:700 .68rem system-ui;color:#e6ece8;letter-spacing:.02em}
 .ui-spot .rk{position:absolute;top:8px;left:8px;background:var(--v);color:var(--g);font:800 .78rem system-ui;border-radius:999px;padding:3px 9px}
 @media(min-width:760px){.ui-spot{grid-auto-columns:calc(16.66% - 9px)}}"""
@@ -1479,7 +1479,7 @@ def spotlight_block():
     return f'<style>{SPOT_CSS}</style>' + site_ui.sec("Players in the spotlight", "/players.html", "All players") + f'<div class="ui-spot">{cards}</div>'
 
 
-ABOUT_CSS = """.ab h2{font:800 1.15rem Georgia,serif;color:var(--v);margin:26px 0 8px}.ab p,.ab li{line-height:1.65;color:var(--c);max-width:68ch}
+ABOUT_CSS = """.ab h2{font:800 1.15rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--v);margin:26px 0 8px}.ab p,.ab li{line-height:1.65;color:var(--c);max-width:68ch}
 .ab ul{padding-left:18px;margin:6px 0}.ab li{margin:4px 0}.ab a{color:inherit;text-decoration:underline;text-decoration-color:var(--s);text-underline-offset:3px}
 .ab .lead{font-size:1.08rem}.ab .ig{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.ab .ig a{text-decoration:none;background:var(--v);color:var(--g);
 font:800 .9rem system-ui;border-radius:999px;padding:8px 14px}"""

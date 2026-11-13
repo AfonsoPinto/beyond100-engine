@@ -1165,12 +1165,12 @@ nav div a{margin-left:18px;color:var(--s);text-decoration:none;font-size:.95rem}
 nav div a:hover{color:var(--c)}
 .hero{text-align:center;padding:24px 0 40px}
 .emb{width:min(250px,64vw);height:auto}
-h1{font:700 2.6rem/1.05 Georgia,"Times New Roman",serif;margin:24px 0 12px;letter-spacing:-.01em}
+h1{font:700 2.6rem/1.05 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:24px 0 12px;letter-spacing:-.01em}
 h1 em{color:var(--v);font-weight:400}
 .hero p{color:var(--s);max-width:34ch;margin:0 auto 26px}
 .btn{display:inline-block;background:var(--v);color:var(--g);font-weight:700;padding:13px 24px;border-radius:999px;text-decoration:none;margin:4px}
 .btn.ghost{background:none;color:var(--c);border:2px solid var(--c)}
-h2.sec{font:700 1.4rem Georgia,serif;margin:12px 0 14px;display:flex;justify-content:space-between;align-items:baseline}
+h2.sec{font:700 1.4rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:12px 0 14px;display:flex;justify-content:space-between;align-items:baseline}
 h2.sec a{font:500 .9rem system-ui;color:var(--v)}
 .page-h{padding:18px 0 10px}.page-h h1{font-size:2.1rem;margin:0 0 6px;text-align:left}
 .page-h p{color:var(--s);margin:0}
@@ -1180,9 +1180,9 @@ article h3{margin:0;font:700 .78rem system-ui;text-transform:uppercase;letter-sp
 .pl{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;color:var(--s)}
 .pl+.pl{border-top:1px solid var(--e)}
 .pl.win{color:var(--c)}
-.nm{display:block;font:700 1.1rem Georgia,serif}.pl small{color:var(--s)}
+.nm{display:block;font:700 1.1rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}.pl small{color:var(--s)}
 .ch{display:flex;gap:6px}
-.ch b{min-width:38px;height:38px;border-radius:11px;border:1px solid var(--e);color:var(--s);display:grid;place-items:center;font:700 1.05rem Georgia,serif}
+.ch b{min-width:38px;height:38px;border-radius:11px;border:1px solid var(--e);color:var(--s);display:grid;place-items:center;font:700 1.05rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .ch b.on{background:var(--v);border-color:var(--v);color:var(--g)}
 .empty{color:var(--s)}
 footer{color:var(--s);font-size:.8rem;padding:28px 0 44px;border-top:1px solid var(--e);margin-top:28px}
