@@ -62,3 +62,24 @@ function padel(){var ids=(b.dataset.tids||'').split(',').filter(Boolean),d=new D
  Promise.all(ids.map(function(id){return fetch('/api/padel/matches/'+id+'?date='+d).then(function(r){return r.ok?r.json():{matches:[]}}).catch(function(){return {matches:[]}})}))
  .then(function(rs){set(rs.some(function(r){return (r.matches||[]).some(function(m){return m.score&&m.score.length&&!m.winner&&['finished','walkover','retired','cancelled'].indexOf(m.status)<0})}))})}
 function go(){if(!document.hidden)(b.dataset.sport==='padel'?padel:tennis)()}go();setInterval(go,120000)})()</script>"""
+
+
+# 13/11/2026: camada moderna para todo o site (ténis e padel), carregada por último. Títulos sem serifa (o logótipo continua igual),
+# números mais fortes, e as páginas de listas (resultados, ordem de jogo) mais largas no computador, em duas colunas.
+MODERN_CSS = """
+h1{font-weight:900;letter-spacing:-.025em}
+.page-h h1{font-size:clamp(2rem,6vw,2.6rem);line-height:1.02;margin-bottom:10px}
+h2.dh{font-weight:800;font-size:1.08rem;letter-spacing:-.005em}
+h2.sec,.ui-sec{font-weight:850;letter-spacing:-.01em;color:var(--c)}.ui-sec a,h2.sec a{color:var(--v)}
+.nm,.pd-gh b,.pd-champ b{font-weight:750}
+.ch b,.pd-sc b,.pd-bm .s b,.pd-mside .sc b{font-weight:800;border-radius:10px}
+.nbox b,.ui-tiles b,.ui-st b,.st-val em{font-weight:900;letter-spacing:-.02em}
+@media(min-width:1100px){
+.wrap>nav{width:min(1180px,calc(100vw - 48px));margin-left:calc(50% - min(590px,calc(50vw - 24px)))}
+.wrap:has(#list),.wrap:has(.ui-mts),.wrap:has(.pd-day),.wrap:has(.pd-court){max-width:1180px}
+#list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px;align-items:start}#list>*{grid-column:1/-1}#list>section.tg{grid-column:auto}
+.pd-day{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px;align-items:start}.pd-day>*{grid-column:1/-1}.pd-day>.pd-card{grid-column:auto}
+.ui-mts{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+"""
+CSS += MODERN_CSS

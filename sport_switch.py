@@ -19,7 +19,7 @@ CSS = """
 .sport a.on.t{background:#f7f2e6;color:#0e3a2d}.sport a.on.p{background:#f7f2e6;color:#0c2e4a}
 .padel-promo{display:flex;align-items:center;gap:14px;background:#0c2e4a;border:1px solid #24507a;border-radius:18px;padding:14px 16px;
  margin:0 0 22px;text-decoration:none;color:#f7f2e6}
-.padel-promo svg{width:54px;height:54px;flex:none}.padel-promo b{display:block;font:700 1.15rem Georgia,serif}
+.padel-promo svg{width:54px;height:54px;flex:none}.padel-promo b{display:block;font:700 1.15rem system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .padel-promo span{color:#a9c0d6;font-size:.9rem}.padel-promo i{margin-left:auto;font-style:normal;color:#d9f23d;font-size:1.6rem}
 """
 
