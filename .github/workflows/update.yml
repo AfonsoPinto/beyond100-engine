@@ -142,7 +142,7 @@ jobs:
           if-no-files-found: ignore
       - name: Save state (public display data only)
         run: |
-          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json posts photos padel/data
+          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json weeks posts photos padel/data
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
