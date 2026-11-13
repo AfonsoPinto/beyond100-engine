@@ -419,6 +419,17 @@ def ranking_block(name, ms, current=None):
     if isinstance(prev, int) and isinstance(cur, int) and prev != cur and r.get("rank") == cur:
         d = prev - cur
         boxes.append(box(f'<span class="{"up" if d > 0 else "dn"}">{"▲" if d > 0 else "▼"}{abs(d)}</span>', f"since No. {prev}"))
+    if isinstance(cur, int) and 100 < cur <= 200:              # 13/11/2026: quanto falta para o top 100 (pontos oficiais do ESPN)
+        try:
+            er = _load("espn_rank.json", {})
+            lg = next((k for k in ("atp", "wta") for x in er.get(k) or [] if webapp.slugify(x.get("n") or "") == webapp.slugify(name or "")), None)
+            if lg:
+                me = next(x for x in er[lg] if webapp.slugify(x.get("n") or "") == webapp.slugify(name or ""))
+                c100 = next((x for x in er[lg] if x.get("r") == 100), None)
+                if c100 and isinstance(me.get("pts"), (int, float)) and isinstance(c100.get("pts"), (int, float)) and c100["pts"] > me["pts"]:
+                    boxes.append(box(f'{int(c100["pts"] - me["pts"])} pts', "to the top 100"))
+        except Exception:
+            pass
     yr = time.strftime("%Y")
     start = next((v for m, v in sorted(rk) if m.startswith(yr)), None)
     if isinstance(start, int) and isinstance(cur, int) and start != cur:

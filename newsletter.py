@@ -36,9 +36,10 @@ def _score(r):
     return " ".join(f"{x}-{y}" for x, y in zip(a, b))
 
 
-def week_data(today=None):
+def week_data(today=None, start=None):
     today = today or dt.date.today()
-    start = (today - dt.timedelta(days=7)).isoformat()
+    # 13/11/2026: segunda a domingo da semana (antes eram 7 dias para trás e o domingo anterior entrava em duas semanas)
+    start = (start or (today - dt.timedelta(days=today.weekday()))).isoformat()
     res = [r for r in _load("results.json", []) if r.get("date", "") >= start and r.get("winner") in (1, 2)
            and " / " not in r["p1"]["name"] and not r.get("q")]
     champs = []

@@ -1364,7 +1364,7 @@ def _shell(title, body, tx, root="", path="", desc=None, image="og/default.png",
             f'<style>{SITE_CSS}{extras.EXTRA_CSS}{site_ui.CSS}{sport_switch.CSS}{site_nav.CSS}</style></head><body><div class="wrap">\n'
             f'<nav><a class="brand" href="{root}index.html">BEYOND100</a><div>'
             f'{live_pill}<a class="ntop" href="{root}results.html">{esc(tx["nav"])}</a><a class="ntop" href="{root}players.html">{esc(tx.get("players", "Players"))}</a>{(f'<a class="ntop" href="{root}rankings.html">{esc(extras.L(tx, "x_rankings"))}</a>' if extras.have_full_rankings() else "")}<a class="ntop" href="{root}stats.html">{esc(extras.L(tx, "x_stats"))}</a><a href="{IG_URL}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>\n{sport_switch.switch("tennis")}'
-            f'{site_more.SEARCH_HTML}{body}\n<footer>{esc(tx["note"])} · <a href="/order-of-play.html">Order of play</a> · <a href="/next.html">Next week</a> · <a href="/road.html">Road to the Top 100</a> · <a href="/power.html">Power Ranking</a> · '
+            f'{site_more.SEARCH_HTML}{body}\n<footer>{esc(tx["note"])} · <a href="/order-of-play.html">Order of play</a> · <a href="/next.html">Next week</a> · <a href="/week/">This week</a> · <a href="/road.html">Road to the Top 100</a> · <a href="/power.html">Power Ranking</a> · '
             f'<a href="/records.html">Records</a> · <a href="/countries.html">Countries</a> · '
             f'<a href="/credits.html">{esc(extras.L(tx, "x_credits"))}</a> · <a href="/about.html">About</a>{langs}</footer></div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + __import__("site_ui").DEAD_YT_JS + _nl_slide() + '</body></html>')
 
@@ -2019,6 +2019,13 @@ def build_site(out_dir="site", player=None):
             paths.append(_p)
         except Exception as e:
             print("Página", _fn, "falhou:", type(e).__name__, e)
+    try:                                                      # 13/11/2026: páginas semanais "The week beyond the top 100" (SEO)
+        import week_pages
+        for _p, _lm in week_pages.make(out_dir, _shell, tx, _crumbs):
+            paths.append(_p)
+            LASTMOD[os.path.relpath(_p, out_dir).replace(os.sep, "/")] = _lm
+    except Exception as e:
+        print("Páginas semanais falharam:", type(e).__name__, e)
     with open(os.path.join(out_dir, "search.json"), "w", encoding="utf-8") as f:
         json.dump(site_more.search_index({k: v for k, v in _index.items() if ("p/" + k + ".html") not in NOINDEX}, sorted(groups)), f,
                   ensure_ascii=False, separators=(",", ":"))
