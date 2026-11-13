@@ -145,7 +145,16 @@ def country_pages(index, results, tr, tx, min_players=3):
 
 
 def search_index(index, tournaments):
-    items = [{"n": e["name"], "u": f"/p/{s}.html", "k": country_name(e.get("country"))} for s, e in index.items() if s]
+    items = []
+    for s, e in index.items():                     # 13/11/2026: ranking e foto para a pesquisa instantânea (página inicial)
+        if not s:
+            continue
+        x = {"n": e["name"], "u": f"/p/{s}.html", "k": country_name(e.get("country"))}
+        if isinstance(e.get("rank"), int) and e["rank"] > 0:
+            x["r"] = e["rank"]
+        if s in webapp.AVATARS:
+            x["i"] = f"/img/{s}.jpg"
+        items.append(x)
     items += [{"n": t, "u": f"/t/{webapp.slugify(t)}.html", "k": "Tournament"} for t in tournaments]
     return items
 

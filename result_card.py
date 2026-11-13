@@ -1550,6 +1550,134 @@ def _safe(fn):
         return ""
 
 
+def _home_v2(results, singles, tx, tr, hl):
+    """Página inicial nova: acontecimento do dia, quem somos + pesquisa + números, ao vivo, campeões com foto, destaques, resultados por torneio."""
+    import home_ui
+    import player_ui as pu
+    import site_ui
+    esc = html.escape
+    today = datetime.date.today()
+    rk = lambda p: p.get("rank") if isinstance(p.get("rank"), int) and p["rank"] > 0 else None
+    ini = lambda n: "".join(x[0] for x in (n or "?").split()[:2]).upper()
+    big = lambda n: f"/img/big/{webapp.slugify(n)}.jpg" if webapp.slugify(n) in webapp.AVATARS else ""
+    sc_of = lambda r: " ".join(f"{x}-{y}" for x, y in zip(r["games"][r["winner"] - 1], r["games"][2 - r["winner"]]))
+    is_final = lambda r: (r.get("round") or "").strip().lower() in ("final", "finals")
+
+    def age(r):
+        try:
+            return (today - datetime.date.fromisoformat(r.get("date", "")[:10])).days
+        except ValueError:
+            return 99
+
+    # --- acontecimento do dia (e os 3 seguintes, ao lado)
+    full = lambda r: bool(r["games"][0]) and webapp._set_done(r["games"][0][-1], r["games"][1][-1])   # sem desistências (ex.: 7-6 3-0 ret.)
+    rlab = lambda r: tr["rounds"].get((r.get("round") or "").lower(), r.get("round") or "")
+    cands = []
+    for r in singles:
+        if r.get("winner") not in (1, 2) or age(r) > 3:
+            continue
+        W, L = r["p%d" % r["winner"]], r["p%d" % (3 - r["winner"])]
+        tag = webapp.classify(r)[3]
+        pts = None
+        if is_final(r):
+            pts = 100 - 8 * _tier_rank(tag)
+        elif rk(W) and rk(L) and rk(W) - rk(L) >= 150 and full(r):
+            pts = 40 + min((rk(W) - rk(L)) / 20, 30)
+        if pts is None:
+            continue
+        pts += (25 if big(W["name"]) else 0) - 6 * age(r)
+        cands.append((pts, r))
+    cands.sort(key=lambda c: -c[0])
+    best = cands[0] if cands else None
+    lead = ""
+    more_rows = ""
+    for _, r in cands[1:4]:
+        W, L = r["p%d" % r["winner"]], r["p%d" % (3 - r["winner"])]
+        T = webapp.base_tournament(r.get("tournament", ""))
+        what = f"wins {T}" if is_final(r) else f"(No. {rk(W)}) beats No. {rk(L)} {_surname(L['name'])}"
+        more_rows += (f'<a href="/m/{r["id"]}.html">{webapp.avatar(W["name"], "av") or f"<span class=i>{esc(ini(W['name']))}</span>"}'
+                      f'<span><b>{esc(W["name"])} {esc(what)}</b><small>{esc(sc_of(r))} · {esc(rlab(r))} · {esc(T if not is_final(r) else webapp.classify(r)[3])}</small></span></a>')
+    if best:
+        r = best[1]
+        W, L = r["p%d" % r["winner"]], r["p%d" % (3 - r["winner"])]
+        T = webapp.base_tournament(r.get("tournament", ""))
+        tag = webapp.classify(r)[3]
+        try:
+            d = datetime.date.fromisoformat(r["date"][:10]).strftime("%-d %b")
+        except ValueError:
+            d = ""
+        cr = extras.CREDITS.get(webapp.slugify(W["name"]), "") if big(W["name"]) else ""
+        if is_final(r):
+            lead = home_ui.lead(f"/m/{r['id']}.html", big(W["name"]), ini(W["name"]), [tag or "Final", "Champion"], f"{W['name']} wins {T}",
+                                f"Beat {L['name']}" + (f" (No. {rk(L)})" if rk(L) else "") + f" {sc_of(r)} in the final" + (f" · {d}" if d else ""), cr)
+        else:
+            lead = home_ui.lead(f"/m/{r['id']}.html", big(W["name"]), ini(W["name"]), ["Upset", tag], f"{W['name']} stuns {L['name']}",
+                                f"No. {rk(W)} beat No. {rk(L)} {sc_of(r)} · {rlab(r)} · {T}" + (f" · {d}" if d else ""), cr)
+    # --- lado: quem somos, pesquisa, números
+    n = webapp.week_numbers(results)
+    side = (home_ui.search()
+            + home_ui.intro(tx["h1a"], tx["h1b"], tx["desc"], [(tx["follow"], IG_URL, True), ("This week", "/week/", False)])
+            + (f'<div class="hm-more"><div class="pv-lab">More stories</div>{more_rows}</div>' if more_rows else "")
+            + home_ui.nums([(n["matches"], "matches in 7 days", "/week/"), (n["tournaments"], "tournaments", "/results.html"),
+                            (n["finals"], "finals", "/results.html")]))
+    if not lead:                                                  # sem acontecimento forte: o lado ocupa a largura toda
+        lead, side = side, ""
+    # --- campeões com foto
+    seen, cards = set(), []
+    _cut = (today - datetime.timedelta(days=10)).isoformat()
+    for r in singles:
+        if r.get("date", "") < _cut or r.get("winner") not in (1, 2) or not is_final(r):
+            continue
+        g, _, _, tag = webapp.classify(r)
+        key = (webapp.base_tournament(r.get("tournament", "")), g)
+        if key in seen:
+            continue
+        seen.add(key)
+        W, L = r["p%d" % r["winner"]], r["p%d" % (3 - r["winner"])]
+        cards.append((_tier_rank(tag) + (0 if g == "men" else 0.0001), r.get("date", ""),
+                      home_ui.champ(f"/m/{r['id']}.html", big(W["name"]), ini(W["name"]), tag or "Final", {"men": "Men", "women": "Women"}.get(g, "Champion"),
+                                    W["name"], key[0], f"d. {_surname(L['name'])} {sc_of(r)} · {r.get('date', '')[8:10]}/{r.get('date', '')[5:7]}")))
+    cards.sort(key=lambda c: (c[0], "".join(chr(255 - ord(ch)) for ch in c[1])))
+    champs = (site_ui.sec("Latest champions", "/results.html", "All results") + '<div class="hm-row">' + "".join(c[2] for c in cards[:8]) + "</div>") if cards else ""
+    # --- resultados por torneio
+    groups, order = {}, []
+    for r in singles:
+        if r.get("winner") not in (1, 2):
+            continue
+        t = webapp.base_tournament(r.get("tournament", ""))
+        if t not in groups:
+            if len(order) >= 4:
+                continue
+            groups[t] = []
+            order.append(t)
+        if len(groups[t]) < 4:
+            groups[t].append(r)
+    evs = ""
+    for t in order:
+        rs = groups[t]
+        r0 = rs[0]
+        g, _, _, tag = webapp.classify(r0)
+        rows = []
+        for r in rs:
+            W, L = r["p%d" % r["winner"]], r["p%d" % (3 - r["winner"])]
+            tb = r.get("tb")
+            rows.append((extras._rshort(r.get("round"), r.get("q")), extras.plink(W["name"]),
+                         f"d. {L['name']}" + (f" · No. {rk(L)}" if rk(L) else ""),
+                         pu.score(r["games"][r["winner"] - 1], r["games"][2 - r["winner"]], tb[r["winner"] - 1] if tb else None, tb[2 - r["winner"]] if tb else None),
+                         f"/m/{r['id']}.html", True))
+        ts = webapp.slugify(t)
+        evs += pu.event(f'<a href="/t/{ts}.html">{esc(t)}</a>', " · ".join(x for x in [tag, (r0.get("surface") or "").title(), r0.get("date", "")] if x), "", rows)
+    res = (site_ui.sec(esc(tx["title"]), "results.html", tx["all"].rstrip(" →")) + f'<div class="hm-res">{evs}</div>') if evs else ""
+    rest = (f'{extras.live_block(tx, 4)}{champs}'
+            + (site_ui.sec("▶ Latest highlights", "/highlights.html", "All videos") + hl if hl else "")
+            + res + _safe(extras.spotlight_block)
+            + f'{webapp.week_block(n, tx)}{sport_switch.promo()}'
+            + site_ui.quick([("/results.html", "Results", "Every score, newest first"), ("/order-of-play.html", "Today", "Order of play, live"),
+                             ("/players.html", "Players", "Form and streaks"), ("/week/", "This week", "Champions, upsets and climbers")])
+            + f'{extras.newsletter_block(tx)}')
+    return f"<style>{pu.CSS}</style>" + home_ui.page(lead, side, rest)
+
+
 def _core_pages(results, singles, tx, tr, lang, linkable):
     """Páginas principais (início, resultados, jogadores, rankings, stats, créditos) num idioma."""
     esc = html.escape
@@ -1619,6 +1747,11 @@ def _core_pages(results, singles, tx, tr, lang, linkable):
             + site_ui.quick([("/results.html", "Results", "Every score, newest first"), ("/order-of-play.html", "Today", "Order of play, live"),
                              ("/players.html", "Players", "Form and streaks"), ("/stats.html", "Stats", "Records and numbers")])
             + f'{extras.newsletter_block(tx)}')
+    if os.environ.get("HOME_V2", "1") != "0":                     # 13/11/2026: página inicial nova (home_ui); HOME_V2=0 volta à antiga
+        try:
+            home = _home_v2(results, singles, tx, tr, _hl)
+        except Exception as e:
+            print("Página inicial v2 falhou:", type(e).__name__, e)
     home_title = "Beyond100 Tennis · " + (f'{tx["h1a"]} {tx["h1b"]}' if lang != "en" else "Challenger, ITF and WTA results beyond the top 100")
     return [("index.html", home, home_title),
             ("results.html", webapp.results_page(results, tr, tx, lang), tx["title"] + " · Beyond100 Tennis"),
