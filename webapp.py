@@ -730,6 +730,55 @@ def scheduled_for(name, ups, skip_ids=(), gender=None):
     return out
 
 
+def _tournament_top(singles, tag):
+    import home_ui
+    import rank_ui
+    big = lambda n: f"/img/big/{slugify(n)}.jpg" if slugify(n) in AVATARS else ""
+    ini = lambda n: "".join(w[0] for w in (n or "?").split()[:2]).upper()
+    cards = []
+    for r in singles:
+        if r.get("winner") in (1, 2) and (r.get("round") or "").strip().lower() in ("final", "finals"):
+            g = classify(r)[0]
+            if any(c[0] == g for c in cards):
+                continue
+            W, L = r["p%d" % r["winner"]], r["p%d" % (3 - r["winner"])]
+            sc = " ".join(f"{x}-{y}" for x, y in zip(r["games"][r["winner"] - 1], r["games"][2 - r["winner"]]))
+            cards.append((g, home_ui.lead(f"/m/{r['id']}.html", big(W["name"]), ini(W["name"]), [tag or "", "Champion"], W["name"],
+                                          f"Beat {L['name']} {sc} in the final · {r.get('date', '')}")))
+    if cards:
+        return rank_ui.champions([c for _, c in sorted(cards, key=lambda c: c[0] != "men")])
+    # em curso: quem ainda não perdeu, na ronda mais adiantada
+    lost = {slugify(r["p%d" % (3 - r["winner"])]["name"]) for r in singles if r.get("winner") in (1, 2)}
+    best = {}
+    for r in singles:
+        if r.get("winner") not in (1, 2) or r.get("q"):
+            continue
+        W = r["p%d" % r["winner"]]
+        k = slugify(W["name"])
+        if k in lost:
+            continue
+        rr = _round_rank(r.get("round"))
+        if k not in best or rr < best[k][0]:
+            best[k] = (rr, W, r)
+    if len(best) < 2:
+        return ""
+    try:                                                     # torneio parado há mais de 3 dias: não dizemos quem "ainda está"
+        import datetime as _dt
+        if (_dt.date.today() - _dt.date.fromisoformat(max(r.get("date", "") for r in singles)[:10])).days > 3:
+            return ""
+    except ValueError:
+        return ""
+    lo = min(v[0] for v in best.values())                    # só quem está na ronda mais adiantada ou na anterior (dados com falhas)
+    top = sorted([v for v in best.values() if v[0] <= lo + 1], key=lambda x: (x[0], (x[1].get("rank") or 9999)))[:8]
+    if len(top) < 2:
+        return ""
+    nxt = {1: "Into the final", 2: "Into the semi-finals", 3: "Into the quarter-finals"}
+    items = [(nxt.get(rr, "Still in"), [big(W["name"])] if big(W["name"]) else [], ini(W["name"]), W["name"],
+              f'{(W.get("country") or "").upper()}' + (f' · No. {W["rank"]}' if isinstance(W.get("rank"), int) else ""),
+              f"/p/{slugify(W['name'])}.html") for rr, W, r in top]
+    return f'<style>{rank_ui.CSS}</style><h2 class="dh">Still in the draw</h2>' + rank_ui.climbers(items)
+
+
 def tournament_page(name, rs, tr, tx, upcoming=None):
     """Corpo da página de um torneio (singulares primeiro, pares depois)."""
     esc = html.escape
@@ -747,6 +796,10 @@ def tournament_page(name, rs, tr, tx, upcoming=None):
     h = (f'<section class="page-h"><p><a href="../results.html">← {esc(tx["title"])}</a></p>'
          f'<h1>{tagh}{esc(name)}</h1><p>{esc(sub)}</p>'
          + (f'<p class="champ">{esc(tx["f_champion"])}: <b>{esc(champ)}</b></p>' if champ else "") + '</section>')
+    try:                                                     # 13/11/2026: campeões com foto grande, ou quem ainda está em prova
+        h += _tournament_top(singles, tag)
+    except Exception as e:
+        print("Topo do torneio falhou:", name, type(e).__name__, e)
     def sec(title, items):
         if not items:
             return ""
