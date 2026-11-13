@@ -1160,6 +1160,33 @@ def _hero_table(r, p, rk, d, w, done, titles, finals, pct, partner=""):
     return rows or None
 
 
+def _player_shell(db, pid, p, r, ms, body):
+    """Título, descrição, dados estruturados e moldura da ficha (comum às versões 1 e 2)."""
+    _rk = r.get("ranking") if isinstance(r, dict) else None                 # mesmo formato do ténis: "<nome> ranking: No. X"
+    _person = {"@context": "https://schema.org", "@type": "Person", "name": p.get("name"), "url": SITE_BASE + _clean(ppath(p)),
+               "jobTitle": "Professional padel player"}
+    if p.get("nationality"):
+        _person["nationality"] = {"@type": "Country", "name": country_name(p.get("nationality"))}
+    if (p.get("birthdate") or "")[:10]:
+        _person["birthDate"] = p["birthdate"][:10]
+    if p.get("height"):
+        _person["height"] = {"@type": "QuantitativeValue", "value": p["height"], "unitCode": "CMT"}
+    if p.get("birthplace"):
+        _person["birthPlace"] = {"@type": "Place", "name": p["birthplace"]}
+    if has_photo(pid):
+        _person["image"] = f"{SITE_BASE}/padel/img/{pid}.jpg"
+    _ld = [_person, _crumbs([("Beyond Padel", "/padel/index.html"), ("Rankings", "/padel/rankings.html"), (p.get("name") or "", ppath(p))])]
+    _title = (f"{p.get('name')} padel ranking: No. {_rk}" if _rk else f"{p.get('name')} padel ranking") + " · results and partners | Beyond Padel"
+    _desc = (f"{p.get('name')} is ranked No. {_rk} in padel" if _rk else f"{p.get('name')}") + f" ({country_name(p.get('nationality'))}): ranking, points, partners and match results."
+    if _rk and _title_test(ppath(p)):                          # 12/11/2026: teste de título (páginas "Ninguém clica" do padel)
+        _d = r.get("ranking_diff") or 0 if isinstance(r, dict) else 0
+        _mv = f" (▲{_d} this week)" if _d > 0 else f" (▼{-_d} this week)" if _d < 0 else ""
+        _day = time.strftime("%-d %b %Y")
+        _title = f"{p.get('name')} padel ranking: No. {_rk}{_mv} · updated {_day}"
+        _desc = f"{p.get('name')} is No. {_rk} in the padel ranking{_mv}, updated {_day}. " + _desc
+    return shell(_title, body, ppath(p), desc=_desc, tab="players", noindex=_thin(p, ms, _rk), ld=_ld)
+
+
 _SEEN_GSC = None
 
 
@@ -1240,6 +1267,16 @@ def _title_test(path):
 
 
 def page_player(db, pid, p):
+    """Ficha do jogador. Desde 13/11/2026 usa o novo desenho comum ao ténis (player_ui); PLAYER_V2=0 volta ao antigo."""
+    if os.environ.get("PLAYER_V2", "1") != "0":
+        try:
+            return page_player_v2(db, pid, p)
+        except Exception as ex:
+            print("Ficha padel v2 falhou:", pid, type(ex).__name__, ex)
+    return page_player_v1(db, pid, p)
+
+
+def page_player_v1(db, pid, p):
     ms = player_matches(db, pid)
     done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
     w = sum(1 for m, tm in done if m["winner"] == tm)
@@ -1328,29 +1365,7 @@ def page_player(db, pid, p):
                      + "".join(f'<span>{plink(q)} <b>#{rk}</b></span>' for rk, q in sorted(mates[:6], key=lambda x: x[0]))
                      + '<span><a href="/padel/countries.html">All countries →</a></span></div>')
     body += '<p class="pd-note">Won-lost, titles and tournaments count the matches in our database (Premier Padel and FIP Platinum, Gold and Silver, last months).</p>'
-    _rk = r.get("ranking") if isinstance(r, dict) else None                 # mesmo formato do ténis: "<nome> ranking: No. X"
-    _person = {"@context": "https://schema.org", "@type": "Person", "name": p.get("name"), "url": SITE_BASE + _clean(ppath(p)),
-               "jobTitle": "Professional padel player"}
-    if p.get("nationality"):
-        _person["nationality"] = {"@type": "Country", "name": country_name(p.get("nationality"))}
-    if (p.get("birthdate") or "")[:10]:
-        _person["birthDate"] = p["birthdate"][:10]
-    if p.get("height"):
-        _person["height"] = {"@type": "QuantitativeValue", "value": p["height"], "unitCode": "CMT"}
-    if p.get("birthplace"):
-        _person["birthPlace"] = {"@type": "Place", "name": p["birthplace"]}
-    if has_photo(pid):
-        _person["image"] = f"{SITE_BASE}/padel/img/{pid}.jpg"
-    _ld = [_person, _crumbs([("Beyond Padel", "/padel/index.html"), ("Rankings", "/padel/rankings.html"), (p.get("name") or "", ppath(p))])]
-    _title = (f"{p.get('name')} padel ranking: No. {_rk}" if _rk else f"{p.get('name')} padel ranking") + " · results and partners | Beyond Padel"
-    _desc = (f"{p.get('name')} is ranked No. {_rk} in padel" if _rk else f"{p.get('name')}") + f" ({country_name(p.get('nationality'))}): ranking, points, partners and match results."
-    if _rk and _title_test(ppath(p)):                          # 12/11/2026: teste de título (páginas "Ninguém clica" do padel)
-        _d = r.get("ranking_diff") or 0 if isinstance(r, dict) else 0
-        _mv = f" (▲{_d} this week)" if _d > 0 else f" (▼{-_d} this week)" if _d < 0 else ""
-        _day = time.strftime("%-d %b %Y")
-        _title = f"{p.get('name')} padel ranking: No. {_rk}{_mv} · updated {_day}"
-        _desc = f"{p.get('name')} is No. {_rk} in the padel ranking{_mv}, updated {_day}. " + _desc
-    return shell(_title, body, ppath(p), desc=_desc, tab="players", noindex=_thin(p, ms, _rk), ld=_ld)
+    return _player_shell(db, pid, p, r, ms, body)
 
 
 def page_pair(db, key, team):
@@ -2084,3 +2099,275 @@ def build(out_dir="site"):
 
 if __name__ == "__main__":
     build(sys.argv[1] if len(sys.argv) > 1 else "site")
+
+
+# ---------------------------------------------------------------- ficha do jogador, versão 2 (13/11/2026, igual ao ténis)
+RSHORT = {1: "F", 2: "SF", 4: "QF", 8: "R16", 16: "R32", 32: "R64", 64: "R128"}
+
+
+def _p_rshort(m):
+    r = m.get("round")
+    q = (m.get("draw") or "main") != "main"
+    if q:
+        return "Q"
+    return RSHORT.get(r, esc(str(m.get("round_name") or ""))[:4])
+
+
+def _p_runs(ms):
+    """[(tid, [(m, tm), ...])] por torneio, do mais recente para o mais antigo."""
+    out, idx = [], {}
+    for m, tm in ms:
+        k = str(m.get("tid"))
+        if k not in idx:
+            idx[k] = len(out)
+            out.append((k, []))
+        out[idx[k]][1].append((m, tm))
+    return out
+
+
+def _p_outcome(run):
+    """(etiqueta, é título?, frase da pílula) do melhor resultado no quadro principal."""
+    main = [(m, tm) for m, tm in run if (m.get("draw") or "main") == "main" and m.get("winner") in ("team_1", "team_2")]
+    if not main:
+        return ("", False, "")
+    best = min(main, key=lambda x: x[0].get("round") or 99)
+    m, tm = best
+    r = m.get("round") or 99
+    won = m.get("winner") == tm
+    if r == 1:
+        return ("Title", True, "Champion") if won else ("Final", False, "Finalist")
+    if won:
+        return (f"Won {RSHORT.get(r, '')}".strip(), False, "")
+    return {2: ("Semi-final", False, "Semi-finalist"), 4: ("Quarter-final", False, "Quarter-finalist")}.get(r, (f"Lost {RSHORT.get(r, '')}".strip(), False, ""))
+
+
+def _p_score(m, tm):
+    ot = "team_2" if tm == "team_1" else "team_1"
+    out = ""
+    for a, b in sets_of(m):
+        mine, oth = (a, b) if tm == "team_1" else (b, a)
+        tb = re.search(r"\((\d+)\)", mine) or re.search(r"\((\d+)\)", oth)
+        out += f'<i>{games(mine)}-{games(oth)}{f"<sup>{tb.group(1)}</sup>" if tb else ""}</i>'
+    return out
+
+
+def _p_event(db, pid, tid, run):
+    import player_ui as pu
+    t = db.tour(tid) or {}
+    label, is_title, _ = _p_outcome(run)
+    m0 = run[0][0]
+    sub = " · ".join(x for x in [LEVEL_SHORT.get(t.get("level"), ""), date_range(t), CAT.get(m0.get("category"), "")] if x)
+    title = f'<a href="{tpath(t)}">{esc(t.get("location") or t.get("name") or "")}</a>' if t else esc(str(tid))
+    rows = []
+    for m, tm in run:
+        ot = "team_2" if tm == "team_1" else "team_1"
+        opp = team_players(m, ot)
+        mate = [q for q in team_players(m, tm) if str(q.get("id")) != str(pid)]
+        nm = " / ".join(f'<a href="{ppath(q)}">{esc(disp(q))}</a>' for q in opp) or "TBD"
+        rk = [rank_str(q.get("id"), db) for q in opp]
+        osub = " · ".join(x for x in [("with " + disp(mate[0])) if mate else "", " ".join(x for x in rk if x)] if x)
+        st = m.get("status")
+        if m.get("winner") in ("team_1", "team_2"):
+            sc, won = _p_score(m, tm) or "–", m.get("winner") == tm
+        elif st == "live":
+            sc, won = '<span class="pd-live">● LIVE</span>', None
+        else:
+            sc, won = esc(m.get("schedule_label") or when_local(m) or ""), None
+        href = mpath(m) if opp and team_players(m, tm) else ""
+        rows.append((_p_rshort(m), nm, osub, sc, href, won))
+    return pu.event(title, sub, label, rows, is_title)
+
+
+def page_player_v2(db, pid, p):
+    import player_ui as pu
+    ms = player_matches(db, pid)
+    done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
+    w = sum(1 for m, tm in done if m["winner"] == tm)
+    r = db.rank_of.get(str(pid)) or {}
+    rk = r.get("ranking") or p.get("ranking")
+    d = r.get("ranking_diff") or 0
+    titles = sum(1 for m, tm in done if m.get("round") == 1 and m["winner"] == tm and (m.get("draw") or "main") == "main")
+    finals = sum(1 for m, tm in done if m.get("round") == 1 and (m.get("draw") or "main") == "main")
+    name = p.get("name") or ""
+    runs = _p_runs(ms)
+
+    # --- topo
+    chips = []
+    nat = p.get("nationality")
+    if nat:
+        chips.append(f'<span>{flag(nat, 14)}{esc(country_name(nat))}</span>')
+    if p.get("age"):
+        chips.append(f"Age {p['age']}")
+    if isinstance(p.get("height"), (int, float)) and 150 <= p["height"] <= 215:
+        chips.append(f"{p['height'] / 100:.2f} m")
+    side = {"drive": "Right side (drive)", "backhand": "Left side (backhand)"}.get(p.get("side") or "", "")
+    if side:
+        chips.append(side)
+    hand = {"right": "Right-handed", "left": "Left-handed"}.get(str(p.get("hand") or "").lower(), "")
+    if hand:
+        chips.append(hand)
+    chips = [c if c.startswith("<") else esc(c) for c in chips]
+    chips = [c[6:-7] if c.startswith("<span>") else c for c in chips]
+    pill, pill_href = "", ""
+    for tid, run in runs:
+        _, _, phrase = _p_outcome(run)
+        t = db.tour(tid) or {}
+        try:
+            dl = dt.date.fromisoformat((t.get("end_date") or run[0][0].get("played_at") or "")[:10])
+        except ValueError:
+            dl = None
+        if any(m.get("winner") in ("team_1", "team_2") for m, _ in run):
+            if phrase and dl and (dt.date.today() - dl).days <= 21:
+                pill, pill_href = esc(f"{phrase} · {t.get('location') or t.get('name') or ''} · {dl.strftime('%-d %b')}"), "#results"
+            break
+    c = photo_credit(pid) if has_photo(pid) else {}
+    top_left = pu.hero("/padel/rankings.html", "Rankings", f"/padel/img/{pid}.jpg" if has_photo(pid) else "", name, chips, pill,
+                       esc(c.get("credit") or ""), pill_href)
+
+    # --- cartão do ranking
+    hist = [(dd, x) for dd, x in db.rank_hist(pid) if x]
+    chart, axis = "", ()
+    if len(hist) >= 2 and len({x for _, x in hist}) >= 2:
+        lo, hi = min(x for _, x in hist), max(x for _, x in hist)
+        n = len(hist) - 1
+        chart = pu.sparkline([(i / n, (x - lo) / max(1, hi - lo)) for i, (_, x) in enumerate(hist)],
+                             label=f"Ranking over the last {len(hist)} weeks, best No. {lo}")
+        try:
+            d0 = dt.date.fromisoformat(hist[0][0][:10]).strftime("%-d %b")
+        except ValueError:
+            d0 = hist[0][0]
+        axis = (f"{d0} · No. {hist[0][1]}", f"Best No. {lo}", "Now")
+    minis = []
+    race = p.get("race") if isinstance(p.get("race"), dict) else {}
+    if race.get("ranking"):
+        minis.append((f'{race["ranking"]}', "Race to the Finals"))
+    if done and finals:
+        minis.append((f"{titles}/{finals}", "titles / finals"))
+    if done:
+        minis.append((f"{w}-{len(done) - w}", "won-lost"))
+        minis.append((f"{round(100 * w / len(done))}%", "win rate"))
+    pts = r.get("points") or p.get("points")
+    pts = f"{pts:,}".replace(",", " ") if isinstance(pts, int) else (pts or "")
+    lab = {"men": "Men's padel ranking", "women": "Women's padel ranking"}.get(p.get("category"), "Padel ranking")
+    top_right = pu.rank_card(lab, rk or "", d if isinstance(d, int) else None, pts, "points", chart, axis, minis,
+                             "Weekly ranking: our own copies of the official ranking" if chart else "")
+    if not top_right:
+        top_right = pu.rank_card("Matches we tracked", "", None, f"{w}-{len(done) - w}", "won-lost")
+
+    # --- principal
+    main = pu.h2("overview", "Form", f"<small>{w}-{len(done) - w} in the matches we tracked</small>" if done else "")
+    main += pu.form([(m["winner"] == tm, _p_rshort(m)) for m, tm in done[:6]])
+    if done:
+        main += '<div class="pv-note">Round · newest first</div>'
+    if runs:
+        main += pu.h2("results", f"{esc(name)} results", f"<small>{len(done)} match{'es' if len(done) != 1 else ''} we tracked</small>")
+        main += "".join(_p_event(db, pid, tid, run) for tid, run in runs[:4])
+        if len(runs) > 4:
+            older = sum(len(run) for _, run in runs[4:])
+            main += pu.more(f"Older results ({older} matches)", "".join(_p_event(db, pid, tid, run) for tid, run in runs[4:]))
+    hv = [(m, h) for m, tm in ms for h in [highlight_for(db, m)] if h and h["kind"] == "match"][:8]
+    if hv:
+        main += '<h2 class="pv-h">▶ Highlights</h2><div class="pd-hls row">' + "".join(hl_card(db, m, h) for m, h in hv) + "</div>"
+
+    # --- lateral: números e parceiros
+    sidebar = pu.h2("stats", "Season &amp; partners")
+    cards = []
+    if done:
+        cards.append(pu.stat_card("Matches we tracked", f"{w}-{len(done) - w}", f"{round(100 * w / len(done))}% won"))
+        cards.append(pu.stat_card("Titles", f"{titles}", f"from {finals} final{'s' if finals != 1 else ''}"))
+    if cards:
+        sidebar += f'<div class="pv-two">{"".join(cards)}</div>'
+    lv = {}
+    for m, tm in done:
+        t = db.tour(m.get("tid")) or {}
+        k = t.get("level") or ""
+        x = lv.setdefault(k, [0, 0])
+        x[0 if m["winner"] == tm else 1] += 1
+    sidebar += pu.bars("By level · win %", [(LEVEL_SHORT.get(k, k.upper()).title().replace("Fip", "FIP").replace("P1", "P1"), f"{a}-{b}", round(100 * a / (a + b)))
+                                         for k, (a, b) in sorted(lv.items(), key=lambda kv: LEVEL_ORDER.get(kv[0], 9)) if a + b])
+    elo = p.get("elo")
+    if isinstance(elo, dict) and elo.get("ranking"):
+        sidebar += f'<div class="pv-sub">Elo rating rank: <b>No. {elo["ranking"]}</b></div>'
+    partners = {}
+    for m, tm in ms:
+        for q in team_players(m, tm):
+            if str(q.get("id")) != str(pid):
+                e = partners.setdefault(str(q.get("id")), {"p": q, "n": 0, "w": 0, "team": team_players(m, tm)})
+                e["n"] += 1
+                e["w"] += 1 if m.get("winner") == tm else 0
+    ph = [x for x in p.get("pairs_hist") or [] if len(x.get("players") or []) == 2]
+    prow = ""
+    if ph:
+        def _mon(x):
+            try:
+                return dt.date.fromisoformat(x[:10]).strftime("%b %Y")
+            except (TypeError, ValueError):
+                return ""
+        for x in sorted(ph, key=lambda x: (x.get("status") == "current", x.get("last") or ""), reverse=True)[:8]:
+            q = next((y for y in x["players"] if str(y.get("id")) != str(pid)), None)
+            if not q:
+                continue
+            e = partners.get(str(q.get("id")))
+            sub = f'{_mon(x.get("first"))} – {"now" if x.get("status") == "current" else _mon(x.get("last"))}' + (f' · {e["w"]}-{e["n"] - e["w"]} in our data' if e else "")
+            prow += site_ui.rank_row("", avatar(q, "av"), f'<a href="{pair_path(x["players"])}">{esc(q.get("name"))}</a>', esc(sub),
+                                     "Current" if x.get("status") == "current" else "", False, "")
+    elif partners:
+        for e in sorted(partners.values(), key=lambda e: -e["n"])[:6]:
+            prow += site_ui.rank_row("", avatar(e["p"], "av"), f'<a href="{pair_path(e["team"])}">{esc(e["p"].get("name"))}</a>',
+                                     esc(f'{e["n"]} matches · {e["w"]}-{e["n"] - e["w"]}'), "", False, "")
+    if prow:
+        sidebar += '<div class="pv-card" style="padding:12px"><div class="pv-lab" style="margin:4px 4px 10px">Partners</div><div class="ui-rk">' + prow + "</div></div>"
+    if ms:
+        sidebar += _nl_inline(f"Following {name or 'this player'}? Get the padel week in one email")
+    sidebar += pu.share()
+
+    # --- sobre (texto factual escrito pelo código) e ligações
+    he = "she" if p.get("category") == "women" else "he"
+    his = "her" if he == "she" else "his"
+    bits = [f"{esc(name)} is a " + (f"{p['age']}-year-old " if p.get("age") else "") + "padel player"
+            + (f" from {esc(country_name(nat))}" if nat else "")
+            + (f", ranked <b>No. {rk}</b> in the {'women' if he == 'she' else 'men'}'s padel ranking" if rk else "")
+            + (f" with {pts} points" if pts else "") + "."]
+    if side:
+        bits.append(f"{he.capitalize()} plays on the {'right' if p.get('side') == 'drive' else 'left'} side of the court.")
+    cur = next((x for x in ph if x.get("status") == "current"), None)
+    if cur:
+        q = next((y for y in cur["players"] if str(y.get("id")) != str(pid)), None)
+        if q:
+            bits.append(f"{his.capitalize()} current partner is <a href=\"{ppath(q)}\">{esc(q.get('name'))}</a>.")
+    if done:
+        bits.append(f"In the Premier Padel and FIP matches we tracked, {he} is {w}-{len(done) - w}" +
+                    (f", with {titles} title{'s' if titles != 1 else ''} from {finals} final{'s' if finals != 1 else ''}" if finals else "") + ".")
+    for tid, run in runs:
+        lab_, _, _ = _p_outcome(run)
+        t = db.tour(tid) or {}
+        if lab_ and t:
+            what = {"Title": "won the title", "Final": "reached the final", "Semi-final": "reached the semi-finals",
+                    "Quarter-final": "reached the quarter-finals"}.get(lab_, "played")
+            bits.append(f"Most recently, at <a href=\"{tpath(t)}\">{esc(t.get('location') or t.get('name') or '')}</a>, {he} {what}.")
+            break
+    about = pu.h2("about", f"About {esc(name)}") + "<p>" + " ".join(bits) + "</p>"
+    opp = {}
+    for m, tm in done:
+        ot = "team_2" if tm == "team_1" else "team_1"
+        for q in team_players(m, ot):
+            e_ = opp.setdefault(str(q.get("id")), [q, 0, 0])
+            e_[1 if m["winner"] == tm else 2] += 1
+    freq = sorted([v for v in opp.values() if v[1] + v[2] >= 2], key=lambda v: -(v[1] + v[2]))[:6]
+    if freq:
+        about += (pu.h2("", "Frequent opponents") + '<div class="pv-links">'
+                  + "".join(f'<a href="{ppath(q)}">{esc(q.get("name"))} <b>{a}-{b}</b></a>' for q, a, b in freq) + "</div>")
+    my_rk = rk or 500
+    if nat:
+        mates = [((db.rank_of.get(k) or {}).get("ranking") or 9999, q) for k, q in db.pinfo.items()
+                 if k != str(pid) and q.get("nationality") == nat and q.get("category") == p.get("category") and (db.rank_of.get(k) or {}).get("ranking")]
+        if mates:
+            mates.sort(key=lambda x: (abs(x[0] - my_rk), x[0]))
+            about += (pu.h2("", f"More players from {esc(country_name(nat))}") + '<div class="pv-links">'
+                      + "".join(f'<a href="{ppath(q)}">{esc(q.get("name"))} <b>#{x}</b></a>' for x, q in sorted(mates[:6], key=lambda x: x[0]))
+                      + '<a href="/padel/countries.html">All countries →</a></div>')
+    about += '<p class="pv-src">Won-lost, titles and tournaments count the matches in our database (Premier Padel and FIP Platinum, Gold and Silver, last months).</p>'
+    body = pu.page(top_left, top_right, pu.tabs([("overview", "Overview"), ("results", "Results"), ("stats", "Stats"), ("about", "About")]),
+                   main, sidebar, about)
+    # o resto (título, descrição, dados estruturados) é o mesmo da versão 1
+    return _player_shell(db, pid, p, r, ms, body)

@@ -1891,6 +1891,7 @@ def build_site(out_dir="site", player=None):
     os.makedirs(pdir, exist_ok=True)
     ranks_by_name = {v.get("name"): v for v in _load_json(RANKS_FILE, {}).values()}
     extras.PIDX = extras.players_index(results)
+    extras.TSLUGS = {webapp.slugify(webapp.base_tournament(r.get("tournament", ""))) for r in results}
     for slug_p, e in list(extras.PIDX.items())[:3000]:
         if not slug_p:
             continue
