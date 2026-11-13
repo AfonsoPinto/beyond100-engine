@@ -192,6 +192,16 @@ def _nl_inline(title):
 
 
 def match_page(r, results, tr, tx):
+    """Página do jogo. Desde 13/11/2026 usa o novo desenho (player_ui); MATCH_V2=0 volta ao antigo."""
+    if os.environ.get("MATCH_V2", "1") != "0":
+        try:
+            return match_page_v2(r, results, tr, tx)
+        except Exception as ex:
+            print("Jogo v2 falhou:", r.get("id"), type(ex).__name__, ex)
+    return match_page_v1(r, results, tr, tx)
+
+
+def match_page_v1(r, results, tr, tx):
     tr = dict(tr, _tx=tx)
     w = r["winner"]
     tname = webapp.base_tournament(r.get("tournament", ""))
@@ -946,7 +956,7 @@ def _tape(p):
         age = ep["age"]
     h = b.get("h") if isinstance(b.get("h"), int) else ep.get("h") if isinstance(ep.get("h"), int) else ps.get("h")
     hand = {"R": "Right", "L": "Left"}.get(b.get("hand") or ep.get("hand") or ps.get("hand") or p.get("hand"))
-    ss = [s for s in ps.get("seasons") or [] if isinstance(s.get("w"), int) and isinstance(s.get("l"), int)]
+    ss = _seasons(ps)
     season = (ss[0]["w"], ss[0]["l"], ss[0].get("y")) if ss else None
     return {"age": age, "h": h if isinstance(h, int) and 150 <= h <= 215 else None, "hand": hand, "season": season}
 
@@ -1809,3 +1819,142 @@ def player_page_v2(e, tr, tx, ranks_by_name=None):
     bottom = about + rel
     return pu.page(top_left, top_right, pu.tabs([("overview", "Overview"), ("results", "Results"), ("stats", "Stats"), ("about", "About")]),
                    main, side, bottom)
+
+
+# ---------------------------------------------------------------- página do jogo, versão 2 (13/11/2026)
+def _ordn(n):
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def match_page_v2(r, results, tr, tx):
+    import player_ui as pu
+    import site_more
+    tr = dict(tr, _tx=tx)
+    w = r["winner"]
+    lz = 3 - w
+    W, L = r["p%d" % w], r["p%d" % lz]
+    tname = webapp.base_tournament(r.get("tournament", ""))
+    ts = webapp.slugify(tname)
+    rd_raw = r.get("round") or ""
+    rd = tr["rounds"].get(rd_raw.lower(), rd_raw)
+    gender, _, level, tag = webapp.classify(r)
+    women = r.get("gender") == "women" or r.get("tour") == "wta"
+    he, his = ("she", "her") if women else ("he", "his")
+    try:
+        day = dt.date.fromisoformat((r.get("date") or "")[:10])
+    except ValueError:
+        day = None
+    rk = lambda p: p["rank"] if isinstance(p.get("rank"), int) and p["rank"] > 0 else None
+    g = r.get("games") or [[], []]
+    tb = r.get("tb")
+
+    # --- topo
+    pills = [(esc(rd.upper()) if rd else "", "", True),
+             (esc(tname), f"/t/{ts}.html" if ts in TSLUGS else "", False),
+             (esc(tag) if tag else "", "", False),
+             (" · ".join(x for x in [day.strftime("%-d %b %Y") if day else "", (r.get("surface") or "").title()] if x), "", False)]
+    sides, rows = [], []
+    for i in (1, 2):
+        p = r["p%d" % i]
+        sl = webapp.slugify(p["name"])
+        sub = " · ".join(x for x in [(p.get("country") or "").upper(), f"No. {rk(p)}" if rk(p) else ""] if x)
+        sides.append({"photos": [f"/img/big/{sl}.jpg"] if sl in webapp.AVATARS else [], "ini": "".join(x[0] for x in p["name"].split()[:2]).upper(),
+                      "name": esc(p["name"]), "sub": sub, "href": f"/p/{sl}.html" if sl in LINKABLE else "", "won": w == i})
+        sets = [(g[i - 1][k], g[i - 1][k] > g[2 - i][k], webapp.tbsup(r, i - 1, k)) for k in range(min(len(g[0]), len(g[1])))]
+        rows.append((plink(p["name"]), sub, sets, w == i))
+    hero = pu.vs_hero(pills, sides, rows)
+
+    # --- história do jogo (factos, sem IA)
+    sc = " ".join(f"{a}-{b}" for a, b in zip(g[w - 1], g[lz - 1]))
+    s1 = (f"{plink(W['name'])}" + (f" (No. {rk(W)})" if rk(W) else "") + f" beat {plink(L['name'])}" + (f" (No. {rk(L)})" if rk(L) else "")
+          + f" {sc}" + (f" in the {esc(rd.lower())}" if rd else "") + f" at {esc(tname)}" + (f" on {day.strftime('%-d %B %Y')}" if day else "") + ".")
+    out = [s1]
+    nset = min(len(g[0]), len(g[1]))
+    if nset >= 2 and g[w - 1][0] < g[lz - 1][0]:
+        out.append(f"{esc(W['name'].split()[0])} came back from a set down.")
+    elif nset == 2:
+        out.append("It was a straight-sets win.")
+    ntb = sum(1 for k in range(nset) if {g[0][k], g[1][k]} == {6, 7})
+    if ntb:
+        out.append(f"The match had {ntb} tie-break{'s' if ntb > 1 else ''}.")
+    if rk(W) and rk(L) and rk(W) - rk(L) >= 50:
+        out.append(f"By ranking it was an upset: {rk(W) - rk(L)} places separated them.")
+    sw, sl_ = webapp.slugify(W["name"]), webapp.slugify(L["name"])
+
+    def road(p_slug):
+        out_ = []
+        for x in results:
+            if x.get("id") == r.get("id") or x.get("winner") not in (1, 2) or webapp.base_tournament(x.get("tournament", "")) != tname:
+                continue
+            try:
+                dx = dt.date.fromisoformat(x["date"][:10])
+            except (ValueError, KeyError):
+                continue
+            if day and not (0 <= (day - dx).days <= 14):
+                continue
+            if day and dx == day and webapp._round_rank(x.get("round")) <= webapp._round_rank(rd_raw):
+                continue
+            for i in (1, 2):
+                if webapp.slugify(x["p%d" % i]["name"]) == p_slug:
+                    out_.append((i, x))
+        return sorted(out_, key=lambda t: (t[1].get("date", ""), -webapp._round_rank(t[1].get("round"))), reverse=True)
+
+    rw = road(sw)
+    wins_before = sum(1 for i, x in rw if x["winner"] == i)
+    if wins_before:
+        q = any(x.get("q") for _, x in rw)
+        if (rd_raw or "").lower() == "final":
+            out.append(f"{esc(W['name'].split()[0])} won the title with {wins_before + 1} wins in a row" + (", coming through qualifying." if q else "."))
+        else:
+            out.append(f"It was {his} {_ordn(wins_before + 1)} win of the week" + (", after coming through qualifying." if q else "."))
+    elif (rd_raw or "").lower() == "final":
+        out.append(f"{esc(W['name'].split()[0])} won the title.")
+    nx = next_match_block(W["name"])
+    story = pu.h2("", "The story") + f'<div class="mv-story"><p>{" ".join(out)}</p></div>'
+
+    # --- principal
+    main = pu.set_bars([(a, b) for a, b in zip(g[w - 1], g[lz - 1])], (W["name"].split()[-1], L["name"].split()[-1]))
+    if nx:
+        main += nx.replace('style="text-align:left;margin:0 0 14px"', 'style="text-align:left;margin:0"').replace("<span>Next match</span>", f"<span>{esc(W['name'])}: next match</span>", 1)
+    try:
+        import tennis_videos
+        vid = tennis_videos.highlight_block(r)
+    except Exception as e:
+        print("Highlights do jogo falharam:", r.get("id"), e)
+        vid = ""
+    main += vid
+
+    def rows_of(lst):
+        res = []
+        for i, x in lst:
+            op = x.get("p%d" % (3 - i)) or {}
+            gx = x.get("games") or [[], []]
+            t_ = x.get("tb")
+            res.append((_rshort(x.get("round"), x.get("q")), plink(op.get("name") or "?"),
+                        " · ".join(y for y in [(op.get("country") or "").upper(), f"No. {op['rank']}" if rk(op) else ""] if y),
+                        pu.score(gx[i - 1], gx[2 - i], t_[i - 1] if t_ else None, t_[2 - i] if t_ else None),
+                        f"/m/{x['id']}.html" if x.get("id") is not None else "", x["winner"] == i))
+        return res
+    roads = ""
+    for p_, lst in ((W, rw), (L, road(sl_))):
+        if lst:
+            nwin = sum(1 for i, x in lst if x["winner"] == i)
+            roads += pu.event(f"{plink(p_['name'])}", f"Road to the {rd.lower() or 'match'} · {nwin} win{'s' if nwin != 1 else ''}", "", rows_of(lst))
+    if roads:
+        main += pu.h2("", "Road to this match") + f'<div class="mv-roads">{roads}</div>'
+    h2h = []
+    for x in results:
+        if x.get("id") != r.get("id") and x.get("winner") in (1, 2) and {webapp.slugify(x["p1"]["name"]), webapp.slugify(x["p2"]["name"])} == {sw, sl_}:
+            h2h.append((1 if webapp.slugify(x["p1"]["name"]) == sw else 2, x))
+    if h2h:
+        h2h.sort(key=lambda t: t[1].get("date", ""), reverse=True)
+        a_ = sum(1 for i, x in h2h if x["winner"] == i)
+        main += pu.h2("", "Other meetings we tracked", f"<small>{esc(W['name'].split()[-1])} {a_}-{len(h2h) - a_}</small>")
+        main += pu.event(esc(W["name"]) + " vs " + esc(L["name"]), "", "", [(f"{x.get('date', '')[:4]}",) + row[1:] for (i, x), row in zip(h2h[:6], rows_of(h2h[:6]))])
+    if ts in TSLUGS:
+        main += f'<div class="pv-links"><a href="/t/{ts}.html">All results from {esc(tname)} →</a>{"" if not LINKABLE else ""}</div>'
+
+    # --- lateral
+    side = match_stats_html(r["p1"], r["p2"], g[0], g[1], tb, results, skip_id=r.get("id"))
+    side += _nl_inline("Enjoyed this match? Get the week's best in one email")
+    return pu.match_page(hero, story, main, side)
