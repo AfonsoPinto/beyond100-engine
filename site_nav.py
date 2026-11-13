@@ -83,3 +83,39 @@ h2.sec,.ui-sec{font-weight:850;letter-spacing:-.01em;color:var(--c)}.ui-sec a,h2
 }
 """
 CSS += MODERN_CSS
+
+
+# 13/11/2026: barra de baixo flutuante (telemóvel) e rodapé novo, iguais no ténis e no padel
+NAV2_CSS = """
+@media (max-width:720px){
+body{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+.nb{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));border-radius:24px;border:1px solid var(--nb-edge);padding:6px 4px;
+box-shadow:0 14px 34px rgba(0,0,0,.45)}
+.nb a{position:relative;border-radius:16px;margin:0 2px;padding:6px 0 5px}
+.nb a.on{background:rgba(217,242,61,.12)}
+.nb a.on::before{content:"";position:absolute;top:3px;left:50%;width:18px;height:3px;margin-left:-9px;border-radius:3px;background:var(--nb-on)}
+}
+footer.ft2{margin-top:40px;padding:30px 0 40px;border-top:1px solid var(--e);color:var(--s);font:400 .88rem/1.5 system-ui}
+@media(min-width:1100px){footer.ft2{width:min(1180px,calc(100vw - 48px));margin-left:calc(50% - min(590px,calc(50vw - 24px)))}}
+.ft2 .top{display:grid;gap:24px 16px;grid-template-columns:repeat(2,minmax(0,1fr))}.ft2 .br{grid-column:1/-1}
+@media(min-width:760px){.ft2 .top{grid-template-columns:1.4fr repeat(3,minmax(0,1fr))}.ft2 .br{grid-column:auto}}
+.ft2 .br b{display:block;font:700 1.05rem Georgia,"Times New Roman",serif;letter-spacing:.22em;color:var(--c)}
+.ft2 .br p{margin:8px 0 14px;max-width:34ch}
+.ft2 .cta{display:flex;flex-wrap:wrap;gap:8px}.ft2 .cta a{text-decoration:none;font:800 .84rem system-ui;border-radius:12px;padding:9px 13px;border:1px solid var(--e);color:var(--c)}
+.ft2 .cta a.go{background:var(--v);border-color:var(--v);color:var(--g)}
+.ft2 h3{margin:0 0 10px;font:800 .7rem system-ui;letter-spacing:.12em;text-transform:uppercase;color:var(--c)}
+.ft2 ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}.ft2 ul a{color:var(--s);text-decoration:none}.ft2 ul a:hover{color:var(--v)}
+.ft2 .note{margin-top:26px;padding-top:16px;border-top:1px solid var(--e);font-size:.78rem;display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between}
+.ft2 .note a{color:var(--s)}
+"""
+CSS += NAV2_CSS
+
+
+def footer(brand, tagline, ctas, cols, note, extra=""):
+    """Rodapé: marca + frase + botões, e colunas de ligações. ctas = [(texto, href, destaque)]; cols = [(título, [(texto, href)])]."""
+    import html as _h
+    e = _h.escape
+    c = "".join(f'<a class="{"go" if g else ""}" href="{e(h)}">{e(t)}</a>' for t, h, g in ctas)
+    cs = "".join(f'<div><h3>{e(t)}</h3><ul>' + "".join(f'<li><a href="{e(h)}">{e(x)}</a></li>' for x, h in links) + "</ul></div>" for t, links in cols)
+    return (f'<footer class="ft2"><div class="top"><div class="br"><b>{e(brand)}</b><p>{e(tagline)}</p><div class="cta">{c}</div></div>{cs}</div>'
+            f'<div class="note"><span>{note}</span>{extra}</div></footer>')

@@ -603,8 +603,15 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
             # menu de cima igual ao do ténis (5/11/2026): marca, LIVE quando há jogos em court, links, Instagram e pesquisa
             f'<nav><a class="brand" href="/padel/index.html">BEYOND PADEL</a><div>{live_pill}{topnav}<a href="{IG}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>{sport_switch.switch("padel")}'
             f'{site_more.SEARCH_HTML}{body}{LIVE_JS}'
-            f'<footer>Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). '
-            f'Scores are for information only and may contain delays or errors. · <a href="/padel/power.html">Power Ranking</a> · <a href="/padel/race.html">Race to the Finals</a> · <a href="/padel/credits.html">Photo credits</a> · <a href="/about.html">About</a> · <a href="/index.html">Beyond100 Tennis</a></footer></div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + '</body></html>')
+            + site_nav.footer("BEYOND PADEL", "Every player, every draw: Premier Padel and the CUPRA FIP Tour results, draws and rankings.",
+                              [("Follow on Instagram", IG, True), ("Beyond100 Tennis", "/index.html", False)],
+                              [("Explore", [("Results", "/padel/results.html"), ("Order of play", "/padel/order-of-play.html"), ("Tournaments", "/padel/tournaments.html"),
+                                            ("Highlights", "/padel/highlights.html"), ("Players", "/padel/players.html")]),
+                               ("Rankings & stats", [("Rankings", "/padel/rankings.html"), ("Power Ranking", "/padel/power.html"), ("Race to the Finals", "/padel/race.html"),
+                                                     ("Stats", "/padel/stats.html"), ("Countries", "/padel/countries.html")]),
+                               ("Beyond Padel", [("About", "/about.html"), ("Photo credits", "/padel/credits.html")])],
+                              'Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). Scores are for information only and may contain delays or errors.')
+            + f'</div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + '</body></html>')
 
 
 def write(out, path, htmltext):
