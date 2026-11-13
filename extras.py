@@ -146,8 +146,14 @@ def rankings_page(tx, ranks, linkable=(), results=()):
         top = er.get(lg) or []
         have = {webapp.slugify(x["n"]) for x in top}
         climb = sorted([x for x in top if isinstance(x.get("prev"), int) and x["prev"] > x["r"]], key=lambda x: (x["r"] - x["prev"], x["r"]))[:6]
-        cards = "".join(site_ui.champ_card(f'/p/{webapp.slugify(x["n"])}.html' if webapp.slugify(x["n"]) in linkable else "#", f'▲ {x["prev"] - x["r"]}',
-                                           f'#{x["prev"]} → #{x["r"]}', label + " ranking", esc(x["n"]), f'{x["pts"]:,} points', av(x["n"])) for x in climb)
+        import rank_ui
+        big = lambda n: [f"/img/big/{webapp.slugify(n)}.jpg"] if webapp.slugify(n) in webapp.AVATARS else []
+        ini = lambda n: "".join(w[0] for w in (n or "?").split()[:2]).upper()
+        href = lambda n: f'/p/{webapp.slugify(n)}.html' if webapp.slugify(n) in linkable else ""
+        cards = rank_ui.climbers([(x["prev"] - x["r"], big(x["n"]), ini(x["n"]), x["n"], f'No. {x["prev"]} → No. {x["r"]} · {x["pts"]:,} pts', href(x["n"]))
+                                  for x in climb])
+        pod = rank_ui.podium([(x["r"], big(x["n"]), ini(x["n"]), x["n"], f'{esc(site_more.country_name((x.get("c") or "").upper()))} · {x["pts"]:,} pts', href(x["n"]))
+                              for x in top[:3]])
         rows = "".join(site_ui.rank_row(x["r"], av(x["n"]), nm(x["n"]), cn(x.get("c")), f'{x["pts"]:,}',
                                         (x["prev"] - x["r"]) if isinstance(x.get("prev"), int) else None) for x in top)
         beyond = sorted([v for v in (ranks or {}).values() if isinstance(v.get("rank"), int) and v["rank"] > (len(top) or 0) and v.get("name")
@@ -157,21 +163,24 @@ def rankings_page(tx, ranks, linkable=(), results=()):
         upd = er.get(lg + "_upd") or ""
         tabs += f'<button class="{"on" if i == 0 else ""}" data-p="{lg}">{label}</button>'
         panes += (f'<div class="rkp" id="rk-{lg}"{"" if i == 0 else " hidden"}>'
-                  + (f'{site_ui.sec("Climbers this week")}<div class="ui-row">{cards}</div>' if cards else "")
+                  + pod + (f'{site_ui.sec("Climbers this week")}{cards}' if cards else "")
                   + (f'{site_ui.sec(f"Top {len(top)}")}<p class="mut2">Official {label} ranking{(" of " + esc(upd[8:10] + "/" + upd[5:7])) if upd else ""}, with the move since the week before.</p>'
                      f'<div class="ui-rk rkl">{rows}</div>' if top else "")
                   + (f'{site_ui.sec(f"Beyond {len(top) or 100}")}<p class="mut2">The latest ranking we have seen for each player in the matches we follow '
                      f'(Challenger, ITF and tour), and when.</p><div class="ui-rk rkl">{brow}</div>' if brow else "")
                   + '</div>')
+    import rank_ui
+    _cs = sorted({site_more.country_name((x.get("c") or "").upper()) for lg in ("atp", "wta") for x in er.get(lg) or [] if x.get("c")} - {""})
     if not tabs:
         return f'<section class="page-h"><h1>{esc(L(tx, "x_rankings"))}</h1><p class="empty">{esc(L(tx, "x_stats_empty"))}</p></section>'
     return (f'<section class="page-h"><h1>{esc(L(tx, "x_rankings"))}</h1><p>The official ATP and WTA top 150, and beyond it, every ranking we have seen in our matches. '
-            f'<a href="/players.html">Players in form →</a></p><div class="ui-seg rkt">{tabs}</div><input id="q" class="srch" placeholder="{esc(L(tx, "search"))}"></section>{panes}'
-            '<script>(()=>{const q=document.getElementById("q"),N=40;'
-            'function cut(){document.querySelectorAll(".rkl").forEach(l=>{const rs=[...l.children].filter(r=>r.classList.contains("r"));const v=q.value.trim().toLowerCase();let n=0;'
-            'rs.forEach(r=>{const m=!v||r.textContent.toLowerCase().includes(v);r.hidden=!m||(!v&&!l.open&&n>=N);if(m)n++});'
+            f'<a href="/players.html">Players in form →</a></p><div class="ui-seg rkt">{tabs}</div><div class="rk-f"><input id="q" class="srch" placeholder="{esc(L(tx, "search"))}">{rank_ui.country_filter(_cs)}</div></section>{panes}'
+            f'<style>{rank_ui.CSS}</style>'
+            '<script>(()=>{const q=document.getElementById("q"),C=document.getElementById("rkc"),N=40;'
+            'function cut(){document.querySelectorAll(".rkl").forEach(l=>{const rs=[...l.children].filter(r=>r.classList.contains("r"));const v=q.value.trim().toLowerCase(),c=C?C.value:"";let n=0;'
+            'rs.forEach(r=>{const m=(!v||r.textContent.toLowerCase().includes(v))&&(!c||(r.querySelector("small")||r).textContent.includes(c));r.hidden=!m||(!v&&!c&&!l.open&&n>=N);if(m)n++});'
             'let b=l.querySelector(".more");if(!b){b=document.createElement("button");b.className="more";b.textContent="Show all";b.onclick=()=>{l.open=true;cut()};l.appendChild(b)}'
-            'b.hidden=!!v||l.open||rs.length<=N})}'
+            'b.hidden=!!v||!!c||l.open||rs.length<=N})}if(C)C.addEventListener("change",cut);'
             'document.querySelectorAll(".rkt button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".rkt button").forEach(x=>x.classList.toggle("on",x===b));'
             'document.querySelectorAll(".rkp").forEach(p=>p.hidden=p.id!=="rk-"+b.dataset.p)});q.addEventListener("input",cut);cut()})()</script>')
 

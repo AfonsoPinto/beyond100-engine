@@ -945,6 +945,32 @@ def _tabs(items, default):
 
 
 def champions_head(t, db):
+    """Campeões do torneio. Desde 13/11/2026 em cartões grandes com foto (igual ao ténis); se falhar, o cartão antigo."""
+    try:
+        import home_ui
+        import rank_ui
+        cards = []
+        for cat in ("men", "women"):
+            fin = next((m for m in db.by_t.get(str(t["id"]), []) if m.get("round") == 1 and m.get("category") == cat
+                        and (m.get("draw") or "main") == "main" and m.get("winner") in ("team_1", "team_2")), None)
+            if not fin:
+                continue
+            w = fin["winner"]
+            WP, LP = team_players(fin, w), team_players(fin, "team_2" if w == "team_1" else "team_1")
+            ph = next((f"/padel/img/{p.get('id')}.jpg" for p in WP if has_photo(p.get("id"))), "")
+            sc = " ".join(f"{games(a if w == 'team_1' else b)}-{games(b if w == 'team_1' else a)}" for a, b in sets_of(fin))
+            c = photo_credit(next((p.get("id") for p in WP if has_photo(p.get("id"))), "")) or {}
+            cards.append(home_ui.lead(mpath(fin), ph, "".join((disp(p).split()[-1] or "?")[0] for p in WP).upper(),
+                                      [LEVEL_SHORT.get(t.get("level"), ""), f"{CAT[cat]} champions"], " / ".join(disp(p) for p in WP),
+                                      f"Beat {' / '.join(disp(p) for p in LP)} {sc} in the final", c.get("credit") or ""))
+        if cards:
+            return rank_ui.champions(cards)
+    except Exception as e:
+        print("Padel: campeões com foto falharam", t.get("id"), type(e).__name__, e)
+    return champions_head_v1(t, db)
+
+
+def champions_head_v1(t, db):
     """Um só cartão 'Champions' com uma linha por categoria; fotos só de quem as tem."""
     w = t.get("winners") or {}
     rows = ""
@@ -1419,6 +1445,29 @@ def rank_table(rows, db, more_after=None):
     return f'<table class="pt pd-rk"><thead><tr><th>#</th><th></th><th>Player</th><th>Points</th></tr></thead><tbody>{tr}</tbody></table>'
 
 
+def _rank_v2(rows, db):
+    """Ranking com o mesmo desenho do ténis (13/11/2026): pódio com foto, subidas da semana com foto e linhas com foto, país, pontos e ▲▼."""
+    import rank_ui
+    pic = lambda r: [f"/padel/img/{r.get('id')}.jpg"] if has_photo(r.get("id")) else []
+    ini = lambda r: "".join(w[0] for w in (r.get("name") or "?").split()[:2]).upper()
+    pp = lambda r: ppath({"id": r.get("id"), "name": r.get("name")})
+    pts = lambda r: f'{(r.get("points") or 0):,}'.replace(",", " ")
+    out = f"<style>{rank_ui.CSS}</style>" + rank_ui.podium([(r.get("ranking"), pic(r), ini(r), r.get("name") or "", f'{esc(country_name(r.get("nationality")))} · {pts(r)} pts', pp(r))
+                                                          for r in rows[:3]])
+    cl = sorted([r for r in rows[:300] if (r.get("ranking_diff") or 0) > 0], key=lambda r: (-(r.get("ranking_diff") or 0), r.get("ranking") or 9999))[:6]
+    if cl:
+        out += site_ui.sec("Climbers this week") + rank_ui.climbers([(r["ranking_diff"], pic(r), ini(r), r.get("name") or "",
+                                                                        f'No. {r["ranking"] + r["ranking_diff"]} → No. {r["ranking"]} · {pts(r)} pts', pp(r)) for r in cl])
+    items = ""
+    for i, r in enumerate(rows):
+        p = {"id": r.get("id"), "name": r.get("name"), "nationality": r.get("nationality")}
+        row = site_ui.rank_row(r.get("ranking"), avatar(p, "av"), f'<a href="{pp(r)}">{esc(r.get("name") or "")}</a>',
+                               f'{flag(r.get("nationality"), 11)}{esc(country_name(r.get("nationality")))}', pts(r), r.get("ranking_diff") or None)
+        row = row.replace('<div class="r', f'<div data-n="{esc((r.get("name") or "").lower())}" data-c="{esc(r.get("nationality") or "")}"{" hidden" if i >= 100 else ""} class="r', 1)
+        items += row
+    return out + site_ui.sec(f"Top {len(rows)}") + f'<div class="ui-rk rk-v2">{items}</div>'
+
+
 def page_rankings(db, cat):
     r = db.ranks.get(cat) or {}
     rows = sorted(r.get("rows") or [], key=lambda x: x.get("ranking") or 9999)
@@ -1429,9 +1478,9 @@ def page_rankings(db, cat):
             f'<div class="pd-seg"><a class="on" href="/padel/rankings-{cat}.html">{CAT[cat]}</a><a href="/padel/rankings-{other}.html">{CAT[other]}</a></div>'
             '<div class="pd-rkf"><input class="srch" id="rq" placeholder="Search player" autocomplete="off">'
             '<select id="rc"><option value="">All countries</option>' + "".join(f'<option value="{esc(c)}">{esc(country_name(c))}</option>' for c in cs) + '</select></div>'
-            + rank_table(rows, db, more_after=100)
+            + _rank_v2(rows, db)
             + (f'<button class="pd-btn" id="rmore">Show all {len(rows)}</button>' if len(rows) > 100 else "")
-            + '<script>(function(){var q=document.getElementById("rq"),c=document.getElementById("rc"),m=document.getElementById("rmore"),all=false,rs=[].slice.call(document.querySelectorAll("tr.rk"));'
+            + '<script>(function(){var q=document.getElementById("rq"),c=document.getElementById("rc"),m=document.getElementById("rmore"),all=false,rs=[].slice.call(document.querySelectorAll(".rk-v2 .r"));'
               'function f(){var v=q.value.toLowerCase().trim(),cc=c.value;rs.forEach(function(r,i){var ok=(!v||r.dataset.n.indexOf(v)>=0)&&(!cc||r.dataset.c===cc);r.hidden=!ok||(!v&&!cc&&!all&&i>=100)});if(m)m.hidden=!!(v||cc||all)}'
               'q.oninput=f;c.onchange=f;if(m)m.onclick=function(){all=true;f()}})();</script>')
     return shell(f"Padel {CAT[cat].lower()}'s ranking · Beyond Padel", body, f"/padel/rankings-{cat}.html", tab="rankings")
