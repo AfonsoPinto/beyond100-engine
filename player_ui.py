@@ -112,6 +112,8 @@ font:700 .9rem system-ui;padding:13px;border-radius:14px;cursor:pointer}
 font:600 .84rem system-ui;color:var(--c);text-decoration:none}.pv-links b{color:var(--v)}.pv-links span a{border:0;background:none;padding:0}.pv-links a:hover{border-color:var(--v)}
 .pv-next{display:flex;justify-content:space-between;align-items:center;gap:10px}.pv-next b{font:800 1.05rem system-ui}
 .pv .nlc{margin:8px 0}
+.pv h2.ui-sec{margin:14px 0 0}.pv h2.ui-sec,.pv h2.ui-sec span{font:850 1.3rem system-ui!important;color:var(--c)!important;letter-spacing:-.01em}.pv .pd-elo{margin:0}
+.pv h2.dh{font:850 1.3rem system-ui;color:var(--c)}
 @media(min-width:960px){.pv-side .nlc{flex-direction:column;align-items:flex-start;gap:14px}.pv-side .nlc-cov{display:none}}
 """
 
@@ -263,3 +265,84 @@ def score(games_me, games_op, tb_me=None, tb_op=None):
 
 def strip_tags(s):
     return re.sub(r"<[^>]+>", "", s or "")
+
+
+# ---------------------------------------------------------------- página do jogo, versão 2 (13/11/2026)
+MATCH_CSS = """
+.mv-hero{position:relative;border-radius:28px;overflow:hidden;background:var(--deep);border:1px solid var(--e)}
+.mv-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:16px 16px 0}
+.mv-top .pv-pill{text-decoration:none}.mv-top .pv-pill.ghost{background:rgba(255,255,255,.1);color:var(--c)}
+.mv-sides{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px 16px 0}
+.mv-side{position:relative;border-radius:20px;overflow:hidden;aspect-ratio:4/5;background:radial-gradient(110% 90% at 80% 0,var(--e) 0,var(--g) 65%);
+display:flex;align-items:flex-end;text-decoration:none;color:#fff}
+.mv-side .ph{position:absolute;inset:0;display:flex}.mv-side .ph img{flex:1;min-width:0;height:100%;object-fit:cover;object-position:50% 18%}
+.mv-side .ini{position:absolute;right:-6px;top:-18px;font:900 6.5rem/1 system-ui;color:var(--v);opacity:.12;letter-spacing:-.05em}
+.mv-side::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.78) 100%)}
+.mv-side.l .ph{filter:grayscale(.65) brightness(.62)}
+.mv-side .nm{position:relative;z-index:1;padding:12px;display:flex;flex-direction:column;gap:3px;min-width:0;width:100%}
+.mv-side .nm b{font:900 1.15rem/1.02 system-ui;letter-spacing:-.01em;text-transform:uppercase;overflow-wrap:anywhere}
+.mv-side .nm span{font:600 .76rem system-ui;color:rgba(255,255,255,.82)}
+.mv-side .wtag{position:absolute;z-index:1;left:10px;top:10px;background:var(--v);color:var(--g);font:900 .66rem system-ui;letter-spacing:.08em;border-radius:999px;padding:4px 9px}
+.mv-board{padding:14px 16px 16px}
+.mv-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 0}.mv-row+.mv-row{border-top:1px solid var(--e)}
+.mv-row .who{min-width:0;font:700 1rem system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--s)}.mv-row.w .who{color:var(--c)}
+.mv-row .who a{color:inherit;text-decoration:none}.mv-row .who small{font:500 .78rem system-ui;color:var(--s);margin-left:6px}
+.mv-sets{display:flex;gap:6px}.mv-sets span{min-width:40px;height:44px;padding:0 6px;border-radius:12px;display:flex;align-items:center;justify-content:center;font:900 1.35rem system-ui;
+background:rgba(255,255,255,.06);color:var(--s);font-variant-numeric:tabular-nums}.mv-sets span.on{background:var(--v);color:var(--g)}
+.mv-sets sup{font-size:.5em;margin-left:1px;align-self:flex-start;margin-top:7px}
+.mv-story p{margin:0;font:400 1.02rem/1.7 system-ui;max-width:70ch}.mv-story p a{color:var(--v)}
+.mv-setbars{display:flex;flex-direction:column;gap:10px}
+.mv-sb{display:grid;grid-template-columns:44px minmax(0,1fr) 54px;gap:10px;align-items:center;font:700 .82rem system-ui}
+.mv-sb .lab{color:var(--s)}.mv-sb .tr{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--g)}
+.mv-sb .tr i{display:block;height:100%}.mv-sb .tr i.a{background:var(--v)}.mv-sb .tr i.b{background:rgba(255,255,255,.22)}.mv-sb .tr i.b.hi{background:#ff9a8a}
+.mv-sb .sc{text-align:right;font-variant-numeric:tabular-nums}
+.mv-roads{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:700px){.mv-roads{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:960px){
+.mv-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr);align-items:stretch}
+.mv-top{grid-column:1/-1;justify-content:center;padding:18px 18px 0}
+.mv-sides{display:contents}.mv-side{aspect-ratio:auto;min-height:400px;border-radius:0;margin:18px 0 0}
+.mv-side.a{grid-column:1;grid-row:2;border-radius:0 0 0 28px}.mv-side.b{grid-column:3;grid-row:2;border-radius:0 0 28px 0}
+.mv-side .nm b{font-size:1.6rem}
+.mv-board{grid-column:2;grid-row:2;display:flex;flex-direction:column;justify-content:center;padding:26px 28px;margin-top:18px}
+.mv-sets span{min-width:52px;height:56px;font-size:1.7rem}
+}
+"""
+
+
+def vs_hero(pills, sides, rows):
+    """Topo da página do jogo. pills: [(texto, href, destaque)]; sides: 2 x {photos:[src], ini, name, sub, href, won};
+    rows: 2 x (nome_html, sub, [(jogos, ganhou_set, tb_html)], ganhou)."""
+    pl = "".join((f'<a class="pv-pill{"" if hi else " ghost"}" href="{esc(h)}">{t}</a>' if h else f'<span class="pv-pill{"" if hi else " ghost"}">{t}</span>')
+                 for t, h, hi in pills if t)
+    sd = ""
+    for k, s in enumerate(sides):
+        ph = "".join(f'<img src="{esc(x)}" alt="" width="600" height="750"{" fetchpriority=high" if k == 0 else ""}>' for x in s.get("photos") or [])
+        ph = f'<div class="ph">{ph}</div>' if ph else f'<div class="ini" aria-hidden="true">{esc(s.get("ini") or "")}</div>'
+        cls = f'mv-side {"a" if k == 0 else "b"}{"" if s.get("won") is None else " w" if s["won"] else " l"}'
+        tag = '<span class="wtag">WINNER</span>' if s.get("won") else ""
+        inner = f'{ph}{tag}<div class="nm"><b>{s["name"]}</b><span>{esc(s.get("sub") or "")}</span></div>'
+        sd += f'<a class="{cls}" href="{esc(s["href"])}">{inner}</a>' if s.get("href") else f'<div class="{cls}">{inner}</div>'
+    bd = ""
+    for nm, sub, sets, won in rows:
+        cells = "".join(f'<span class="{"on" if on else ""}">{g}{tb}</span>' for g, on, tb in sets)
+        bd += f'<div class="mv-row{" w" if won else ""}"><div class="who">{nm}<small>{esc(sub)}</small></div><div class="mv-sets">{cells}</div></div>'
+    return (f'<style>{CSS}{MATCH_CSS}</style><section class="mv-hero"><div class="mv-top">{pl}</div><div class="mv-sides">{sd}</div>'
+            f'<div class="mv-board">{bd}</div></section>')
+
+
+def set_bars(sets, names):
+    """Barras set a set: [(jogos_a, jogos_b)]. names = (a, b) para a legenda."""
+    out = ""
+    for k, (a, b) in enumerate(sets):
+        t = max(1, a + b)
+        out += (f'<div class="mv-sb"><span class="lab">Set {k + 1}</span><div class="tr" aria-hidden="true"><i class="a" style="width:{100 * a / t:.0f}%"></i>'
+                f'<i class="b{" hi" if b > a else ""}" style="width:{100 * b / t:.0f}%"></i></div><span class="sc">{a}-{b}</span></div>')
+    return (f'<div class="pv-card"><div class="pv-lab" style="margin-bottom:12px">Set by set · {esc(names[0])} vs {esc(names[1])}</div>'
+            f'<div class="mv-setbars">{out}</div></div>') if out else ""
+
+
+def match_page(hero, story, main, side):
+    return (f'<div class="pv">{hero}<div class="pv-cols" style="grid-template-areas:\'main\' \'side\'"><div class="pv-main">{story}{main}</div>'
+            f'<aside class="pv-side">{side}</aside></div></div>'
+            '<style>@media(min-width:960px){.pv .pv-cols{grid-template-areas:"main side"!important}}</style>' + TABS_JS)

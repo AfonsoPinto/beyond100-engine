@@ -1677,7 +1677,74 @@ def mpath(m):
     return f"/padel/m/{m.get('id')}.html"
 
 
+def _match_video(db, m):
+    """Vídeo do jogo (resumo, transmissão do court e alternativas). Devolve (html, v). Comum às versões 1 e 2 da página do jogo."""
+    body = ""
+    hls = highlight_for(db, m, all_=True)
+    v = video_for(db, m)
+    vurl = (v["url"] + (("&t=" + str(v["start"]) + "s") if v.get("id") and v.get("start") else "")) if v else ""
+    items = []
+    for h in hls:
+        lab = "▶ Match highlights" if h["kind"] == "match" else f"▶ Day {h['day']} highlights · {CAT.get(m.get('category'), '')}"
+        cap = (f'{esc(h.get("channel") or "")} · {"official YouTube" if h.get("official", True) else "YouTube (fan channel)"}'
+               + (" · the day's best moments, this match may or may not be in it" if h["kind"] == "day" else ""))
+        items.append({"id": h["id"], "h": lab, "c": cap})
+    if v and v.get("id"):                                              # último recurso (ou único): a transmissão do court
+        items.append({"id": v["id"], "s": v.get("start") or 0, "h": "Watch",
+                      "c": f'Official court stream on YouTube{" · starts around the scheduled time of this match" if v.get("start") else ""}. '
+                           f'<a href="{esc(vurl)}" target="_blank" rel="noopener">Open on YouTube ↗</a>'})
+    items = [x for x in items if yt_player.embeddable(x["id"]) is not False] or items[:1]   # só os que o YouTube deixa incorporar
+    if items:
+        body += (f'<h2 class="dh pd-hlh" id="pd-vh">{esc(items[0]["h"])}</h2>' + yt_player.box(items, "pd-video", "pd-vh", "pd-vc")
+                 + f'<p class="pd-note" id="pd-vc">{items[0]["c"]}</p>')
+        if hls and v:
+            body += f'<p><a class="pd-btn" style="display:inline-block;width:auto;padding:10px 16px" href="{esc(vurl)}" target="_blank" rel="noopener">▶ Full court stream on {esc(v["host"])} ↗</a></p>'
+        body += yt_player.JS
+    elif v:
+        body += (f'<h2 class="dh">Watch</h2><a class="pd-vlink" href="{esc(v["url"])}" target="_blank" rel="noopener">'
+                 + (f'<img src="{esc(v["img"])}" alt="" loading="lazy">' if v.get("img") else "")
+                 + f'<span>▶ Watch on {esc(v["host"])} ↗</span></a><p class="pd-note">Official broadcast of this round ({esc(v["name"])}). Availability may depend on your country.</p>')
+    body += _stream_alts(db, m, v)                                      # 11/11/2026: transmissão bloqueada no país -> outros courts
+    return body, v
+
+
+def _match_shell(db, m, t, A, Bt, w, v, body):
+    """Partilha, dados estruturados, título e moldura da página do jogo (versões 1 e 2)."""
+    title = f'{" / ".join(disp(p) for p in A)} vs {" / ".join(disp(p) for p in Bt)}'
+    sc = score_text(m, "team_1")
+    if team_players(m, "team_1") and team_players(m, "team_2"):
+        if w:
+            _sh = f'{" / ".join(disp(p) for p in team_players(m, w))} beat {" / ".join(disp(p) for p in team_players(m, "team_2" if w == "team_1" else "team_1"))} {score_text(m, w)} at {t.get("name")}'
+        else:
+            _sh = f"{title} at {t.get('name')}"
+        body += site_more.share_html(SITE_BASE + mpath(m), _sh, "Share this result" if w else "Share this match", sport="padel")
+    _ev = {"@context": "https://schema.org", "@type": "SportsEvent", "sport": "Padel", "name": f"{title} · {t.get('name')}" + (f" · {m.get('round_name')}" if m.get("round_name") else ""),
+           "url": SITE_BASE + _clean(mpath(m)), "eventStatus": "https://schema.org/EventScheduled",
+           "competitor": [{"@type": "SportsTeam", "name": " / ".join(disp(p) for p in ps),
+                           "athlete": [{"@type": "Person", "name": p.get("name")} for p in ps]} for ps in (A, Bt) if ps],
+           "location": {"@type": "Place", "name": t.get("location") or t.get("name") or "", "address": ", ".join(x for x in [t.get("location"), t.get("country")] if x)},
+           "superEvent": {"@type": "SportsEvent", "name": t.get("name"), "url": SITE_BASE + _clean(tpath(t))}}
+    if m.get("scheduled_at") or m.get("played_at"):
+        _ev["startDate"] = m.get("scheduled_at") or m.get("played_at")
+    if w and sc:
+        _ev["description"] = f"{title}: {sc}"
+    _ld = [_ev, _crumbs([("Beyond Padel", "/padel/index.html"), (t.get("name") or "", tpath(t)), (title, mpath(m))])]
+    return shell(f"{title}{(' ' + sc) if sc else ''}: {t.get('name')} {m.get('round_name') or ''} · Beyond Padel", body, mpath(m),
+                 desc=f"{title}, {m.get('round_name') or ''} at {t.get('name')}: result{', head-to-head and the official video' if v else ' and head-to-head'}.",
+                 tab="results", noindex=not sets_of(m), ld=_ld)
+
+
 def page_match(db, m):
+    """Página do jogo. Desde 13/11/2026 usa o novo desenho comum ao ténis (player_ui); MATCH_V2=0 volta ao antigo."""
+    if os.environ.get("MATCH_V2", "1") != "0":
+        try:
+            return page_match_v2(db, m)
+        except Exception as ex:
+            print("Jogo padel v2 falhou:", m.get("id"), type(ex).__name__, ex)
+    return page_match_v1(db, m)
+
+
+def page_match_v1(db, m):
     t = db.tour(m.get("tid"))
     w = m.get("winner") if m.get("winner") in ("team_1", "team_2") else None
     A, Bt = team_players(m, "team_1"), team_players(m, "team_2")
@@ -1720,31 +1787,8 @@ def page_match(db, m):
                            f'chance to win, our estimate from the players\' current Elo ratings (Padel API)</p></div>')
     except Exception as e:
         print("Elo:", type(e).__name__, e)
-    hls = highlight_for(db, m, all_=True)
-    v = video_for(db, m)
-    vurl = (v["url"] + (("&t=" + str(v["start"]) + "s") if v.get("id") and v.get("start") else "")) if v else ""
-    items = []
-    for h in hls:
-        lab = "▶ Match highlights" if h["kind"] == "match" else f"▶ Day {h['day']} highlights · {CAT.get(m.get('category'), '')}"
-        cap = (f'{esc(h.get("channel") or "")} · {"official YouTube" if h.get("official", True) else "YouTube (fan channel)"}'
-               + (" · the day's best moments, this match may or may not be in it" if h["kind"] == "day" else ""))
-        items.append({"id": h["id"], "h": lab, "c": cap})
-    if v and v.get("id"):                                              # último recurso (ou único): a transmissão do court
-        items.append({"id": v["id"], "s": v.get("start") or 0, "h": "Watch",
-                      "c": f'Official court stream on YouTube{" · starts around the scheduled time of this match" if v.get("start") else ""}. '
-                           f'<a href="{esc(vurl)}" target="_blank" rel="noopener">Open on YouTube ↗</a>'})
-    items = [x for x in items if yt_player.embeddable(x["id"]) is not False] or items[:1]   # só os que o YouTube deixa incorporar
-    if items:
-        body += (f'<h2 class="dh pd-hlh" id="pd-vh">{esc(items[0]["h"])}</h2>' + yt_player.box(items, "pd-video", "pd-vh", "pd-vc")
-                 + f'<p class="pd-note" id="pd-vc">{items[0]["c"]}</p>')
-        if hls and v:
-            body += f'<p><a class="pd-btn" style="display:inline-block;width:auto;padding:10px 16px" href="{esc(vurl)}" target="_blank" rel="noopener">▶ Full court stream on {esc(v["host"])} ↗</a></p>'
-        body += yt_player.JS
-    elif v:
-        body += (f'<h2 class="dh">Watch</h2><a class="pd-vlink" href="{esc(v["url"])}" target="_blank" rel="noopener">'
-                 + (f'<img src="{esc(v["img"])}" alt="" loading="lazy">' if v.get("img") else "")
-                 + f'<span>▶ Watch on {esc(v["host"])} ↗</span></a><p class="pd-note">Official broadcast of this round ({esc(v["name"])}). Availability may depend on your country.</p>')
-    body += _stream_alts(db, m, v)                                      # 11/11/2026: transmissão bloqueada no país -> outros courts
+    _vh, v = _match_video(db, m)
+    body += _vh
     body += score_html                                                  # o vídeo vem primeiro, logo a seguir o resultado
     body += _nl_inline("Enjoyed this match? Get the padel week in one email")
     # percurso de cada par no torneio até este jogo
@@ -1775,28 +1819,7 @@ def page_match(db, m):
     if nxt:
         nx = max(nxt, key=lambda x: x.get("round") or 0)
         body += '<h2 class="dh">Next match</h2><div class="pd-card">' + match_html(nx, db) + "</div>"
-    title = f'{" / ".join(disp(p) for p in A)} vs {" / ".join(disp(p) for p in Bt)}'
-    sc = score_text(m, "team_1")
-    if team_players(m, "team_1") and team_players(m, "team_2"):
-        if w:
-            _sh = f'{" / ".join(disp(p) for p in team_players(m, w))} beat {" / ".join(disp(p) for p in team_players(m, "team_2" if w == "team_1" else "team_1"))} {score_text(m, w)} at {t.get("name")}'
-        else:
-            _sh = f"{title} at {t.get('name')}"
-        body += site_more.share_html(SITE_BASE + mpath(m), _sh, "Share this result" if w else "Share this match", sport="padel")
-    _ev = {"@context": "https://schema.org", "@type": "SportsEvent", "sport": "Padel", "name": f"{title} · {t.get('name')}" + (f" · {m.get('round_name')}" if m.get("round_name") else ""),
-           "url": SITE_BASE + _clean(mpath(m)), "eventStatus": "https://schema.org/EventScheduled",
-           "competitor": [{"@type": "SportsTeam", "name": " / ".join(disp(p) for p in ps),
-                           "athlete": [{"@type": "Person", "name": p.get("name")} for p in ps]} for ps in (A, Bt) if ps],
-           "location": {"@type": "Place", "name": t.get("location") or t.get("name") or "", "address": ", ".join(x for x in [t.get("location"), t.get("country")] if x)},
-           "superEvent": {"@type": "SportsEvent", "name": t.get("name"), "url": SITE_BASE + _clean(tpath(t))}}
-    if m.get("scheduled_at") or m.get("played_at"):
-        _ev["startDate"] = m.get("scheduled_at") or m.get("played_at")
-    if w and sc:
-        _ev["description"] = f"{title}: {sc}"
-    _ld = [_ev, _crumbs([("Beyond Padel", "/padel/index.html"), (t.get("name") or "", tpath(t)), (title, mpath(m))])]
-    return shell(f"{title}{(' ' + sc) if sc else ''}: {t.get('name')} {m.get('round_name') or ''} · Beyond Padel", body, mpath(m),
-                 desc=f"{title}, {m.get('round_name') or ''} at {t.get('name')}: result{', head-to-head and the official video' if v else ' and head-to-head'}.",
-                 tab="results", noindex=not sets_of(m), ld=_ld)
+    return _match_shell(db, m, t, A, Bt, w, v, body)
 
 
 def highlight_cards(db, limit=None):
@@ -2160,22 +2183,27 @@ def _p_event(db, pid, tid, run):
     title = f'<a href="{tpath(t)}">{esc(t.get("location") or t.get("name") or "")}</a>' if t else esc(str(tid))
     rows = []
     for m, tm in run:
-        ot = "team_2" if tm == "team_1" else "team_1"
-        opp = team_players(m, ot)
-        mate = [q for q in team_players(m, tm) if str(q.get("id")) != str(pid)]
-        nm = " / ".join(f'<a href="{ppath(q)}">{esc(disp(q))}</a>' for q in opp) or "TBD"
-        rk = [rank_str(q.get("id"), db) for q in opp]
-        osub = " · ".join(x for x in [("with " + disp(mate[0])) if mate else "", " ".join(x for x in rk if x)] if x)
-        st = m.get("status")
-        if m.get("winner") in ("team_1", "team_2"):
-            sc, won = _p_score(m, tm) or "–", m.get("winner") == tm
-        elif st == "live":
-            sc, won = '<span class="pd-live">● LIVE</span>', None
-        else:
-            sc, won = esc(m.get("schedule_label") or when_local(m) or ""), None
-        href = mpath(m) if opp and team_players(m, tm) else ""
-        rows.append((_p_rshort(m), nm, osub, sc, href, won))
+        rows.append(_p_row(db, m, tm, pid))
     return pu.event(title, sub, label, rows, is_title)
+
+
+def _p_row(db, m, tm, pid=None, rd=None):
+    """Uma linha de jogo (ronda, adversários, resultado) do ponto de vista da equipa tm."""
+    ot = "team_2" if tm == "team_1" else "team_1"
+    opp = team_players(m, ot)
+    mate = [q for q in team_players(m, tm) if pid is not None and str(q.get("id")) != str(pid)]
+    nm = " / ".join(f'<a href="{ppath(q)}">{esc(disp(q))}</a>' for q in opp) or "TBD"
+    rk = [rank_str(q.get("id"), db) for q in opp]
+    osub = " · ".join(x for x in [("with " + disp(mate[0])) if mate else "", " ".join(x for x in rk if x)] if x)
+    st = m.get("status")
+    if m.get("winner") in ("team_1", "team_2"):
+        sc, won = _p_score(m, tm) or "–", m.get("winner") == tm
+    elif st == "live":
+        sc, won = '<span class="pd-live">● LIVE</span>', None
+    else:
+        sc, won = esc(m.get("schedule_label") or when_local(m) or ""), None
+    href = mpath(m) if opp and team_players(m, tm) else ""
+    return (rd or _p_rshort(m), nm, osub, sc, href, won)
 
 
 def page_player_v2(db, pid, p):
@@ -2371,3 +2399,156 @@ def page_player_v2(db, pid, p):
                    main, sidebar, about)
     # o resto (título, descrição, dados estruturados) é o mesmo da versão 1
     return _player_shell(db, pid, p, r, ms, body)
+
+
+# ---------------------------------------------------------------- página do jogo, versão 2 (13/11/2026, igual ao ténis)
+def _team_of(x, k):
+    for tt in ("team_1", "team_2"):
+        ps = team_players(x, tt)
+        if len(ps) == 2 and pair_key(ps) == k:
+            return tt
+    return None
+
+
+def page_match_v2(db, m):
+    import player_ui as pu
+    t = db.tour(m.get("tid")) or {}
+    w = m.get("winner") if m.get("winner") in ("team_1", "team_2") else None
+    A, Bt = team_players(m, "team_1"), team_players(m, "team_2")
+    try:
+        day = dt.date.fromisoformat((m.get("played_at") or "")[:10])
+    except ValueError:
+        day = None
+    st = m.get("status")
+    tn = t.get("location") or t.get("name") or ""
+    pills = [(esc((m.get("round_name") or "").upper()), "", True), (esc(tn), tpath(t) if t else "", False),
+             (esc(LEVEL_SHORT.get(t.get("level"), "")), "", False),
+             (" · ".join(x for x in [day.strftime("%-d %b %Y") if day else "", CAT.get(m.get("category"), "")] if x), "", False)]
+    if st == "live":
+        pills.insert(0, ('<span class="pd-live">● LIVE</span>', "", False))
+    elif not sets_of(m):
+        pills.insert(1, (esc(m.get("schedule_label") or when_local(m) or "Scheduled"), "", False))
+    sides, rows = [], []
+    for team, ps in (("team_1", A), ("team_2", Bt)):
+        won = (w == team) if w else None
+        ranks = " · ".join(x for x in (rank_str(p.get("id"), db) for p in ps) if x)
+        sides.append({"photos": [f"/padel/img/{p.get('id')}.jpg" for p in ps if has_photo(p.get("id"))],
+                      "ini": "".join((disp(p).split()[-1] or "?")[0] for p in ps).upper(),
+                      "name": "<br>".join(esc(disp(p)) for p in ps) or "TBD", "sub": ranks,
+                      "href": pair_path(ps) if len(ps) == 2 else "", "won": won})
+        sets = []
+        for a, b in sets_of(m):
+            mine, oth = (a, b) if team == "team_1" else (b, a)
+            tb = re.search(r"\((\d+)\)", mine)
+            sets.append((games(mine), games(mine) > games(oth), f"<sup>{tb.group(1)}</sup>" if tb else ""))
+        rows.append((" / ".join(f'<a href="{ppath(p)}">{esc(disp(p))}</a>' for p in ps) or "TBD", ranks, sets, w == team))
+    hero = pu.vs_hero(pills, sides, rows)
+    vid, v = _match_video(db, m)
+    elo = ""
+    try:
+        from padel import elo as _elo
+        _c = _elo.chance(A, Bt)
+        try:
+            _recent = not m.get("played_at") or (dt.date.today() - dt.date.fromisoformat(m["played_at"][:10])).days <= 21
+        except ValueError:
+            _recent = False
+        if _c is not None and _recent:
+            _nm = lambda ps: " / ".join(esc(p.get("short_name") or p.get("name") or "") for p in ps)
+            _pa = round(_c * 100)
+            elo = (f'<div class="pd-elo"><div class="pd-elo-bar"><i style="width:{_pa}%"></i></div>'
+                   f'<p class="pd-note"><b>{_nm(A)} {_pa}%</b> · <b>{_nm(Bt)} {100 - _pa}%</b> · '
+                   f'chance to win, our estimate from the players\' current Elo ratings (Padel API)</p></div>')
+    except Exception as e:
+        print("Elo:", type(e).__name__, e)
+
+    # --- história (factos)
+    nm = lambda ps: " / ".join(f'<a href="{ppath(p)}">{esc(p.get("name"))}</a>' for p in ps)
+    story = ""
+    ms = [x for x in db.by_t.get(str(m.get("tid")), []) if (x.get("draw") or "main") == (m.get("draw") or "main") and x.get("category") == m.get("category")]
+    if w:
+        L = "team_2" if w == "team_1" else "team_1"
+        WP, LP = team_players(m, w), team_players(m, L)
+        sc = " ".join(f"{games(a if w == 'team_1' else b)}-{games(b if w == 'team_1' else a)}" for a, b in sets_of(m))
+        out = [f"{nm(WP)} beat {nm(LP)} {sc}" + (f" in the {esc((m.get('round_name') or '').lower())}" if m.get("round_name") else "")
+               + (f" at {esc(t.get('name') or tn)}" if t else "") + (f" on {day.strftime('%-d %B %Y')}" if day else "") + "."]
+        ss = sets_of(m)
+        if len(ss) >= 2:
+            a0, b0 = ss[0]
+            first_lost = (games(a0) < games(b0)) if w == "team_1" else (games(b0) < games(a0))
+            out.append("They came back from a set down." if first_lost else ("It was a straight-sets win." if len(ss) == 2 else ""))
+        ntb = sum(1 for a, b in ss if {games(a), games(b)} == {6, 7})
+        if ntb:
+            out.append(f"The match had {ntb} tie-break{'s' if ntb > 1 else ''}.")
+        if len(WP) == 2:
+            k = pair_key(WP)
+            before = [x for x in ms if (x.get("round") or 0) > (m.get("round") or 0) and _team_of(x, k) and x.get("winner") == _team_of(x, k)]
+            if m.get("round") == 1:
+                out.append(f"They won the title with {len(before) + 1} wins in a row.")
+            elif before:
+                out.append(f"It was their {_ordn(len(before) + 1)} win of the tournament.")
+        story = pu.h2("", "The story") + f'<div class="mv-story"><p>{" ".join(x for x in out if x)}</p></div>'
+
+    # --- principal
+    main = vid + elo
+    ss = sets_of(m)
+    if w and ss:
+        L = "team_2" if w == "team_1" else "team_1"
+        main += pu.set_bars([(games(a if w == "team_1" else b), games(b if w == "team_1" else a)) for a, b in ss],
+                            (" / ".join(disp(p).split()[-1] for p in team_players(m, w)), " / ".join(disp(p).split()[-1] for p in team_players(m, L))))
+    roads = ""
+    for team, ps in (("team_1", A), ("team_2", Bt)):
+        if len(ps) != 2:
+            continue
+        k = pair_key(ps)
+        prev = sorted([x for x in ms if (x.get("round") or 0) > (m.get("round") or 0) and _team_of(x, k)], key=lambda x: (x.get("round") or 0))
+        if prev:
+            nwin = sum(1 for x in prev if x.get("winner") == _team_of(x, k))
+            roads += pu.event(f'<a href="{pair_path(ps)}">{" / ".join(esc(disp(p)) for p in ps)}</a>',
+                              f"Road to the {(m.get('round_name') or 'match').lower()} · {nwin} win{'s' if nwin != 1 else ''}", "",
+                              [_p_row(db, x, _team_of(x, k)) for x in prev])
+    if roads:
+        main += pu.h2("", "Road to this match") + f'<div class="mv-roads">{roads}</div>'
+    if len(A) == 2 and len(Bt) == 2:
+        ka, kb = pair_key(A), pair_key(Bt)
+        h2h = [x for x, _ in db.by_pair.get(ka, []) if x.get("id") != m.get("id") and _team_of(x, kb)]
+        h2h = sorted({x["id"]: x for x in h2h}.values(), key=lambda x: x.get("played_at") or "", reverse=True)
+        if h2h:
+            wa = sum(1 for x in h2h if x.get("winner") == _team_of(x, ka))
+            wb = sum(1 for x in h2h if x.get("winner") == _team_of(x, kb))
+            main += pu.h2("", "Head-to-head", f"<small>{wa}-{wb} before this match</small>")
+            main += pu.event(" / ".join(esc(disp(p)) for p in A) + " vs " + " / ".join(esc(disp(p)) for p in Bt), "", "",
+                             [_p_row(db, x, _team_of(x, ka), rd=(x.get("played_at") or "")[:4]) for x in h2h[:6]])
+    if w and len(team_players(m, w)) == 2:
+        kw = pair_key(team_players(m, w))
+        nxt = [x for x in ms if (x.get("round") or 0) < (m.get("round") or 0) and _team_of(x, kw)]
+        if nxt:
+            nx = max(nxt, key=lambda x: x.get("round") or 0)
+            main += pu.h2("", "Next match") + pu.event(" / ".join(esc(disp(p)) for p in team_players(m, w)), esc(nx.get("round_name") or ""), "",
+                                                       [_p_row(db, nx, _team_of(nx, kw))])
+    if t:
+        main += f'<div class="pv-links"><a href="{tpath(t)}">All results from {esc(t.get("name") or tn)} →</a></div>'
+
+    # --- lateral
+    side = ""
+    if ss:
+        ga = [games(a) for a, _ in ss]
+        gb = [games(b) for _, b in ss]
+        sa = sum(1 for x, y in zip(ga, gb) if x > y)
+        rows_ = [("Sets won", sa, len(ss) - sa, str(sa), str(len(ss) - sa), "sets"), ("Games won", sum(ga), sum(gb), str(sum(ga)), str(sum(gb)), "games")]
+        tba = sum(1 for x, y in zip(ga, gb) if x == 7 and y == 6)
+        tbb = sum(1 for x, y in zip(ga, gb) if y == 7 and x == 6)
+        if tba + tbb:
+            rows_.append(("Tie-breaks won", tba, tbb, str(tba), str(tbb), "tbs"))
+        lab = lambda ps: " / ".join(esc(disp(p).split()[-1]) for p in ps)
+        side += site_ui.sec("Match stats") + site_ui.compare((lab(A), lab(Bt)), rows_)
+        tape = []
+        for f_, lab_ in ((lambda p: rank_str(p.get("id"), db) or "–", "Ranking"),):
+            tape.append((lab_, None, None, " · ".join(f_(p) for p in A), " · ".join(f_(p) for p in Bt), "rk"))
+        side += site_ui.sec("Tale of the tape") + site_ui.compare((lab(A), lab(Bt)), tape)
+    side += _nl_inline("Enjoyed this match? Get the padel week in one email")
+    body = pu.match_page(hero, story, main, side)
+    return _match_shell(db, m, t, A, Bt, w, v, body)
+
+
+def _ordn(n):
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
