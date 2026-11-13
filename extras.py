@@ -489,6 +489,16 @@ def _flag(code):
 
 
 def player_page(e, tr, tx, ranks_by_name=None):
+    """Ficha do jogador. Desde 13/11/2026 usa o novo desenho (player_ui); PLAYER_V2=0 volta ao antigo."""
+    if os.environ.get("PLAYER_V2", "1") != "0":
+        try:
+            return player_page_v2(e, tr, tx, ranks_by_name)
+        except Exception as ex:                       # nunca deixar uma ficha em branco: se algo falhar, usa o desenho antigo
+            print("Ficha v2 falhou:", e.get("name"), type(ex).__name__, ex)
+    return player_page_v1(e, tr, tx, ranks_by_name)
+
+
+def player_page_v1(e, tr, tx, ranks_by_name=None):
     tr = dict(tr, _tx=tx)
     ms = sorted(e["matches"], key=lambda x: (x[1].get("date", ""), -webapp._round_rank(x[1].get("round"))), reverse=True)
     w = sum(1 for i, r in ms if r["winner"] == i)
@@ -846,9 +856,16 @@ def live_block(tx=None, n=8):
 PSTATS, PSTATS_BY_NAME = {}, {}     # player_stats.json (preenchido por result_card.build_site)
 
 
+def _seasons(ps):
+    """Épocas válidas da ficha da API (há linhas lixo, ex.: ano "3" com tudo a 3 — Jan Kumstat, 13/11/2026)."""
+    yr = int(time.strftime("%Y"))
+    return [x for x in (ps or {}).get("seasons") or [] if isinstance(x.get("w"), int) and isinstance(x.get("l"), int) and x["w"] + x["l"] > 0
+            and str(x.get("y") or "").isdigit() and 1990 <= int(x["y"]) <= yr]
+
+
 def season_line(ps):
     """'2026 season: 23-12 · Hard 13-8 · Clay 10-4 · 1 title' (ficha da API)."""
-    ss = [x for x in (ps or {}).get("seasons") or [] if isinstance(x.get("w"), int) and isinstance(x.get("l"), int) and x["w"] + x["l"] > 0]
+    ss = _seasons(ps)
     if not ss:
         return ""
     x = ss[0]
@@ -1487,3 +1504,308 @@ def about_page():
             '<p>Spotted a wrong score, or a photo of you that you would rather not see here? Send us a message on Instagram and we will sort it out.</p>'
             '<div class="ig"><a href="https://www.instagram.com/beyond100.tennis/">@beyond100.tennis</a>'
             '<a href="https://www.instagram.com/beyond100.padel/">@beyond100.padel</a></div></div>')
+
+
+# ---------------------------------------------------------------- ficha do jogador, versão 2 (13/11/2026)
+TSLUGS = set()      # torneios com página (/t/<slug>.html), preenchido por result_card.build_site
+TOUR_NAME = {"challenger": "Challenger", "itf": "ITF", "atp": "ATP", "wta": "WTA"}
+
+
+def _rshort(rd, q=False):
+    """Ronda em poucas letras: F, SF, QF, R16... e Q1, Q-F... na qualificação."""
+    s = (rd or "").lower()
+    if q or "qualif" in s:
+        if "final" in s and "semi" not in s and "quarter" not in s and "1/" not in s:
+            return "Q-F"
+        if "semi" in s:
+            return "Q-SF"
+        if "quarter" in s:
+            return "Q-QF"
+        m = re.search(r"round (\d)", s)
+        return f"Q{m.group(1)}" if m else "Q"
+    if "3rd" in s:
+        return "3rd"
+    if "semi" in s:
+        return "SF"
+    if "quarter" in s:
+        return "QF"
+    if "final" in s and "1/" not in s:
+        return "F"
+    m = re.search(r"1/(\d+)", s)
+    if m:
+        return f"R{int(m.group(1)) * 2}"
+    m = re.search(r"round of (\d+)", s)
+    if m:
+        return f"R{m.group(1)}"
+    return (rd or "")[:4]
+
+
+def _runs(ms):
+    """Agrupa os jogos (mais recentes primeiro) por torneio: [(nome, [(i, r), ...])], cada grupo do mais recente para o mais antigo."""
+    out = []
+    for i, r in ms:
+        t = webapp.base_tournament(r.get("tournament", ""))
+        d = r.get("date") or ""
+        if out and out[-1][0] == t:
+            try:
+                if abs((dt.date.fromisoformat(out[-1][1][-1][1]["date"][:10]) - dt.date.fromisoformat(d[:10])).days) <= 14:
+                    out[-1][1].append((i, r))
+                    continue
+            except (ValueError, KeyError):
+                pass
+        out.append((t, [(i, r)]))
+    return out
+
+
+def _run_outcome(run):
+    """(etiqueta curta, é título?, frase para a pílula do topo) do resultado de um torneio."""
+    i, last = run[0]
+    won = last.get("winner") == i
+    rs = _rshort(last.get("round"), last.get("q"))
+    if rs == "F":
+        return ("Title", True, "Champion") if won else ("Final", False, "Finalist")
+    if won:
+        return (f"Won {rs}", False, "")
+    names = {"SF": ("Semi-final", "Semi-finalist"), "QF": ("Quarter-final", "Quarter-finalist")}
+    if rs in names:
+        return names[rs][0], False, names[rs][1]
+    return (f"Lost {rs}", False, "")
+
+
+def _span(run):
+    ds = sorted(r.get("date", "")[:10] for _, r in run if r.get("date"))
+    try:
+        a, b = dt.date.fromisoformat(ds[0]), dt.date.fromisoformat(ds[-1])
+    except (IndexError, ValueError):
+        return ""
+    if a == b:
+        return b.strftime("%-d %b %Y")
+    if a.month == b.month:
+        return f"{a.day}–{b.strftime('%-d %b %Y')}"
+    return f"{a.strftime('%-d %b')} – {b.strftime('%-d %b %Y')}"
+
+
+def _event_html(t, run):
+    import player_ui
+    i0, r0 = run[0]
+    label, is_title, _ = _run_outcome(run)
+    has_q = any(r.get("q") for _, r in run)
+    has_main = any(not r.get("q") for _, r in run)
+    sub = " · ".join(x for x in [(r0.get("surface") or "").title(), _span(run), TOUR_NAME.get(r0.get("tour") or "", ""),
+                                  "from qualifying" if has_q and has_main else "qualifying" if has_q else ""] if x)
+    ts = webapp.slugify(t)
+    title = f'<a href="/t/{ts}.html">{esc(t)}</a>' if ts in TSLUGS else esc(t)
+    rows = []
+    for i, r in run:
+        op = r.get("p%d" % (3 - i)) or {}
+        me_g, op_g = (r.get("games") or [[], []])[i - 1], (r.get("games") or [[], []])[2 - i]
+        tb = r.get("tb") or None
+        sc = player_ui.score(me_g, op_g, tb[i - 1] if tb else None, tb[2 - i] if tb else None) or "–"
+        osub = " · ".join(x for x in [(op.get("country") or "").upper(), f"No. {op['rank']}" if isinstance(op.get("rank"), int) and op["rank"] > 0 else ""] if x)
+        href = f"/m/{r['id']}.html" if r.get("id") is not None and r.get("winner") in (1, 2) else ""
+        rows.append((_rshort(r.get("round"), r.get("q")), plink(op.get("name") or "?"), osub, sc, href, r.get("winner") == i))
+    return player_ui.event(title, sub, label, rows, is_title)
+
+
+def player_page_v2(e, tr, tx, ranks_by_name=None):
+    import player_ui as pu
+    import site_more
+    name = e["name"]
+    sl = webapp.slugify(name)
+    ms = sorted(e["matches"], key=lambda x: (x[1].get("date", ""), -webapp._round_rank(x[1].get("round"))), reverse=True)
+    done = [(i, r) for i, r in ms if r.get("winner") in (1, 2)]
+    w = sum(1 for i, r in done if r["winner"] == i)
+    l = len(done) - w
+    rk = ranks_by_name.get(name) if ranks_by_name else None
+    rank = (rk or {}).get("rank") or e["rank"]
+    rk_int = rank if isinstance(rank, int) and rank > 0 else None
+    rr = RANKS.get(sl) or {}
+    h_ = hist_entry(name) or {}
+    women = any(r.get("gender") == "women" or r.get("tour") == "wta" for _, r in ms)
+    tour = "WTA" if women else "ATP"
+    runs = _runs(done)
+
+    # --- topo
+    chips = []
+    c = (e.get("country") or "").upper()
+    if c:
+        cn = site_more.country_name(c) or c
+        chips.append(f'<a href="/c/{c.lower()}.html">{site_more.flag(c, 14) or ""}{esc(cn)}</a>')
+    chips += [esc(x) for x in (bio_line(name) or "").split(" · ") if x]
+    pill, pill_href = "", ""
+    if runs:
+        t0, run0 = runs[0]
+        _, _, phrase = _run_outcome(run0)
+        try:
+            dlast = dt.date.fromisoformat(run0[0][1]["date"][:10])
+            fresh = (dt.date.today() - dlast).days <= 21
+        except (ValueError, KeyError):
+            dlast, fresh = None, False
+        if phrase and fresh:
+            pill = esc(f"{phrase} · {t0} · {dlast.strftime('%-d %b')}")
+            pill_href = "#results"
+    cred = credit_line(name).replace('<p class="cr">', "").replace("</p>", "")
+    top_left = pu.hero("/players.html", tx.get("players", "Players"), f"/img/big/{sl}.jpg" if sl in webapp.AVATARS else "", name, chips, pill, cred, pill_href)
+
+    # --- cartão do ranking
+    when = rr.get("date") or ""
+    try:
+        when = dt.date.fromisoformat(when).strftime("%-d %b %Y").upper() if when else ""
+    except ValueError:
+        when = ""
+    change = None
+    prev = rr.get("prev")
+    if isinstance(prev, int) and rk_int and prev != rk_int and rr.get("rank") == rk_int:
+        change = prev - rk_int
+    pts_ = rr.get("pts") if isinstance(rr.get("pts"), int) and rr.get("rank") == rk_int else ""
+    pts_ = f"{pts_:,}" if pts_ != "" else ""
+    series = {}
+    career = False
+    for m_, v in (h_.get("rk") or []):
+        series[m_ + "-01"], career = v, True
+    for i, r in ms:
+        x = (r.get("p%d" % i) or {}).get("rank")
+        d = r.get("date") or ""
+        if isinstance(x, int) and x > 0 and d and (not career or d[:7] + "-01" not in series or d > max(series)):
+            series[d] = x
+    if rk_int:
+        series.setdefault(time.strftime("%Y-%m-%d", time.gmtime()), rk_int)
+    chart, axis = "", ()
+    if len(series) >= 3 and len(set(series.values())) >= 2:
+        ds = sorted(series)
+        d0, d1 = dt.date.fromisoformat(ds[0][:10]), dt.date.fromisoformat(ds[-1][:10])
+        span = max(1, (d1 - d0).days)
+        lo, hi = min(series.values()), max(series.values())
+        pts = [((dt.date.fromisoformat(d[:10]) - d0).days / span, (series[d] - lo) / max(1, hi - lo)) for d in ds]
+        bd = min(ds, key=lambda d: (series[d], d))
+        try:
+            bdl = dt.date.fromisoformat(bd[:10]).strftime("%b %Y")
+        except ValueError:
+            bdl = ""
+        chart = pu.sparkline(pts, label=f"Ranking from No. {series[ds[0]]} in {ds[0][:4]} to No. {series[ds[-1]]}, best No. {lo}")
+        axis = (f"{ds[0][:4]} · No. {series[ds[0]]}", f"Best No. {lo}" + (f" · {bdl}" if bdl else ""), "Now")
+    br, bm_ = h_.get("br"), ""
+    if h_.get("rk"):
+        bm = min(h_["rk"], key=lambda x: (x[1], x[0]))
+        if not br or bm[1] <= br:
+            br = bm[1]
+            try:
+                bm_ = dt.date.fromisoformat(bm[0] + "-01").strftime("%b %Y")
+            except ValueError:
+                bm_ = ""
+    if rk_int and isinstance(br, int) and rk_int < br:
+        br, bm_ = rk_int, "now"
+    minis = []
+    if br:
+        minis.append((f"{br}", "career high" + (f" · {bm_}" if bm_ and bm_ != "now" else " (now)" if bm_ == "now" else "")))
+    yr = time.strftime("%Y")
+    start = next((v for m_, v in sorted(h_.get("rk") or []) if m_.startswith(yr)), None)
+    if isinstance(start, int) and rk_int and start != rk_int:
+        minis.append((f"{start}", f"start of {yr}"))
+    to100 = ""
+    if rk_int and 100 < rk_int <= 200:
+        try:
+            er = _load("espn_rank.json", {})
+            lg = next((k for k in ("atp", "wta") for x in er.get(k) or [] if webapp.slugify(x.get("n") or "") == sl), None)
+            if lg:
+                me = next(x for x in er[lg] if webapp.slugify(x.get("n") or "") == sl)
+                c100 = next((x for x in er[lg] if x.get("r") == 100), None)
+                if c100 and isinstance(me.get("pts"), (int, float)) and isinstance(c100.get("pts"), (int, float)) and c100["pts"] > me["pts"]:
+                    to100 = f'{int(c100["pts"] - me["pts"])}'
+        except Exception:
+            pass
+    titles = sum(v[2] for v in (h_.get("t") or {}).values() if len(v) > 2)
+    if to100:
+        minis.append((to100, "pts to the top 100"))
+    if titles:
+        minis.append((str(titles), "career titles"))
+    _ss = _seasons(PSTATS_BY_NAME.get(sl))
+    if len(minis) < 3 and _ss and str(_ss[0].get("y")) == yr:
+        minis.append((f'{_ss[0]["w"]}-{_ss[0]["l"]}', f"{yr} season"))
+    if len(minis) < 3 and done:
+        minis.append((f"{w}-{l}", "matches we tracked"))
+    src = ("Monthly ranking: Tennis Abstract (CC BY-NC-SA 4.0) + matches we tracked" if career else "From the matches we tracked") if chart else ""
+    top_right = pu.rank_card(f"{tour} ranking" + (f" · {when}" if when else ""), rk_int or "", change, pts_, "points", chart, axis, minis, src)
+    if not top_right:
+        top_right = pu.rank_card("Matches we tracked", "", None, f"{w}-{l}", "won-lost")
+
+    # --- coluna principal: visão geral e resultados
+    main = pu.h2("overview", "Form", f"<small>{w}-{l} in the matches we tracked</small>" if done else "")
+    main += pu.form([(r["winner"] == i, f"#{(r.get('p%d' % (3 - i)) or {}).get('rank')}" if isinstance((r.get("p%d" % (3 - i)) or {}).get("rank"), int) else "–")
+                     for i, r in done[:6]])
+    if done:
+        main += '<div class="pv-note">Opponent ranking · newest first</div>'
+    nx = next_match_block(name)
+    if nx:
+        main += nx.replace('style="text-align:left;margin:0 0 14px"', 'style="text-align:left;margin:0"')
+    if runs:
+        main += pu.h2("results", f"{esc(name)} results", f"<small>{len(done)} match{'es' if len(done) != 1 else ''} we tracked</small>")
+        main += "".join(_event_html(t, run) for t, run in runs[:4])
+        if len(runs) > 4:
+            older = sum(len(run) for _, run in runs[4:])
+            main += pu.more(f"Older results ({older} matches)", "".join(_event_html(t, run) for t, run in runs[4:]))
+    try:
+        import tennis_videos
+        vids = tennis_videos.cards([r for _, r in ms], "▶ Highlights", 12)
+    except Exception:
+        vids = ""
+    main += vids
+
+    # --- coluna lateral: números
+    side = pu.h2("stats", "Season &amp; career")
+    ps = PSTATS_BY_NAME.get(sl) or {}
+    ss = _seasons(ps)
+    best = None
+    for i, r in done:
+        if r["winner"] == i:
+            op = r["p%d" % (3 - i)]
+            if isinstance(op.get("rank"), int) and op["rank"] > 0 and (best is None or op["rank"] < best[0]):
+                best = (op["rank"], op["name"])
+    cards = []
+    if ss:
+        x = ss[0]
+        bits = [f"{sf.title()} {a}-{b}" for sf, (a, b) in sorted((x.get("s") or {}).items(), key=lambda kv: -sum(v or 0 for v in kv[1]))
+                if isinstance(a, int) and isinstance(b, int) and a + b]
+        if x.get("t"):
+            bits.append(f'{x["t"]} title{"s" if x["t"] > 1 else ""}')
+        cards.append(pu.stat_card(f'{x.get("y") or ""} season', f'{x["w"]}-{x["l"]}', esc(" · ".join(bits))))
+    elif done:
+        cards.append(pu.stat_card("Matches we tracked", f"{w}-{l}", f"{round(100 * w / len(done))}% won"))
+    if h_.get("w", 0) + h_.get("l", 0):
+        tot = h_["w"] + h_["l"]
+        bw = f'best win: {plink(h_["bw"][1])} (No. {h_["bw"][0]}, {h_["bw"][2]})' if h_.get("bw") else f"{round(100 * h_['w'] / tot)}% won"
+        cards.append(pu.stat_card("Career", f'{h_["w"]}-{h_["l"]}', f"{round(100 * h_['w'] / tot)}% · {bw}" if h_.get("bw") else bw))
+    if cards:
+        side += f'<div class="pv-two">{"".join(cards)}</div>' if len(cards) == 2 else cards[0]
+    if best:
+        side += f'<div class="pv-sub">Best win in the matches we tracked: <b>{plink(best[1])}</b> (No. {best[0]})</div>'
+    if h_.get("t"):
+        cup = lambda k: "Billie Jean King Cup" if women and k == "Davis Cup" else k
+        lv = sorted(h_["t"].items(), key=lambda kv: -(kv[1][0] + kv[1][1]))
+        side += pu.bars("Career by level · win %", [((f"{tour} Tour" if k == "Tour" else cup(k)) + (f" · {v[2]} title{'s' if v[2] != 1 else ''}" if len(v) > 2 and v[2] else ""),
+                                                    f"{v[0]}-{v[1]}", round(100 * v[0] / (v[0] + v[1]))) for k, v in lv if v[0] + v[1]])
+    sf = h_.get("s") or {}
+    if not sf:
+        for i, r in done:
+            s_ = (r.get("surface") or "").title()
+            if s_:
+                x = sf.setdefault(s_, [0, 0])
+                x[0 if r["winner"] == i else 1] += 1
+    side += pu.three([(k.title(), f"{a}-{b}", f"{round(100 * a / (a + b))}%") for k, (a, b) in sorted(sf.items(), key=lambda kv: -(kv[1][0] + kv[1][1])) if a + b])
+    if h_.get("y"):
+        rows = "".join(f"<tr><td>{y}</td><td>{a}-{b}</td></tr>" for y, (a, b) in sorted(h_["y"].items(), reverse=True))
+        side += pu.more("Year by year", f'<table class="pv-yrs"><thead><tr><th>Year</th><th>W-L</th></tr></thead><tbody>{rows}</tbody></table>')
+    if h_:
+        side += (f'<p class="pv-src">Career data to {esc(data_to() or "mid-2026")}: <a href="https://www.tennisabstract.com">Tennis Abstract</a> / Jeff Sackmann, '
+                 f'<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> · main draw matches only, aggregated by Beyond100.</p>')
+    side += _nl_inline(f"Following {name}? Get the whole week in one email")
+    side += pu.share()
+
+    # --- fundo: sobre o jogador e ligações
+    about = profile_block(e, ms, rk_int, women).replace('<h2 class="dh">', '<h2 class="pv-h" id="about">', 1)
+    if not about:
+        about = pu.h2("about", f"About {esc(name)}")
+    rel = related_block(e, rk_int).replace('<h2 class="dh">', '<h2 class="pv-h">').replace('class="sfs"', 'class="pv-links"')
+    bottom = about + rel
+    return pu.page(top_left, top_right, pu.tabs([("overview", "Overview"), ("results", "Results"), ("stats", "Stats"), ("about", "About")]),
+                   main, side, bottom)
