@@ -2120,8 +2120,6 @@ def build(out_dir="site"):
     return paths
 
 
-if __name__ == "__main__":
-    build(sys.argv[1] if len(sys.argv) > 1 else "site")
 
 
 # ---------------------------------------------------------------- ficha do jogador, versão 2 (13/11/2026, igual ao ténis)
@@ -2552,3 +2550,8 @@ def page_match_v2(db, m):
 
 def _ordn(n):
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+# no fim do ficheiro: corrido como script (python padel/site.py), todas as funções têm de estar definidas antes (13/11/2026)
+if __name__ == "__main__":
+    build(sys.argv[1] if len(sys.argv) > 1 else "site")
