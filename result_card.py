@@ -1831,6 +1831,8 @@ def build_site(out_dir="site", player=None):
         print("PWA falhou:", type(e).__name__, e)
     if os.path.isdir("posts"):                         # JPEGs dos posts (o Instagram vai buscá-los a este endereço)
         shutil.copytree("posts", os.path.join(out_dir, "posts"), dirs_exist_ok=True)
+    if os.path.isdir("newsletter_img"):                # imagens das newsletters enviadas (os emails apontam para cá), em todas as atualizações
+        shutil.copytree("newsletter_img", os.path.join(out_dir, "newsletter"), dirs_exist_ok=True)
     multi = LANG == "en"                               # versões noutros idiomas só quando o site principal está em inglês
     for lg in (list(i18n_site.LANGS) if multi else [LANG]):
         ltx = i18n_site.tx_for(lg, PAGE_TEXT["en"]) if lg != LANG else tx
