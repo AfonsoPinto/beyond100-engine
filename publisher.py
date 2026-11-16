@@ -458,6 +458,45 @@ def send():
     if not pending:
         print("Fila vazia.")
         return
+    # 16/11/2026 (Afonso: a Andreescu saiu 3 vezes em 4 posts): quem foi protagonista de um post nas últimas 48 h (vencedor de um
+    # resultado ou jogador de uma antevisão) não volta a sair, exceto quando ganha o título (final). O lugar passa para o seguinte.
+    try:
+        from result_card import load_results
+        _by = {str(r.get("id")): r for r in load_results()}
+    except Exception as ex:
+        print("Repetição: sem resultados para comparar:", type(ex).__name__)
+        _by = {}
+    try:                                                          # antevisões: o jogo ainda não está nos resultados
+        with open("upcoming.json", encoding="utf-8") as f:
+            for u in json.load(f).get("matches", []):
+                _by.setdefault(str(u.get("id")), u)
+    except (OSError, ValueError):
+        pass
+
+    def _who(e):
+        i = str(e.get("id"))
+        r = _by.get(i.replace("preview-", ""))
+        if not r:
+            return set()
+        if i.startswith("preview-") or r.get("winner") not in (1, 2):
+            return {r["p1"]["name"], r["p2"]["name"]}
+        return {r["p%d" % r["winner"]]["name"]} if i.isdigit() else set()
+    rep_h = float(env("REPEAT_H", "48"))
+    _shown = set()
+    for x, t in sent:
+        if (now_l - t).total_seconds() < rep_h * 3600:
+            _shown |= _who(x)
+    _keep = []
+    for d, e in pending:
+        is_title = is_res(e) and "final" in (e.get("reasons") or [])
+        if _shown & _who(e) and not is_title and (is_res(e) or is_prev(e)):
+            print(f"Post {e.get('id')}: fica de fora ({', '.join(sorted(_shown & _who(e)))} já saiu nas últimas {rep_h:.0f} h).")
+            continue
+        _keep.append((d, e))
+    pending = _keep
+    if not pending:
+        print("Fila vazia (depois da regra de repetição).")
+        return
     try:
         with open(CAROUSELS_FILE, encoding="utf-8") as f:
             _car = json.load(f)

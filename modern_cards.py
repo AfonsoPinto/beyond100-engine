@@ -10,6 +10,8 @@ import os
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 W, H = 1080, 1350
+# 16/11/2026: a grelha do perfil do Instagram mostra 3:4 (corta ~34 px de cada lado de um post 4:5); texto e caixas ficam dentro desta margem
+MX, BX = 88, 64
 INTER = "/usr/share/fonts/opentype/inter/"
 PALETTE = {"tennis": {"bg": (8, 34, 26), "mid": (14, 58, 45), "acc": (217, 242, 61), "cream": (247, 242, 230), "soft": (176, 196, 183),
                       "brand": "BEYOND100", "follow": "@beyond100.tennis"},
@@ -95,9 +97,9 @@ def _meta(ps):
 
 
 def _footer(img, d, P, credit):
-    d.text((60, H - 46), P["follow"], font=F("semi", 24), fill=P["cream"], anchor="ls")
+    d.text((MX, H - 46), P["follow"], font=F("semi", 24), fill=P["cream"], anchor="ls")
     if credit:
-        d.text((W - 60, H - 46), credit, font=_fit(d, credit, "med", 18, 560, 12), fill=P["soft"], anchor="rs")
+        d.text((W - MX, H - 46), credit, font=_fit(d, credit, "med", 18, 560, 12), fill=P["soft"], anchor="rs")
 
 
 # ------------------------------------------------------------------ A: scorebug
@@ -108,15 +110,15 @@ def card_a(d_, out):
     img = _grad(img, 0, 260, (0, 0, 0), 150, 0)
     img = _grad(img, 640, H, P["bg"], 0, 250).convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
-    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
-    _chips(d, 60, 128, [d_.get("kicker"), d_.get("level")], P)
+    d.text((MX, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, MX, 128, [d_.get("kicker"), d_.get("level")], P)
     if d_.get("loser_photo"):                                        # surpresa: quem caiu, a preto e branco
         s = 250
         lp = ImageOps.grayscale(Image.open(d_["loser_photo"]).convert("RGB")).convert("RGB")
         lp = ImageOps.fit(lp, (s, s), Image.LANCZOS, centering=(0.5, 0.2))
         mk = Image.new("L", (s, s), 0)
         ImageDraw.Draw(mk).ellipse([0, 0, s - 1, s - 1], fill=255)
-        cx, cy = W - 60 - s, 230
+        cx, cy = W - MX - s, 230
         d.ellipse([cx - 8, cy - 8, cx + s + 8, cy + s + 8], fill=(226, 66, 52))
         img.paste(lp, (cx, cy), mk)
         d = ImageDraw.Draw(img, "RGBA")
@@ -126,19 +128,19 @@ def card_a(d_, out):
         t = lr["name"] + (f"  #{lr['rank']}" if lr.get("rank") else "")
         d.text((cx + s / 2, cy + s + 78), t, font=_fit(d, t, "semi", 24, s + 60), fill=P["soft"], anchor="ms")
     if d_.get("line"):
-        d.text((60, 790), d_["line"].upper(), font=_fit(d, d_["line"].upper(), "bold", 30, W - 120), fill=P["acc"], anchor="ls")
+        d.text((MX, 790), d_["line"].upper(), font=_fit(d, d_["line"].upper(), "bold", 30, W - 2 * MX), fill=P["acc"], anchor="ls")
     wname = _side(d_["winners"]).upper()
-    _paste_sq(img, wname, "black", 150, P["cream"] + (255,), 56, 960, W - 120, anchor="lb")
+    _paste_sq(img, wname, "black", 150, P["cream"] + (255,), MX, 960, W - 2 * MX, anchor="lb")
     d = ImageDraw.Draw(img, "RGBA")
-    d.text((60, 1000), _meta(d_["winners"]), font=F("semi", 26), fill=P["soft"], anchor="ls")
+    d.text((MX, 1000), _meta(d_["winners"]), font=F("semi", 26), fill=P["soft"], anchor="ls")
     # tabela de sets (estilo TV)
     y0, rows = 1050, [(d_["winners"], True), (d_["losers"], False)]
     n = len(d_["sets"])
     cw = 74
-    x_sets = W - 60 - n * cw
+    x_sets = W - MX - n * cw
     for k, (ps, win) in enumerate(rows):
         y = y0 + k * 82
-        d.rounded_rectangle([60, y, W - 60, y + 72], radius=18, fill=(255, 255, 255, 34) if win else (0, 0, 0, 90))
+        d.rounded_rectangle([MX, y, W - MX, y + 72], radius=18, fill=(255, 255, 255, 34) if win else (0, 0, 0, 90))
         nm = _side(ps)
         d.text((88, y + 48), nm, font=_fit(d, nm, "bold" if win else "semi", 32, x_sets - 120), fill=P["cream"] if win else P["soft"], anchor="ls")
         for i, (a, b) in enumerate(d_["sets"]):
@@ -148,7 +150,7 @@ def card_a(d_, out):
                 d.rounded_rectangle([cx - 30, y + 10, cx + 30, y + 62], radius=12, fill=P["acc"])
             d.text((cx, y + 49), str(v), font=F("black", 36), fill=P["bg"] if v > o else (P["cream"] if win else P["soft"]), anchor="ms")
     sub = " · ".join(x for x in [d_.get("tournament"), d_.get("round"), d_.get("date")] if x).upper()
-    d.text((60, 1236), sub, font=_fit(d, sub, "semi", 24, W - 120), fill=P["soft"], anchor="ls")
+    d.text((MX, 1236), sub, font=_fit(d, sub, "semi", 24, W - 2 * MX), fill=P["soft"], anchor="ls")
     _footer(img, d, P, d_.get("credit"))
     img.convert("RGB").save(out, quality=94)
     return out
@@ -165,33 +167,33 @@ def card_b(d_, out):
     img = _grad(img, 0, 240, (0, 0, 0), 140, 0)
     d = ImageDraw.Draw(img, "RGBA")
     d.polygon([(0, 902), (W, 762), (W, 776), (0, 916)], fill=P["acc"])
-    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
-    _chips(d, 60, 128, [d_.get("kicker"), d_.get("level")], P)
+    d.text((MX, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, MX, 128, [d_.get("kicker"), d_.get("level")], P)
     w = d_["winners"]
     last = (w[0].get("short") or w[0]["name"].split()[-1]).upper() if len(w) == 1 else _side(w).upper()
     first = w[0]["name"].split()[0].upper() if len(w) == 1 else ""
     if first:
         d.text((62, 700), first, font=F("bold", 40), fill=P["cream"], anchor="ls")
     img = _grad(img, 560, 900, (0, 0, 0), 0, 120).convert("RGB")
-    _paste_sq(img, last, "black", 210, P["cream"] + (255,), 52, 890, W - 110, sx=0.72, anchor="lb")
+    _paste_sq(img, last, "black", 210, P["cream"] + (255,), MX, 890, W - 2 * MX, sx=0.72, anchor="lb")
     d = ImageDraw.Draw(img, "RGBA")
     # sets em números grandes
-    x = 60
+    x = MX
     for a, b in d_["sets"]:
         s = f"{a}-{b}"
         f = F("black", 92)
         d.text((x, 1060), s, font=f, fill=P["acc"] if a > b else P["soft"], anchor="ls")
         x += d.textlength(s, font=f) + 40
     los = "def. " + _side(d_["losers"]) + ("  " + _meta(d_["losers"]) if _meta(d_["losers"]) else "")
-    d.text((60, 1120), los, font=_fit(d, los, "semi", 30, W - 120), fill=P["cream"], anchor="ls")
+    d.text((MX, 1120), los, font=_fit(d, los, "semi", 30, W - 2 * MX), fill=P["cream"], anchor="ls")
     sub = " · ".join(x for x in [d_.get("tournament"), d_.get("round"), d_.get("date")] if x).upper()
-    d.text((60, 1172), sub, font=_fit(d, sub, "semi", 24, W - 120), fill=P["soft"], anchor="ls")
+    d.text((MX, 1172), sub, font=_fit(d, sub, "semi", 24, W - 2 * MX), fill=P["soft"], anchor="ls")
     road = [x for x in (d_.get("road") or []) if x[0] != "F"][-5:]
     if road:                                                          # campeão: o caminho numa linha
         r_ = "  ·  ".join(f"{rd} {n_.split()[-1]}" for rd, n_, _ in road)
-        d.text((60, 1226), "ROAD:  " + r_, font=_fit(d, "ROAD:  " + r_, "semi", 26, W - 120, 16), fill=P["acc"], anchor="ls")
+        d.text((MX, 1226), "ROAD:  " + r_, font=_fit(d, "ROAD:  " + r_, "semi", 26, W - 2 * MX, 16), fill=P["acc"], anchor="ls")
     elif d_.get("line"):
-        d.text((60, 1226), d_["line"], font=_fit(d, d_["line"], "bold", 30, W - 120), fill=P["acc"], anchor="ls")
+        d.text((MX, 1226), d_["line"], font=_fit(d, d_["line"], "bold", 30, W - 2 * MX), fill=P["acc"], anchor="ls")
     _footer(img, d, P, d_.get("credit"))
     img.convert("RGB").save(out, quality=94)
     return out
@@ -205,7 +207,7 @@ def card_c(d_, out):
     img = _grad(img, 0, 260, (0, 0, 0), 140, 0)
     img = _grad(img, 700, H, (0, 0, 0), 0, 160)
     # placar flutuante em vidro
-    box = (48, 860, W - 48, 1260)
+    box = (BX, 860, W - BX, 1260)
     blur = img.crop(box).filter(ImageFilter.GaussianBlur(28))
     tint = Image.new("RGBA", blur.size, P["bg"] + (190,))
     glass = Image.alpha_composite(blur, tint)
@@ -215,11 +217,11 @@ def card_c(d_, out):
     img = img.convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
     d.rounded_rectangle(box, radius=36, outline=(255, 255, 255, 60), width=2)
-    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
-    _chips(d, 60, 128, [d_.get("kicker"), d_.get("level")], P)
+    d.text((MX, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, MX, 128, [d_.get("kicker"), d_.get("level")], P)
     big = (d_.get("line") or _side(d_["winners"])).upper()          # sem frase do jogo: os nomes de quem ganhou
     if big:
-        _paste_sq(img, big, "black", 96, P["cream"] + (255,), 60, 830, W - 120, anchor="lb")
+        _paste_sq(img, big, "black", 96, P["cream"] + (255,), MX, 830, W - 2 * MX, anchor="lb")
         d = ImageDraw.Draw(img, "RGBA")
     x0, y0 = box[0] + 40, box[1] + 40
     sub = " · ".join(x for x in [d_.get("tournament"), d_.get("round")] if x).upper()
@@ -253,7 +255,7 @@ def card_champion(d_, out):
     img = _grad(img, 600, H, (0, 0, 0), 0, 170)
     road = [x for x in (d_.get("road") or []) if x[0] != "F"][-5:]       # a final já está na linha do resultado
     top = H - 100 - (200 + 50 * len(road))
-    box = (48, top, W - 48, H - 90)
+    box = (BX, top, W - BX, H - 90)
     blur = img.crop(box).filter(ImageFilter.GaussianBlur(28))
     glass = Image.alpha_composite(blur, Image.new("RGBA", blur.size, P["bg"] + (195,)))
     m = Image.new("L", blur.size, 0)
@@ -262,16 +264,16 @@ def card_champion(d_, out):
     img = img.convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
     d.rounded_rectangle(box, radius=36, outline=(255, 255, 255, 60), width=2)
-    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
-    _chips(d, 60, 128, ["CHAMPION", d_.get("level")], P)
+    d.text((MX, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, MX, 128, ["CHAMPION", d_.get("level")], P)
     nm = d_["name"].split()
     first, last = (" ".join(nm[:-1]), nm[-1]) if len(nm) > 1 else ("", nm[0])
     if first:
         d.text((62, top - 170), first.upper(), font=F("bold", 38), fill=P["cream"], anchor="ls")
-    _paste_sq(img, last.upper(), "black", 170, P["cream"] + (255,), 56, top - 24, W - 300, anchor="lb")
+    _paste_sq(img, last.upper(), "black", 170, P["cream"] + (255,), MX, top - 24, W - MX - 244, anchor="lb")
     d = ImageDraw.Draw(img, "RGBA")
     if d_.get("rank"):
-        d.text((W - 60, top - 34), f"#{d_['rank']}", font=F("black", 64), fill=P["acc"], anchor="rs")
+        d.text((W - MX, top - 34), f"#{d_['rank']}", font=F("black", 64), fill=P["acc"], anchor="rs")
     x0, y0 = box[0] + 40, box[1] + 40
     sub = " · ".join(x for x in [d_.get("tournament"), "Final"] if x).upper()
     d.text((x0, y0 + 20), sub, font=_fit(d, sub, "bold", 24, 640), fill=P["soft"], anchor="ls")
@@ -317,14 +319,14 @@ def _card_list_single(d_, s, P, out):
     img = _grad(img, 0, 260, (0, 0, 0), 150, 0)
     img = _grad(img, 380, 770, P["bg"], 0, 255).convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
-    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
-    _chips(d, 60, 128, [d_.get("kicker"), d_.get("date")], P)
-    _paste_sq(img, d_["title"].upper(), "black", 118, P["cream"] + (255,), 56, 640, W - 120, anchor="lb")
+    d.text((MX, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, MX, 128, [d_.get("kicker"), d_.get("date")], P)
+    _paste_sq(img, d_["title"].upper(), "black", 118, P["cream"] + (255,), MX, 640, W - 2 * MX, anchor="lb")
     d = ImageDraw.Draw(img, "RGBA")
     if d_.get("sub"):
-        d.text((60, 690), d_["sub"], font=_fit(d, d_["sub"], "semi", 30, W - 120), fill=P["acc"], anchor="ls")
+        d.text((MX, 690), d_["sub"], font=_fit(d, d_["sub"], "semi", 30, W - 2 * MX), fill=P["acc"], anchor="ls")
     nrows = min(6, len(s.get("rows") or []))
-    box = (48, 730, W - 48, min(H - 110, 730 + 26 + 112 + 52 * nrows + 16))
+    box = (BX, 730, W - BX, min(H - 110, 730 + 26 + 112 + 52 * nrows + 16))
     d.rounded_rectangle(box, radius=34, fill=(0, 0, 0, 70), outline=(255, 255, 255, 50), width=2)
     x0, yy = box[0] + 36, box[1] + 26
     d.text((x0, yy + 40), h.get("big", ""), font=F("black", 36), fill=P["acc"], anchor="ls")
@@ -365,17 +367,17 @@ def card_list(d_, out):
         img.alpha_composite(Image.new("RGBA", (W, H), P["bg"] + (205,)))
     img = img.convert("RGB")
     d = ImageDraw.Draw(img, "RGBA")
-    d.text((60, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
-    _chips(d, 60, 128, [d_.get("kicker"), d_.get("date")], P)
-    _paste_sq(img, d_["title"].upper(), "black", 118, P["cream"] + (255,), 56, 330, W - 120, anchor="lb")
+    d.text((MX, 92), P["brand"], font=F("black", 30), fill=P["cream"], anchor="ls")
+    _chips(d, MX, 128, [d_.get("kicker"), d_.get("date")], P)
+    _paste_sq(img, d_["title"].upper(), "black", 118, P["cream"] + (255,), MX, 330, W - 2 * MX, anchor="lb")
     d = ImageDraw.Draw(img, "RGBA")
     if d_.get("sub"):
-        d.text((60, 380), d_["sub"], font=_fit(d, d_["sub"], "semi", 30, W - 120), fill=P["acc"], anchor="ls")
+        d.text((MX, 380), d_["sub"], font=_fit(d, d_["sub"], "semi", 30, W - 2 * MX), fill=P["acc"], anchor="ls")
     y = 420
     avail = H - 120 - y
     each = (avail - 24 * (len(secs) - 1)) / max(1, len(secs))
     for s in secs:
-        box = (48, int(y), W - 48, int(y + each))
+        box = (BX, int(y), W - BX, int(y + each))
         d.rounded_rectangle(box, radius=34, fill=(0, 0, 0, 70), outline=(255, 255, 255, 50), width=2)
         x0, yy = box[0] + 36, box[1] + 30
         d.text((x0, yy + 22), s.get("label", "").upper(), font=F("bold", 22), fill=P["soft"], anchor="ls")
@@ -405,7 +407,7 @@ def card_list(d_, out):
             ry += 52
         y += each + 24
     if d_.get("foot"):
-        d.text((60, H - 84), d_["foot"], font=_fit(d, d_["foot"], "med", 22, W - 120), fill=P["soft"], anchor="ls")
+        d.text((MX, H - 84), d_["foot"], font=_fit(d, d_["foot"], "med", 22, W - 2 * MX), fill=P["soft"], anchor="ls")
     cr = [c for c in d_.get("credits") or [] if c]
     import photo_cards
     _footer(img, d, P, photo_cards.credit_join(*cr) if cr else None)
