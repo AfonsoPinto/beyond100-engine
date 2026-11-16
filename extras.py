@@ -1664,7 +1664,9 @@ def player_page_v2(e, tr, tx, ranks_by_name=None):
             pill = esc(f"{phrase} · {t0} · {dlast.strftime('%-d %b')}")
             pill_href = "#results"
     cred = credit_line(name).replace('<p class="cr">', "").replace("</p>", "")
-    top_left = pu.hero("/players.html", tx.get("players", "Players"), f"/img/big/{sl}.jpg" if sl in webapp.AVATARS else "", name, chips, pill, cred, pill_href)
+    import pwa
+    top_left = pu.hero("/players.html", tx.get("players", "Players"), f"/img/big/{sl}.jpg" if sl in webapp.AVATARS else "", name, chips, pill, cred, pill_href,
+                       pwa.follow_button(f"tennis:{sl}", name))
 
     # --- cartão do ranking
     when = rr.get("date") or ""

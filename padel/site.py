@@ -601,7 +601,7 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
             f'<meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{SITE_BASE}{_clean(path)}">'
             f'<meta property="og:image" content="{SITE_BASE}{OG_MAP.get(path, "/padel/og.png")}"><meta name="twitter:card" content="summary_large_image">'
             f'<meta name="theme-color" content="#0c2e4a">{"<meta name=robots content=noindex,follow>" if noindex else ""}{beacon}{ldh}'
-            f'<link rel="icon" href="/padel/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/padel/style.css?v={CSS_VER}"></head><body><div class="wrap">'
+            f'<link rel="icon" href="/padel/favicon.svg" type="image/svg+xml">{__import__("pwa").head("padel")}<link rel="stylesheet" href="/padel/style.css?v={CSS_VER}"></head><body><div class="wrap">'
             # menu de cima igual ao do ténis (5/11/2026): marca, LIVE quando há jogos em court, links, Instagram e pesquisa
             f'<nav><a class="brand" href="/padel/index.html">BEYOND PADEL</a><div>{live_pill}{topnav}<a href="{IG}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>{sport_switch.switch("padel")}'
             f'{site_more.SEARCH_HTML}{body}{LIVE_JS}'
@@ -613,7 +613,7 @@ def shell(title, body, path, desc=None, tab="", noindex=False, ld=None):
                                                      ("Stats", "/padel/stats.html"), ("Countries", "/padel/countries.html")]),
                                ("Beyond Padel", [("About", "/about.html"), ("Photo credits", "/padel/credits.html")])],
                               'Data: <a href="https://padelapi.org">Padel API</a> · Premier Padel and CUPRA FIP Tour (Platinum, Gold, Silver). Scores are for information only and may contain delays or errors.')
-            + f'</div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + '</body></html>')
+            + f'</div>{bar}' + site_ui.LOCALTIME_JS + site_ui.DEAD_YT_JS + _nl_slide() + __import__("pwa").JS + '</body></html>')
 
 
 def write(out, path, htmltext):
@@ -2078,7 +2078,7 @@ def build(out_dir="site"):
         _base = webapp.CSS + extras.EXTRA_CSS
     except Exception:
         _base = ""
-    CSS_VER = hashlib.sha1((_base + CSS + site_ui.CSS + sport_switch.CSS + site_nav.CSS).encode()).hexdigest()[:8]
+    CSS_VER = hashlib.sha1((_base + CSS + site_ui.CSS + sport_switch.CSS + site_nav.CSS + __import__("pwa").CSS).encode()).hexdigest()[:8]
     try:
         write_photos(out)
     except Exception as e:
@@ -2148,7 +2148,14 @@ def build(out_dir="site"):
     except Exception:
         base_css = ""
     with open(os.path.join(out, "padel", "style.css"), "w", encoding="utf-8") as f:
-        f.write(base_css + CSS + site_ui.CSS + sport_switch.CSS + site_nav.CSS)
+        f.write(base_css + CSS + site_ui.CSS + sport_switch.CSS + site_nav.CSS + __import__("pwa").CSS)
+    try:                                                      # 16/11/2026: site instalável e dados do "Your players" (Follow)
+        import pwa
+        pwa.write_app(out, "padel")
+        with open(os.path.join(out, "padel", "follow.json"), "w", encoding="utf-8") as f:
+            json.dump(follow_index(db), f, ensure_ascii=False, separators=(",", ":"))
+    except Exception as e:
+        print("Padel PWA/follow falhou:", type(e).__name__, e)
     with open(os.path.join(out, "padel", "favicon.svg"), "w", encoding="utf-8") as f:
         f.write(EMBLEM.replace('<svg viewBox', '<svg xmlns="http://www.w3.org/2000/svg" viewBox'))
     # sitemap próprio (o robots.txt do site aponta para ele)
@@ -2317,8 +2324,9 @@ def page_player_v2(db, pid, p):
                 pill, pill_href = esc(f"{phrase} · {t.get('location') or t.get('name') or ''} · {dl.strftime('%-d %b')}"), "#results"
             break
     c = photo_credit(pid) if has_photo(pid) else {}
+    import pwa
     top_left = pu.hero("/padel/rankings.html", "Rankings", f"/padel/img/{pid}.jpg" if has_photo(pid) else "", name, chips, pill,
-                       esc(c.get("credit") or ""), pill_href)
+                       esc(c.get("credit") or ""), pill_href, pwa.follow_button(f"padel:{pid}", name))
 
     # --- cartão do ranking
     hist = [(dd, x) for dd, x in db.rank_hist(pid) if x]
@@ -2757,9 +2765,40 @@ def page_index_v2(db):
              ("power", "Power Ranking", "Best form, last 30 days"), ("race", "Race to the Finals", "Who makes Barcelona")]
     rest += '<div class="pd-quick ui-quick">' + "".join(f'<a href="/padel/{k}.html"><b>{v}</b><span>{d}</span></a>' for k, v, d in links) + "</div>"
     rest += _nl_inline("Get the padel week in one email")
-    body = f"<style>{pu.CSS}</style>" + home_ui.page(lead, side, rest)
+    body = f"<style>{pu.CSS}</style>" + __import__("pwa").your_players("padel") + home_ui.page(lead, side, rest)
     return shell("Beyond Padel · Premier Padel and FIP Tour results, draws and rankings", body, "/padel/index.html", tab="index")
 
+
+
+def follow_index(db):
+    """pid -> {u, r, i, l, w, x}: último resultado e próximo jogo de cada jogador (para o bloco "Your players")."""
+    out = {}
+    for pid, p in db.pinfo.items():
+        ms = player_matches(db, pid)
+        if not ms:
+            continue
+        row = {"u": ppath(p)}
+        rk = (db.rank_of.get(str(pid)) or {}).get("ranking")
+        if isinstance(rk, int) and rk > 0:
+            row["r"] = rk
+        if has_photo(pid):
+            row["i"] = f"/padel/img/{pid}-s.jpg"
+        done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
+        if done:
+            m, tm = done[0]
+            ot = "team_2" if tm == "team_1" else "team_1"
+            t = db.tour(m.get("tid")) or {}
+            sc = " ".join(f"{games(a if tm == 'team_1' else b)}-{games(b if tm == 'team_1' else a)}" for a, b in sets_of(m))
+            row["l"] = (f'{"Won" if m["winner"] == tm else "Lost"} {sc} vs {" / ".join(disp(q) for q in team_players(m, ot))} · '
+                        f'{RSHORT.get(m.get("round"), "")} {t.get("location") or t.get("name") or ""}').strip()
+            row["w"] = 1 if m["winner"] == tm else 0
+        up = [(m, tm) for m, tm in ms if m.get("winner") not in ("team_1", "team_2") and m.get("status") != "bye" and team_players(m, "team_2" if tm == "team_1" else "team_1")]
+        if up:
+            m, tm = sorted(up, key=lambda x: x[0].get("scheduled_at") or x[0].get("played_at") or "9")[0]
+            ot = "team_2" if tm == "team_1" else "team_1"
+            row["x"] = f'vs {" / ".join(disp(q) for q in team_players(m, ot))} · {m.get("schedule_label") or (m.get("played_at") or "")[:10]}'
+        out[str(pid)] = row
+    return out
 
 # no fim do ficheiro: corrido como script (python padel/site.py), todas as funções têm de estar definidas antes (13/11/2026)
 if __name__ == "__main__":

@@ -1360,8 +1360,8 @@ def _shell(title, body, tx, root="", path="", desc=None, image="og/default.png",
             f'{"<meta name=robots content=noindex,follow>" if noindex else "<meta name=robots content=max-image-preview:large>"}{_beacon()}'
             f'<link rel="icon" href="/favicon.svg" type="image/svg+xml">\n'
             f'<link rel="icon" href="/favicon.png" sizes="192x192" type="image/png">\n'
-            f'<link rel="apple-touch-icon" href="/favicon.png">\n'
-            f'<style>{SITE_CSS}{extras.EXTRA_CSS}{site_ui.CSS}{sport_switch.CSS}{site_nav.CSS}</style></head><body><div class="wrap">\n'
+            f'{__import__("pwa").head("tennis")}\n'
+            f'<style>{SITE_CSS}{extras.EXTRA_CSS}{site_ui.CSS}{sport_switch.CSS}{site_nav.CSS}{__import__("pwa").CSS}</style></head><body><div class="wrap">\n'
             f'<nav><a class="brand" href="{root}index.html">BEYOND100</a><div>'
             f'{live_pill}<a class="ntop" href="{root}results.html">{esc(tx["nav"])}</a><a class="ntop" href="{root}players.html">{esc(tx.get("players", "Players"))}</a>{(f'<a class="ntop" href="{root}rankings.html">{esc(extras.L(tx, "x_rankings"))}</a>' if extras.have_full_rankings() else "")}<a class="ntop" href="{root}stats.html">{esc(extras.L(tx, "x_stats"))}</a><a href="{IG_URL}">Instagram</a>{site_more.SEARCH_BTN}</div></nav>\n{sport_switch.switch("tennis")}'
             f'{site_more.SEARCH_HTML}{body}\n' + site_nav.footer("BEYOND100", "Tennis beyond the top 100: Challenger, ITF and WTA scores, rankings and the stories behind them.",
@@ -1372,7 +1372,7 @@ def _shell(title, body, tx, root="", path="", desc=None, image="og/default.png",
                                                                                   ("Records", "/records.html"), ("Stats", "/stats.html"), ("Countries", "/countries.html")]),
                                                             ("Beyond100", [("About", "/about.html"), (extras.L(tx, "x_credits"), "/credits.html"), ("Beyond Padel", "/padel/index.html")])],
                                                            esc(tx["note"]), f"<span>{langs.lstrip(' ·')}</span>" if langs else "")
-            + f'</div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + __import__("site_ui").DEAD_YT_JS + _nl_slide() + '</body></html>')
+            + f'</div>{_tbar(tx, path)}' + __import__("site_ui").LOCALTIME_JS + __import__("site_ui").DEAD_YT_JS + _nl_slide() + __import__("pwa").JS + '</body></html>')
 
 
 FAVICON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0e3a2d"/>'
@@ -1681,7 +1681,7 @@ def _home_v2(results, singles, tx, tr, hl):
             + site_ui.quick([("/results.html", "Results", "Every score, newest first"), ("/order-of-play.html", "Today", "Order of play, live"),
                              ("/players.html", "Players", "Form and streaks"), ("/week/", "This week", "Champions, upsets and climbers")])
             + f'{extras.newsletter_block(tx)}')
-    return f"<style>{pu.CSS}</style>" + home_ui.page(lead, side, rest)
+    return f"<style>{pu.CSS}</style>" + __import__("pwa").your_players("tennis") + home_ui.page(lead, side, rest)
 
 
 def _core_pages(results, singles, tx, tr, lang, linkable):
@@ -1822,6 +1822,12 @@ def build_site(out_dir="site", player=None):
     extras.PIDX = extras.players_index(results)       # o bloco "Players in the spotlight" da página inicial precisa dele (7/11/2026)
     paths = []
     write_favicons(out_dir)
+    try:                                                      # 16/11/2026: site instalável (PWA)
+        import pwa
+        pwa.write_app(out_dir, "tennis")
+        pwa.write_sw(out_dir)
+    except Exception as e:
+        print("PWA falhou:", type(e).__name__, e)
     if os.path.isdir("posts"):                         # JPEGs dos posts (o Instagram vai buscá-los a este endereço)
         shutil.copytree("posts", os.path.join(out_dir, "posts"), dirs_exist_ok=True)
     multi = LANG == "en"                               # versões noutros idiomas só quando o site principal está em inglês
@@ -2166,6 +2172,14 @@ def build_site(out_dir="site", player=None):
             LASTMOD[os.path.relpath(_p, out_dir).replace(os.sep, "/")] = _lm
     except Exception as e:
         print("Páginas semanais falharam:", type(e).__name__, e)
+    try:                                                      # 16/11/2026: dados do bloco "Your players" (Follow)
+        import pwa
+        _fi = pwa.follow_index_tennis({k: v for k, v in extras.PIDX.items() if ("p/" + k + ".html") not in NOINDEX or True},
+                                      webapp.AVATARS, extras.RANKS, _load_json("upcoming.json", {}), webapp.base_tournament, extras._rshort)
+        with open(os.path.join(out_dir, "follow.json"), "w", encoding="utf-8") as f:
+            json.dump(_fi, f, ensure_ascii=False, separators=(",", ":"))
+    except Exception as e:
+        print("follow.json falhou:", type(e).__name__, e)
     with open(os.path.join(out_dir, "search.json"), "w", encoding="utf-8") as f:
         json.dump(site_more.search_index({k: v for k, v in _index.items() if ("p/" + k + ".html") not in NOINDEX}, sorted(groups)), f,
                   ensure_ascii=False, separators=(",", ":"))
