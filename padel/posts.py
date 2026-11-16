@@ -980,10 +980,17 @@ def send():
         pend = intro[:1]                                           # apresentação primeiro, uma de cada vez, por ordem
     order = ([e for e in pend if e["kind"] == "intro"] + [e for e in pend if e["kind"] in ("preview", "tour_preview", "newpairs", "top10", "race")] + [e for e in pend if e["kind"] == "weekly"] +
              sorted([e for e in pend if e["kind"] == "result"], key=lambda e: -e.get("score", 0)))
+    # 16/11/2026 (Afonso: o mesmo par duas vezes seguidas com a mesma foto): quem apareceu em foto num post das últimas 48 h
+    # não volta a sair com resultado, exceto o cartão dos campeões (id "c-..."). O lugar passa para o post seguinte.
+    rep_h = float(env("PADEL_REPEAT_H", "48"))
+    shown = {str(x) for s_ in sent if time.time() - s_.get("sent_ts", 0) < rep_h * 3600 for x in s_.get("photo_pids") or []}
     for e in order:
         if res_today >= cap:
             print(f"Padel: já saíram {res_today} posts hoje (máximo {cap}).")
             break
+        if e["kind"] == "result" and not str(e.get("id")).startswith("c-") and shown & {str(x) for x in e.get("photo_pids") or []}:
+            print(f"Padel: {e.get('id')} fica de fora (a mesma pessoa já saiu em foto nas últimas {rep_h:.0f} h).")
+            continue
         style, imgf = None, e["image"]
         if e.get("variants"):                                      # 12/11/2026: o modelo que não saiu nos 2 últimos resultados
             recent = [x.get("style") or "C" for x in sorted([x for x in sent if x["kind"] == "result"], key=lambda x: x.get("sent_ts", 0))][-2:]
