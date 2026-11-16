@@ -144,10 +144,10 @@ bg = w.node_tree.nodes.get("Background"); bg.inputs[0].default_value = (0.003, 0
 for x in (-4.5, 4.5):
     for y in (-9, 0, 9):
         bpy.ops.object.light_add(type="AREA", location=(x, y, 13)); L = bpy.context.active_object
-        L.data.energy = float(os.environ.get("PROTO_LIGHT", "14000")); L.data.size = 3.5; L.data.color = (1.0, 0.97, 0.92)
+        L.data.energy = float(os.environ.get("PROTO_LIGHT", "1300")); L.data.size = 3.5; L.data.color = (1.0, 0.97, 0.92)
 for (x, y) in ((-16, 0), (16, 0), (0, -20), (0, 20)):              # luz nas bancadas
     bpy.ops.object.light_add(type="AREA", location=(x, y, 11)); L = bpy.context.active_object
-    L.data.energy = 9000; L.data.size = 8; L.data.color = (0.85, 0.9, 1.0)
+    L.data.energy = 700; L.data.size = 8; L.data.color = (0.85, 0.9, 1.0)
     L.rotation_euler = (0, 0, 0)
 
 # ------------------------------------------------------------------ figuras (manequins anónimos)
