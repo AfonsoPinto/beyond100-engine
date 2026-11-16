@@ -15,8 +15,29 @@ GAP_S = float(os.environ.get("PADEL_GAP_S") or "6.3")           # 10 pedidos por
 DAY = 86400
 
 
+COOLDOWN = "cooldown.json"
+COOL_MIN, COOL_MAX, COOL_DEFAULT = 60, 3600, 300
+
+
 class Budget(Exception):
     pass
+
+
+def _retry_after(r):
+    """Segundos a esperar segundo o cabeçalho Retry-After (número ou data), entre 1 e 60 minutos. (16/11/2026)"""
+    h = (r.headers.get("Retry-After") or "").strip()
+    s = None
+    if h.isdigit():
+        s = int(h)
+    elif h:
+        try:
+            from email.utils import parsedate_to_datetime
+            s = int((parsedate_to_datetime(h).timestamp() - time.time()))
+        except (TypeError, ValueError):
+            s = None
+    if s is None or s < 0:
+        s = COOL_DEFAULT
+    return max(COOL_MIN, min(COOL_MAX, s))
 
 
 class Api:
@@ -31,6 +52,9 @@ class Api:
             raise Budget("sem PADEL_API_KEY")
         if self.n >= MAX_REQ:
             raise Budget("teto de pedidos desta execução")
+        left = (load(COOLDOWN, {}) or {}).get("until", 0) - time.time()
+        if left > 0:                                   # a API pediu para esperar: não se faz um único pedido
+            raise Budget(f"em pausa pedida pela API ({int(left)} s)")
         wait = GAP_S - (time.time() - self.last)
         if wait > 0:
             time.sleep(wait)
@@ -41,7 +65,12 @@ class Api:
                                   "User-Agent": "Beyond100/0.1 (beyond100tennis.com)"})
         self.log.append([path, r.status_code] + ([r.text[:200]] if r.status_code != 200 else []))
         if r.status_code == 429:
-            raise Budget("429 da API")
+            secs = _retry_after(r)
+            save(COOLDOWN, {"until": time.time() + secs, "secs": secs, "ts": time.time()})
+            raise Budget(f"429 da API: pausa de {secs} s (Retry-After)")
+        if r.status_code in (401, 403):                # chave suspensa ou errada: não insistir de hora a hora
+            save(COOLDOWN, {"until": time.time() + COOL_MAX, "secs": COOL_MAX, "ts": time.time(), "code": r.status_code})
+            raise Budget(f"{r.status_code} da API: pausa de {COOL_MAX} s")
         if r.status_code != 200:
             return None
         return r.json()
