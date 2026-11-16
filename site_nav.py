@@ -56,12 +56,15 @@ def live_pill(href, on=False, show=True, sport="tennis", tids=()):
 
 
 LIVE_CHECK_JS = """<script>(function(){var b=document.querySelector('.nlive[data-sport]');if(!b||b._ck)return;b._ck=1;
+var P=600000,IDLE=1800000,last=Date.now();
 function set(on){b.hidden=!on}
 function tennis(){fetch('/api/tennis/live',{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j)set((j.matches||[]).length>0)}).catch(function(){})}
-function padel(){var ids=(b.dataset.tids||'').split(',').filter(Boolean),d=new Date().toISOString().slice(0,10);if(!ids.length){set(false);return}
- Promise.all(ids.map(function(id){return fetch('/api/padel/matches/'+id+'?date='+d).then(function(r){return r.ok?r.json():{matches:[]}}).catch(function(){return {matches:[]}})}))
- .then(function(rs){set(rs.some(function(r){return (r.matches||[]).some(function(m){return m.score&&m.score.length&&!m.winner&&['finished','walkover','retired','cancelled'].indexOf(m.status)<0})}))})}
-function go(){if(!document.hidden)(b.dataset.sport==='padel'?padel:tennis)()}go();setInterval(go,120000)})()</script>"""
+function padel(){var ids=(b.dataset.tids||'').split(',').filter(Boolean);if(!ids.length){set(false);return}
+ fetch('/api/padel/live?t='+ids.join(',')).then(function(r){return r.ok?r.json():null}).then(function(j){if(j)set(!!j.live)}).catch(function(){})}
+function go(){if(!document.hidden)(b.dataset.sport==='padel'?padel:tennis)()}
+go();setInterval(function(){if(Date.now()-last<IDLE)go()},P);
+['pointerdown','keydown'].forEach(function(e){addEventListener(e,function(){var slept=Date.now()-last>IDLE;last=Date.now();if(slept)go()},{passive:true})});
+document.addEventListener('visibilitychange',function(){if(!document.hidden){last=Date.now();go()}})})()</script>"""
 
 
 # 13/11/2026: camada moderna para todo o site (ténis e padel), carregada por último. Títulos sem serifa (o logótipo continua igual),
