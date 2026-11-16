@@ -134,5 +134,5 @@ class Mix:
 def mux(video, wav, out):
     import subprocess
     r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", wav, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-                        "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", out])
+                        "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-shortest", "-use_editlist", "0", "-movflags", "+faststart", out])
     return r.returncode == 0

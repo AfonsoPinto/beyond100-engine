@@ -14,4 +14,4 @@ def seg(t, a, b): return ease((t - a) / (b - a))
 def encoder(path, W, H, FPS):
     import subprocess
     return subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-                             "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-movflags", "+faststart", path], stdin=subprocess.PIPE)
+                             "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-use_editlist", "0", "-movflags", "+faststart", path], stdin=subprocess.PIPE)
