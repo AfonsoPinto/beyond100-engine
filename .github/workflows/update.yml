@@ -193,7 +193,8 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
         run: |
-          python -m reels.make publish || echo "reels: envio falhou (ignorado)"
+          # 16/11/2026 (Afonso): Reels em pausa até aprovar a versão de mais qualidade; voltam com REELS_AUTO=1
+          if [ "${REELS_AUTO:-0}" = "1" ]; then python -m reels.make publish || echo "reels: envio falhou (ignorado)"; else echo "reels: publicação em pausa"; fi
           python publisher.py send
           python -m padel.posts send || echo "padel: envio falhou (ignorado)"
       - name: Save sent flags
