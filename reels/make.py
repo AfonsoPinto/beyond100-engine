@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 STATE, DIR = "reels.json", "reel_files"          # os vídeos ficam em reel_files/ (reels/ é o código)
 LIS = ZoneInfo("Europe/Lisbon")
 KEEP = 24                                  # vídeos guardados no repositório (os mais antigos saem)
+VERSION = 2                                # 2 = com som
 MAX_RENDER = 3                             # vídeos novos por execução, no máximo
 DAYS_BACK = int(os.environ.get("REELS_DAYS_BACK", "2"))   # só finais recentes (nada de recuperar o passado)
 PADEL_LEVELS = {"p1", "p2", "major", "finals", "tour_finals", "premier_finals"}
@@ -240,7 +241,8 @@ def publish():
            "padel": dict(on=E("PADEL_PUBLISH", "0") == "1", a=int(E("PADEL_SEND_FROM", "9")), b=int(E("PADEL_SEND_TO", "23")), cap=int(E("PADEL_MAX_POSTS_PER_DAY", "3")))}
     h = now().astimezone(LIS).hour
     changed = False
-    for i in sorted(st["items"], key=lambda x: x["due"]):
+    order = lambda x: (x["kind"] != "bracket", x["due"], x["gender"] != "men")   # o quadro antes do ponto; masculino primeiro
+    for i in sorted(st["items"], key=order):
         if i.get("posted") or i.get("skipped") or i["id"] in manual: continue
         due = dt.datetime.strptime(i["due"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
         if due > now(): continue
@@ -271,6 +273,12 @@ def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "site"
     st = load(); os.makedirs(DIR, exist_ok=True)
     if "--no-render" not in sys.argv:
+        # vídeos feitos antes do som (v < 2) e ainda por publicar: refazem-se uma vez
+        old = [i for i in st["items"] if i.get("v", 1) < VERSION and not i.get("posted") and not i.get("skipped")]
+        if old:
+            st["items"] = [i for i in st["items"] if i not in old]
+            st["done"] = [x for x in st["done"] if x not in {i["id"] for i in old}]
+            print(f"reels: {len(old)} vídeo(s) antigos voltam a ser feitos com som")
         finals = []
         for fn in (tennis_finals, padel_finals):
             try: finals += fn()
@@ -287,7 +295,7 @@ def main():
                 st["done"].append(rid)                 # não insistir num quadro incompleto
                 continue
             st["items"].append(dict(id=rid, kind=kind, sport=f["sport"], gender=f["gender"], tournament=f["name"], champ=f["champ"],
-                                    file=os.path.basename(path), due=iso(due), made=iso(now()), caption=caption(kind, f, extra), posted=None))
+                                    file=os.path.basename(path), due=iso(due), made=iso(now()), caption=caption(kind, f, extra), posted=None, v=VERSION))
             st["done"].append(rid)
             print(f"reels: {rid} feito ({kind}, para {due.astimezone(LIS):%d/%m %H:%M})")
         # só os mais recentes ficam
