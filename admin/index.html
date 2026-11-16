@@ -86,6 +86,31 @@ const hm=t=>new Date(t).toLocaleTimeString("pt-PT",{timeZone:"Europe/Lisbon",hou
 function runsCard(runs){return `<div class="card"><h3>Últimas execuções</h3><table>${runs.map(r=>`<tr><td>${esc(r.name)}</td><td class="${r.conclusion==="success"?"ok":r.conclusion?"bad":""}">${esc(r.conclusion||r.status)}</td><td class="mut">${new Date(r.at).toLocaleString("pt-PT")}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">ver</a></td></tr>`).join("")}</table></div>`}
 function pubCard(name,handle,on,how,site){return `<div class="card"><h3>Publicação no ${esc(handle)}: ${on?'<span class="ok">ligada</span>':'<span class="bad">desligada</span>'}</h3><p class="mut">${how}</p><p><a href="${esc(site)}" target="_blank" rel="noopener">Abrir o site ↗</a> · <a href="https://www.instagram.com/${esc(handle.replace("@",""))}/" target="_blank" rel="noopener">Instagram ↗</a></p></div>`}
 
+// ---------- Reels (feitos sozinhos quando acaba a final de um torneio grande; publicas tu, com música)
+async function reelsCard(sp){
+  const [f,pf]=await Promise.all([readFile("reels.json").catch(()=>({data:null})),readFile("reel_posted_ids.json").catch(()=>({data:[]}))]);
+  const done=new Set((pf.data||[]).map(String)),now=Date.now();
+  const it=(((f.data||{}).items)||[]).filter(r=>r.sport===sp).slice().reverse().slice(0,10);
+  const which=sp==="padel"?"P1, P2, Majors e Finals":"Grand Slams, 1000 e 500";
+  if(!it.length)return `<div class="card"><h3>Reels</h3><p class="mut">Ainda não há Reels. São feitos sozinhos quando acaba a final de um torneio grande (${which}): o quadro do torneio na noite da final e o ponto de campeonato no dia seguinte às 12h30.</p></div>`;
+  const K={bracket:"Quadro do torneio",point:"Ponto de campeonato"};
+  const rows=it.map(r=>{const due=new Date(r.due).getTime(),pub=done.has(r.id),ready=due<=now;
+    const st=pub?'<span class="tag ok">publicado</span>':ready?'<span class="tag" style="background:var(--v);color:#0e3a2d">publica agora</span>':`<span class="tag">publica ${fmtTs(r.due)}</span>`;
+    return `<tr><td><video src="/reels/${esc(r.file)}" controls playsinline preload="metadata" width="96" style="border-radius:8px;background:#000"></video></td>
+      <td><b>${esc(K[r.kind]||r.kind)}</b> · ${esc(r.tournament)}<br><span class="mut">${esc(r.champ||"")}</span><br>${st}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><a href="/reels/${esc(r.file)}" download style="font-size:12px;padding:4px 9px;border:1px solid currentColor;border-radius:8px;text-decoration:none;display:inline-block">Descarregar</a>
+      <button class="rcap" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">Copiar legenda</button>
+      <button class="rpub" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">${pub?"Publicado ✓ (desfazer)":"Já publiquei"}</button></div></td></tr>`}).join("");
+  reelsCard.items=it;
+  return `<div class="card" style="border:2px solid var(--v)"><h3>Reels</h3><p class="mut">Publica-os tu no Instagram como Reel, com uma música da biblioteca do Instagram. Descarrega o vídeo, copia a legenda e marca "Já publiquei".</p><table>${rows}</table></div>`}
+function reelsWire(sp,again){
+  $("#main").querySelectorAll("button.rcap").forEach(b=>b.onclick=async()=>{const r=(reelsCard.items||[]).find(x=>x.id===b.dataset.id);
+    try{await navigator.clipboard.writeText(r.caption||"");toast("Legenda copiada.")}catch(e){prompt("Copia a legenda:",r.caption||"")}});
+  $("#main").querySelectorAll("button.rpub").forEach(b=>b.onclick=async()=>{b.disabled=true;
+    try{const f=await readFile("reel_posted_ids.json").catch(()=>({data:[],sha:null}));const L=(f.data||[]).map(String),id=b.dataset.id,on=L.includes(id);
+      await saveFile("reel_posted_ids.json",on?L.filter(x=>x!==id):[...L,id].slice(-500),f.sha);toast(on?"Desfeito.":"Marcado como publicado.");again()}
+    catch(e){toast(e.message,true);b.disabled=false}})}
+
 async function tenisPosts(){
   const [pf,cf,rf,af]=await Promise.all([readFile("posts.json").catch(()=>({data:{}})),readFile("carousels.json").catch(()=>({data:[]})),readFile("results.json").catch(()=>({data:[]})),readFile("archived_posts.json").catch(()=>({data:[],sha:null}))]);
   const ARCH=new Set((af.data||[]).map(String));
@@ -141,12 +166,14 @@ async function tenisPosts(){
     return {img:"/posts/"+e.image,kind:kindOf(e),label:lab(e),score:isRes(e)?e.score:"",now:now_,why:why+exp(e)}});
   const slotTxt=slots.map((h,k)=>`${h}h (${mins[k]?mins[k]+"+":"o melhor"})`).join(" · ");
   const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · publicados hoje: <b>${dayCount} de ${dayMax}</b> (conta tudo, menos os arquivados) · horas: ${slotTxt} · ${nowSc}+ sai logo · sem nenhum post até às ${slots[1]||18}h, a fasquia desce para ${rescue} · resultados caducam ao fim de ${maxAge} h.`;
-  $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("ténis","@beyond100.tennis",on,`Muda em Definições (PUBLISH_AUTO). Máximo ${esc(V.MAX_POSTS_PER_DAY||"3")} resultados por dia; títulos, viragens e surpresas primeiro.`,"/index.html")
+  const RC=await reelsCard("tennis");
+  $("#main").innerHTML=RC+nextCard("A seguir",nxt,head)+pubCard("ténis","@beyond100.tennis",on,`Muda em Definições (PUBLISH_AUTO). Máximo ${esc(V.MAX_POSTS_PER_DAY||"3")} resultados por dia; títulos, viragens e surpresas primeiro.`,"/index.html")
     +postsCard("Todos os posts",items,"últimos 14 dias · arquivaste um no Instagram? carrega em \"Arquivei\" e deixa de contar para os 3 do dia")+(car.length?postsCard("Carrosséis",car):"");
   $("#main").querySelectorAll("button.arch").forEach(b=>b.onclick=async()=>{b.disabled=true;
     try{const f=await readFile("archived_posts.json").catch(()=>({data:[],sha:null}));const L2=(f.data||[]).map(String),id=b.dataset.id,on=L2.includes(id);
       await saveFile("archived_posts.json",on?L2.filter(x=>x!==id):[...L2,id].slice(-500),f.sha);toast(on?"Voltou a contar.":"Arquivado: deixa de contar para os 3 do dia.");tenisPosts()}
-    catch(err){toast(err.message,true);b.disabled=false}})}
+    catch(err){toast(err.message,true);b.disabled=false}});
+  reelsWire("tennis",tenisPosts)}
 
 async function newsletter(){
   const [sf,runs]=await Promise.all([readFile("newsletter_state.json").catch(()=>({data:{}})),api("runs").catch(()=>[])]);
@@ -196,7 +223,9 @@ async function padelPosts(){
     return {img:"/posts/"+e.image,kind:(e.facts||{}).finals?"Campeões":(KIND[e.kind]||e.kind),label:label(e),score:e.score||"",now:inWin&&!full,
       why:(!inWin?`fora do horário: só a partir das ${sFrom}h`:full?`limite do dia cheio (${maxD} resultados)`:"pode sair já")+exp}});
   const head=`Agora ${String(L.h).padStart(2,"0")}:${String(L.m).padStart(2,"0")} em Lisboa · resultados publicados hoje: <b>${resToday}</b> (limite ${maxD}) · horário ${sFrom}h–${sTo}h · 1 post por atualização (às :07), apresentação → antevisões → listas semanais → resultados (maior interesse primeiro).`;
-  $("#main").innerHTML=nextCard("A seguir",nxt,head)+pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"3")} resultados por dia.`,"/padel/index.html")+postsCard("Todos os posts",items)}
+  const RC=await reelsCard("padel");
+  $("#main").innerHTML=RC+nextCard("A seguir",nxt,head)+pubCard("padel","@beyond100.padel",on,`Muda em Definições → Padel (PADEL_PUBLISH). Máximo ${esc(V.PADEL_MAX_POSTS_PER_DAY||"3")} resultados por dia.`,"/padel/index.html")+postsCard("Todos os posts",items);
+  reelsWire("padel",padelPosts)}
 
 // ---------- importar fotos com autorização (comum): cola o link, o robô identifica e guarda
 async function importCard(sp){

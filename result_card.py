@@ -1011,6 +1011,7 @@ def slim(m):
         "games": [list(games[0]), list(games[1])],
         "winner": winner_index(m),
         "tour": m.get("tour"), "gender": m.get("gender"), "q": is_qual(m), "fq": bool(m.get("is_qualifying")),
+        **({"indoor": m["indoor"]} if m.get("indoor") is not None else {}),   # pavilhão ou ar livre (para os Reels)
     }
 
 
