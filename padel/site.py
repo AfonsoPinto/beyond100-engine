@@ -227,7 +227,9 @@ function load(){var want={};rows.forEach(function(r){var d=r.dataset.day;if(d==t
    ['team_1','team_2'].forEach(function(t){var c=r.querySelector('.pd-sc[data-team="'+t+'"]');if(c)c.innerHTML=cells(m.score,t)});
    var ts=r.querySelectorAll('.pd-t');if(m.winner&&ts.length==2){ts[0].className='pd-t '+(m.winner=='team_1'?'w':'l');ts[1].className='pd-t '+(m.winner=='team_2'?'w':'l')}
   });var n=document.getElementById('pd-upd');if(n)n.textContent='Scores updated '+new Date(j.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false})}).catch(function(){})})}
-load();setInterval(function(){if(!document.hidden)load()},120000)})();</script>"""
+load();var P=300000,IDLE=1800000,last=Date.now();setInterval(function(){if(!document.hidden&&Date.now()-last<IDLE)load()},P);
+['pointerdown','keydown'].forEach(function(e){addEventListener(e,function(){var slept=Date.now()-last>IDLE;last=Date.now();if(slept)load()},{passive:true})});
+document.addEventListener('visibilitychange',function(){if(!document.hidden){last=Date.now();load()}})})();</script>"""
 
 EMBLEM = """<svg viewBox="0 0 600 600" role="img" aria-label="Beyond Padel">
 <circle cx="300" cy="300" r="290" fill="#0c2e4a" stroke="#f7f2e6" stroke-width="8"/>
@@ -1954,7 +1956,7 @@ function blocked(v,g){var r=g[1][yt(v.url)],c=g[0].c;return !!(r&&c&&((r.b||[]).
 GEO.then(function(g){return Promise.all(T.map(function(t){return fetch('/api/padel/videos/'+t.id).then(function(r){return r.ok?r.json():{videos:[]}}).catch(function(){return {videos:[]}})})).then(function(rs){return [rs,g]})}).then(function(x){var rs=x[0],g=x[1];
  rs.forEach(function(r,k){(r.videos||[]).forEach(function(v){if((v.started_at||'').slice(0,10)===today){v.t=T[k];v.bl=blocked(v,g);streams.push(v)}})});
  streams.sort(function(a,b){function sc(v){return (v.bl?10:0)+(yt(v.url)?0:2)+(/🇬🇧|cent/i.test(v.name)?0:1)+(v.t.premier?0:3)}return sc(a)-sc(b)});
- if(!streams.length){pl.innerHTML='<p class="pd-note">No live video for today\'s tournaments: the scores below update every 2 minutes.</p>';return}
+ if(!streams.length){pl.innerHTML='<p class="pd-note">No live video for today\'s tournaments: the scores below update every 5 minutes.</p>';return}
  ch.innerHTML=streams.map(function(s,i){return '<button data-i="'+i+'">'+esc(s.t.loc)+' · '+esc(court(s.name))+(yt(s.url)?'':' ↗')+(s.bl?' · not in your country':'')+'</button>'}).join('');
  ch.onclick=function(e){var b=e.target.closest('button');if(b)play(+b.dataset.i)};play(0)});
 function load(){Promise.all(T.map(function(t){return fetch('/api/padel/matches/'+t.id+'?date='+today).then(function(r){return r.ok?r.json():{matches:[]}}).catch(function(){return {matches:[]}})})).then(function(rs){
@@ -1967,7 +1969,9 @@ function load(){Promise.all(T.map(function(t){return fetch('/api/padel/matches/'
    +live.map(function(m){return row(m,'<span class="pd-livetag">LIVE</span> ')}).join('')+next.slice(0,6).map(function(m){return row(m,'')}).join('')
    +(done.length?'<details class="pd-more2"><summary>'+done.length+' finished today</summary>'+done.map(function(m){return row(m,'')}).join('')+'</details>':'')+'</div>'});
  box.innerHTML=html||'<p class="empty">No matches on court right now.</p>';var u=document.getElementById('pd-lu');if(u)u.textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})})}
-load();setInterval(function(){if(!document.hidden)load()},60000)})();</script>"""
+load();var P=300000,IDLE=1800000,last=Date.now();setInterval(function(){if(!document.hidden&&Date.now()-last<IDLE)load()},P);
+['pointerdown','keydown'].forEach(function(e){addEventListener(e,function(){var slept=Date.now()-last>IDLE;last=Date.now();if(slept)load()},{passive:true})});
+document.addEventListener('visibilitychange',function(){if(!document.hidden){last=Date.now();load()}})})();</script>"""
 
 
 def page_live(db):
@@ -1977,7 +1981,7 @@ def page_live(db):
     T = [{"id": t["id"], "loc": t.get("location") or t.get("name"), "lvl": LEVEL_SHORT.get(t.get("level"), ""), "url": tpath(t),
           "premier": (t.get("level") or "") in ("major", "p1", "p2", "finals")} for t in live]
     body = ('<section class="page-h"><h1><span class="dot" style="display:inline-block;margin-right:10px"></span>Live</h1>'
-            '<p>Official live streams and the scores of today\'s matches, updated every 2 minutes.</p></section>'
+            '<p>Official live streams and the scores of today\'s matches, updated every 5 minutes.</p></section>'
             '<div id="pd-player"><div class="pd-card"><p class="pd-note">Loading streams…</p></div></div><div class="pd-seg pd-rchips pd-lchips" id="pd-chips"></div>'
             '<h2 class="dh">On court today <small class="pd-note" id="pd-lu"></small></h2><div id="pd-live"><p class="pd-note">Loading…</p></div>')
     if not live:
@@ -1988,7 +1992,7 @@ def page_live(db):
         return shell("Live padel: streams and scores · Beyond Padel", body, "/padel/live.html", tab="live")
     body += '<script type="application/json" id="pd-lt">' + json.dumps(T).replace("</", "<\\/") + "</script>" + LIVE_PAGE_JS
     return shell("Live padel: streams and scores · Beyond Padel", body, "/padel/live.html", tab="live",
-                 desc="Watch Premier Padel live (official streams) and follow today's padel scores, updated every 2 minutes.")
+                 desc="Watch Premier Padel live (official streams) and follow today's padel scores, updated every 5 minutes.")
 
 
 def page_players(db):
