@@ -76,13 +76,13 @@ TXT = principled("txt", lin((247, 242, 230)), emit=lin((247, 242, 230)), es=3.0)
 
 # público: células de cor aleatória (pessoas), um pouco iluminadas
 CROWD = bpy.data.materials.new("crowd"); CROWD.use_nodes = True; nt = CROWD.node_tree
-b = nt.nodes.get("Principled BSDF"); tc = nt.nodes.new("ShaderNodeTexCoord"); vo = nt.nodes.new("ShaderNodeTexVoronoi")
-hs = nt.nodes.new("ShaderNodeHueSaturation"); vo.inputs["Scale"].default_value = 2.4
-hs.inputs["Saturation"].default_value = 0.55; hs.inputs["Value"].default_value = 0.7
-nt.links.new(tc.outputs["Object"], vo.inputs["Vector"]); nt.links.new(vo.outputs["Color"], hs.inputs["Color"])
+b = nt.nodes.get("Principled BSDF"); tc = nt.nodes.new("ShaderNodeNewGeometry"); vo = nt.nodes.new("ShaderNodeTexVoronoi")
+hs = nt.nodes.new("ShaderNodeHueSaturation"); vo.inputs["Scale"].default_value = 2.3          # células de ~45 cm: uma pessoa
+hs.inputs["Saturation"].default_value = 0.6; hs.inputs["Value"].default_value = 0.45
+nt.links.new(tc.outputs["Position"], vo.inputs["Vector"]); nt.links.new(vo.outputs["Color"], hs.inputs["Color"])
 nt.links.new(hs.outputs["Color"], b.inputs["Base Color"])
 if "Emission Color" in b.inputs:
-    nt.links.new(hs.outputs["Color"], b.inputs["Emission Color"]); b.inputs["Emission Strength"].default_value = 0.12
+    nt.links.new(hs.outputs["Color"], b.inputs["Emission Color"]); b.inputs["Emission Strength"].default_value = 0.08
 b.inputs["Roughness"].default_value = 0.9
 
 # ------------------------------------------------------------------ pavilhão e campo
@@ -126,7 +126,7 @@ stand(HW + 5.0, 0, 30, 0, -math.pi / 2); stand(-HW - 5.0, 0, 30, 0, math.pi / 2)
 # painéis com o nome do torneio
 font = None
 fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "fonts", "Inter-Black.otf")
-if os.path.exists(fp): font = bpy.data.fonts.load(fp)
+# a letra Inter (OTF) falha no Blender: fica a letra de origem do Blender
 def board(y, rot):
     box("board", (0, y, 0.45), (2 * HW + 6, 0.12, 0.9), BOARD)
     box("board_acc", (0, y - math.copysign(0.065, y), 0.06), (2 * HW + 6, 0.01, 0.08), ACCM)
