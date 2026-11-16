@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 STATE, DIR = "reels.json", "reel_files"          # os vídeos ficam em reel_files/ (reels/ é o código)
 LIS = ZoneInfo("Europe/Lisbon")
 KEEP = 24                                  # vídeos guardados no repositório (os mais antigos saem)
+VERSION = 2                                # 2 = com som
 MAX_RENDER = 3                             # vídeos novos por execução, no máximo
 DAYS_BACK = int(os.environ.get("REELS_DAYS_BACK", "2"))   # só finais recentes (nada de recuperar o passado)
 PADEL_LEVELS = {"p1", "p2", "major", "finals", "tour_finals", "premier_finals"}
@@ -179,10 +180,105 @@ def plan(finals, st):
     return [j for j in jobs if j[2] not in st["done"]]
 
 
+# ------------------------------------------------------------------ publicação automática (pelo Make, como os posts)
+def _today_lis(ts_dt): return ts_dt.astimezone(LIS).date() == now().astimezone(LIS).date()
+
+
+def sent_today(sport):
+    """Reels publicados hoje (Lisboa) numa conta: automáticos (reels.json) e os que marcaste à mão no admin."""
+    st = load(); n = 0
+    try: manual = set(json.load(open("reel_posted_ids.json", encoding="utf-8")))
+    except (OSError, ValueError): manual = set()
+    for i in st["items"]:
+        if i["sport"] != sport: continue
+        if i.get("posted"):
+            try:
+                if _today_lis(dt.datetime.strptime(i["posted"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)): n += 1
+            except ValueError: pass
+        elif i["id"] in manual:                    # marcado à mão no admin: conta no dia em que estava marcado
+            try:
+                if _today_lis(dt.datetime.strptime(i["due"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)): n += 1
+            except ValueError: pass
+    return n
+
+
+def _posts_today(sport):
+    """Posts (imagens e carrosséis) já publicados hoje nessa conta, com as mesmas contas dos publicadores."""
+    day = now().astimezone(LIS).date()
+    n = 0
+    if sport == "tennis":
+        try: arch = {str(x) for x in json.load(open("archived_posts.json", encoding="utf-8"))}
+        except (OSError, ValueError): arch = set()
+        for fn in ("posts.json", "carousels.json"):
+            try: d = json.load(open(fn, encoding="utf-8"))
+            except (OSError, ValueError): continue
+            rows = [e for v in d.values() for e in v] if isinstance(d, dict) else d
+            for e in rows:
+                if not e.get("sent") or e.get("skipped") or str(e.get("id")) in arch or not e.get("sent_at"): continue
+                try:
+                    t = dt.datetime.strptime(e["sent_at"][:16], "%Y-%m-%d %H:%M").replace(tzinfo=dt.timezone.utc)
+                    if t.astimezone(LIS).date() == day: n += 1
+                except ValueError: pass
+    else:
+        try: q = json.load(open("padel/data/posts.json", encoding="utf-8")).get("queue", [])
+        except (OSError, ValueError, AttributeError): q = []
+        day0 = dt.datetime.combine(day, dt.time(0), LIS).timestamp()
+        n = sum(1 for e in q if e.get("sent") and not e.get("skipped") and e.get("sent_ts", 0) >= day0)
+    return n
+
+
+def publish():
+    """Publica no máximo 1 Reel por execução, à hora marcada, dentro do horário e do máximo de posts do dia (o Reel conta)."""
+    import requests
+    url = (os.environ.get("MAKE_WEBHOOK_REEL_URL") or "").strip()
+    if not url:
+        print("reels: sem MAKE_WEBHOOK_REEL_URL, ficam no admin para publicar à mão."); return
+    st = load()
+    try: manual = set(json.load(open("reel_posted_ids.json", encoding="utf-8")))
+    except (OSError, ValueError): manual = set()
+    E = lambda k, d: (os.environ.get(k) or d).strip()
+    cfg = {"tennis": dict(on=E("PUBLISH_AUTO", "0").lower() in ("1", "true", "yes", "on"), a=int(E("SEND_FROM", "8")), b=int(E("SEND_TO", "23")), cap=int(E("DAY_MAX_POSTS", "3"))),
+           "padel": dict(on=E("PADEL_PUBLISH", "0") == "1", a=int(E("PADEL_SEND_FROM", "9")), b=int(E("PADEL_SEND_TO", "23")), cap=int(E("PADEL_MAX_POSTS_PER_DAY", "3")))}
+    h = now().astimezone(LIS).hour
+    changed = False
+    order = lambda x: (x["kind"] != "bracket", x["due"], x["gender"] != "men")   # o quadro antes do ponto; masculino primeiro
+    for i in sorted(st["items"], key=order):
+        if i.get("posted") or i.get("skipped") or i["id"] in manual: continue
+        due = dt.datetime.strptime(i["due"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+        if due > now(): continue
+        if (now() - due).total_seconds() > 30 * 3600:
+            i["skipped"] = "caducou"; changed = True; print(f"reels: {i['id']} caducou sem sair"); continue
+        c = cfg[i["sport"]]
+        if not c["on"] or not (c["a"] <= h < c["b"]): continue
+        if sent_today(i["sport"]) >= 1:
+            continue                                   # no máximo 1 Reel por dia em cada conta
+        used = _posts_today(i["sport"]) + sent_today(i["sport"])
+        if used >= c["cap"]:
+            print(f"reels: {i['id']} espera (já saíram {used} de {c['cap']} hoje)"); continue
+        vid = f"https://beyond100tennis.com/reels/{i['file']}"
+        try:
+            if requests.head(vid, timeout=20).status_code != 200:
+                print(f"reels: {i['id']} ainda não está no site"); continue
+            requests.post(url, json={"video_url": vid, "caption": i["caption"], "id": i["id"], "account": i["sport"], "kind": "reel"}, timeout=60).raise_for_status()
+        except Exception as e:
+            print(f"reels: envio de {i['id']} falhou ({type(e).__name__})"); break
+        i["posted"] = iso(now()); changed = True
+        print(f"reels: {i['id']} enviado para o Instagram ({used + 1}/{c['cap']} hoje)")
+        break
+    if changed:
+        json.dump(st, open(STATE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "site"
     st = load(); os.makedirs(DIR, exist_ok=True)
     if "--no-render" not in sys.argv:
+        # vídeos feitos antes do som (v < 2) e ainda por publicar: refazem-se uma vez
+        old = [i for i in st["items"] if i.get("v", 1) < VERSION and not i.get("posted") and not i.get("skipped")]
+        if old:
+            st["items"] = [i for i in st["items"] if i not in old]
+            st["done"] = [x for x in st["done"] if x not in {i["id"] for i in old}]
+            print(f"reels: {len(old)} vídeo(s) antigos voltam a ser feitos com som")
         finals = []
         for fn in (tennis_finals, padel_finals):
             try: finals += fn()
@@ -199,7 +295,7 @@ def main():
                 st["done"].append(rid)                 # não insistir num quadro incompleto
                 continue
             st["items"].append(dict(id=rid, kind=kind, sport=f["sport"], gender=f["gender"], tournament=f["name"], champ=f["champ"],
-                                    file=os.path.basename(path), due=iso(due), made=iso(now()), caption=caption(kind, f, extra), posted=None))
+                                    file=os.path.basename(path), due=iso(due), made=iso(now()), caption=caption(kind, f, extra), posted=None, v=VERSION))
             st["done"].append(rid)
             print(f"reels: {rid} feito ({kind}, para {due.astimezone(LIS):%d/%m %H:%M})")
         # só os mais recentes ficam
@@ -214,4 +310,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    publish() if "publish" in sys.argv[1:2] else main()

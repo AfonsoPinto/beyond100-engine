@@ -510,7 +510,12 @@ def send():
         except (KeyError, ValueError, TypeError):
             pass
     sent_today = [e for e, t in sent if t.date() == now_l.date()]
-    day_count = len(sent_today) + car_today
+    try:                                        # 16/11/2026: os Reels contam para o máximo do dia
+        from reels.make import sent_today as _reels_today
+        reels_today = _reels_today("tennis")
+    except Exception:
+        reels_today = 0
+    day_count = len(sent_today) + car_today + reels_today
     # 9/11/2026: um 4.º post só para algo excecional (12+), no máximo 1 por dia e só se nenhum dos de hoje já era 12+
     exc_done = any(float(e.get("score") or 0) >= now_score for e in sent_today if is_res(e))
     best_pend = max((float(e.get("score") or 0) for _, e in pending if is_res(e)), default=0)

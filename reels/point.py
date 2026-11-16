@@ -535,6 +535,31 @@ def render(out):
         p.stdin.write(im.tobytes())
     p.stdin.close()
     if p.wait() != 0: sys.exit("ffmpeg falhou")
+    try:
+        from reels import sound
+        vt = lambda ts: next((i for i, x in enumerate(TM) if x >= ts), len(TM)) / FPS
+        m = sound.Mix(TOTAL)
+        slow0 = vt(SLOW[0][0])
+        m.beat(0.0, TOTAL - 0.6, bpm=100, mute=[(slow0 - 0.1, len(TM) / FPS + 0.2)], vol=0.7)
+        m.pad(0.0, TOTAL, vol=0.035)
+        m.crowd(0.0, TOTAL, 0.07, swell=(vt(FINISH[0]) if FINISH else len(TM) / FPS, 0.7))
+        m.whoosh(slow0 - 0.1, 0.6, 0.3)
+        hits = {round(th, 3): kind for pl in PLAYERS for th, kind in pl.hits}
+        for (tk, x, y, z) in KP:
+            t_ = vt(tk)
+            if round(tk, 3) in hits:
+                big = hits[round(tk, 3)] == "smash" or tk == max(hits)
+                m.pop(t_, 1.0 if big else 0.6, 0.8 if big else 1.0)
+                if big: m.boom(t_, 0.6)
+            elif z == 0 and abs(y) <= HL + 0.5: m.thock(t_, 0.4)
+            elif SPORT == "padel" and abs(abs(y) - HL) < 0.05 and z < 3.2: m.glass(t_, 0.5)
+        if KP[0][0] == 0: m.pop(0.0, 0.5)
+        m.boom(len(TM) / FPS, 0.7)
+        wav = tmp[:-4] + ".wav"; m.write(wav, TOTAL)
+        ok = sound.mux(tmp, wav, out); os.remove(wav)
+        if ok: os.remove(tmp); return
+    except Exception as e:
+        print("som falhou:", type(e).__name__, e, file=sys.stderr)
     os.replace(tmp, out)
 
 if __name__ == "__main__":
