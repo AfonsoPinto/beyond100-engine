@@ -1,0 +1,8 @@
+{
+ "_nota": "Recintos dos torneios de padel (a Padel API não os dá). Confirmado por pesquisa antes de cada torneio; 'setting' indoor/outdoor.",
+ "750": {
+  "setting": "indoor",
+  "venue": "Hamdan Sports Complex",
+  "fonte": "WAM, 6/5/2025; Gulf News 2026"
+ }
+}
