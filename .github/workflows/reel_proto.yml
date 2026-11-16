@@ -1,0 +1,69 @@
+# Protótipo de Reels realistas (Blender/Cycles). Só corre no ramo proto/blender; não mexe no site.
+# O resultado (imagens ou vídeo) vai para o ramo proto-out deste repositório.
+name: Reel prototype (Blender)
+on:
+  push:
+    branches: [proto/blender]
+permissions:
+  contents: write
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    outputs:
+      parts: ${{ steps.m.outputs.parts }}
+      n: ${{ steps.m.outputs.n }}
+      mode: ${{ steps.m.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: |
+          MODE=$(cat reels/proto/mode.txt | tr -d '[:space:]')
+          if [ "$MODE" = "stills" ]; then echo 'parts=[0]' >> $GITHUB_OUTPUT; echo 'n=1' >> $GITHUB_OUTPUT; else echo 'parts=[0,1,2,3,4,5,6,7]' >> $GITHUB_OUTPUT; echo 'n=8' >> $GITHUB_OUTPUT; fi
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+  render:
+    needs: prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.prep.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pillow
+      - name: Blender 4.2 LTS
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 >/dev/null
+          curl -sL https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz | tar -xJ
+      - run: python -m reels.proto.export reels/proto/dubai.json frames.json
+      - name: Render
+        run: |
+          start=$(date +%s)
+          ./blender-4.2.3-linux-x64/blender -b --factory-startup -P reels/proto/scene.py -- frames.json ${{ matrix.part }} ${{ needs.prep.outputs.n }} out ${{ needs.prep.outputs.mode }} 2>&1 | grep -E "frame .* feito|Error|Traceback|error" | tail -40
+          echo "tempo: $(( $(date +%s) - start )) s"
+          ls out | wc -l
+      - uses: actions/upload-artifact@v4
+        with: { name: "frames-${{ matrix.part }}", path: out/, retention-days: 3 }
+  compose:
+    needs: [prep, render]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pillow && sudo apt-get install -y -qq ffmpeg >/dev/null
+      - uses: actions/download-artifact@v4
+        with: { pattern: "frames-*", merge-multiple: true, path: frames }
+      - run: |
+          mkdir -p result
+          if [ "${{ needs.prep.outputs.mode }}" = "stills" ]; then python -m reels.proto.compose reels/proto/dubai.json frames result stills
+          else python -m reels.proto.compose reels/proto/dubai.json frames result/reel_point_dubai_blender.mp4 full; fi
+          ls -la result
+      - name: Publish to branch proto-out
+        run: |
+          cd result && git init -q && git checkout -q -b proto-out
+          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
+          git add -A && git commit -q -m "proto ${{ needs.prep.outputs.mode }} $(date -u +%H:%M)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:proto-out

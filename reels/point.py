@@ -524,17 +524,8 @@ def frame_at(i):
     return outro(LAST, (i - n) / FPS / OUT)
 LAST = None
 
-def render(out):
-    tmp = out[:-4] + ".part.mp4"
-    p = C.encoder(tmp, W, H, FPS)
-    N = int(TOTAL * FPS)
-    for i in range(N):
-        im = frame_at(i)
-        k = seg(i / FPS, TOTAL - 0.35, TOTAL)
-        if k > 0: im = Image.blend(im, Image.new("RGB", (W, H), BG), k)
-        p.stdin.write(im.tobytes())
-    p.stdin.close()
-    if p.wait() != 0: sys.exit("ffmpeg falhou")
+def soundtrack(tmp, out):
+    """Junta o som (gerado por código) ao vídeo tmp e escreve out; True se correu bem."""
     try:
         from reels import sound
         vt = lambda ts: next((i for i, x in enumerate(TM) if x >= ts), len(TM)) / FPS
@@ -557,9 +548,24 @@ def render(out):
         m.boom(len(TM) / FPS, 0.7)
         wav = tmp[:-4] + ".wav"; m.write(wav, TOTAL)
         ok = sound.mux(tmp, wav, out); os.remove(wav)
-        if ok: os.remove(tmp); return
+        if ok: os.remove(tmp); return True
     except Exception as e:
         print("som falhou:", type(e).__name__, e, file=sys.stderr)
+    return False
+
+
+def render(out):
+    tmp = out[:-4] + ".part.mp4"
+    p = C.encoder(tmp, W, H, FPS)
+    N = int(TOTAL * FPS)
+    for i in range(N):
+        im = frame_at(i)
+        k = seg(i / FPS, TOTAL - 0.35, TOTAL)
+        if k > 0: im = Image.blend(im, Image.new("RGB", (W, H), BG), k)
+        p.stdin.write(im.tobytes())
+    p.stdin.close()
+    if p.wait() != 0: sys.exit("ffmpeg falhou")
+    if soundtrack(tmp, out): return
     os.replace(tmp, out)
 
 if __name__ == "__main__":
