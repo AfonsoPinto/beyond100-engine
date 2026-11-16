@@ -1,5 +1,5 @@
 """Newsletter semanal Beyond100 (ténis + padel), montada só com os dados que já temos. Não envia nada:
-gera site/newsletter/latest.html (pré-visualização no site) e newsletter.html (HTML de email, CSS em linha, pronto para colar
+gera newsletter_img/latest.html (copiado para site/newsletter/) (pré-visualização no site) e newsletter.html (HTML de email, CSS em linha, pronto para colar
 no Buttondown/Brevo ou para enviar por API mais tarde).
 
 Secções: campeões da semana para lá do top 100 · surpresas · subidas no ranking (oficial) · qualifiers · padel (campeões, Race)
@@ -40,7 +40,8 @@ def week_data(today=None, start=None):
     today = today or dt.date.today()
     # 13/11/2026: segunda a domingo da semana (antes eram 7 dias para trás e o domingo anterior entrava em duas semanas)
     start = (start or (today - dt.timedelta(days=today.weekday()))).isoformat()
-    res = [r for r in _load("results.json", []) if r.get("date", "") >= start and r.get("winner") in (1, 2)
+    end = today.isoformat()
+    res = [r for r in _load("results.json", []) if start <= r.get("date", "") <= end and r.get("winner") in (1, 2)
            and " / " not in r["p1"]["name"] and not r.get("q")]
     champs = []
     for r in res:
@@ -81,7 +82,7 @@ def week_data(today=None, start=None):
         from padel.fetch import load_matches
         ties = {}
         for m in load_matches().values():
-            if m.get("round") == 1 and m.get("winner") in ("team_1", "team_2") and (m.get("played_at") or "") >= start:
+            if m.get("round") == 1 and m.get("winner") in ("team_1", "team_2") and start <= (m.get("played_at") or "") <= end:
                 t = tours.get(str(m.get("tid"))) or {}
                 tie = m.get("tie")
                 if isinstance(tie, dict):                          # 10/11/2026: Mundial (seleções): o campeão é o país
@@ -127,7 +128,12 @@ def _photo_file(name):
     return fp, _load("photos/credits.json", {}).get(f"{sl}.jpg")
 
 
-def _assets(d, out="site/newsletter"):
+NL_DIR = "newsletter_img"     # 16/11/2026: imagens guardadas no repositório de dados (antes só existiam no site da hora e a semana
+                              # anterior desaparecia na segunda-feira, deixando a newsletter enviada sem imagens)
+KEEP_WEEKS = 26
+
+
+def _assets(d, out=NL_DIR):
     """Imagens próprias da newsletter (renderizadas como os cartões do Instagram, por isso iguais em qualquer cliente de email):
     a capa do campeão da semana e miniaturas redondas dos jogadores. Vão para o site em /newsletter/w<semana>/."""
     from PIL import Image, ImageDraw, ImageOps
@@ -491,22 +497,49 @@ def draft(d, html_out):
     return True
 
 
-def main():
-    d = week_data()
+def _prep(d):
     d["top"] = (d["beyond"] or d["champs"] or [None])[0]
     rest = [c for c in d["beyond"] + d["champs"] if c is not d["top"]]
     d["others"] = list({id(c): c for c in rest}.values())[:6]          # primeiro os de fora do top 100
+    return d
+
+
+def publish_dir(site="site"):
+    """Copia as imagens guardadas (todas as semanas) para o site. Corre em todas as atualizações, também nas rápidas."""
+    if os.path.isdir(NL_DIR):
+        import shutil
+        shutil.copytree(NL_DIR, os.path.join(site, "newsletter"), dirs_exist_ok=True)
+
+
+def main():
+    import shutil
+    # a semana anterior tem de continuar no site (os emails enviados apontam para lá); se faltar, volta a fazê-la.
+    # Vem antes da semana atual, para as capas dos convites (cover.jpg, cover-padel.jpg) ficarem as da semana atual.
+    try:
+        last_sun = dt.date.today() - dt.timedelta(days=dt.date.today().weekday() + 1)
+        if not os.path.isdir(os.path.join(NL_DIR, f"w{last_sun.isocalendar()[1]}")):
+            _assets(_prep(week_data(today=last_sun)))
+            print(f"Newsletter: imagens da semana {last_sun.isocalendar()[1]} repostas.")
+    except Exception as e:
+        print("Newsletter: semana anterior falhou", type(e).__name__, e)
+    d = _prep(week_data())
     try:
         assets = _assets(d)
     except Exception as e:
         print("Newsletter: imagens falharam", type(e).__name__, e)
         assets = None
+    os.makedirs(NL_DIR, exist_ok=True)
+    weeks = sorted([x for x in os.listdir(NL_DIR) if x.startswith("w") and os.path.isdir(os.path.join(NL_DIR, x))],
+                   key=lambda x: os.path.getmtime(os.path.join(NL_DIR, x)))
+    for x in weeks[:-KEEP_WEEKS]:
+        shutil.rmtree(os.path.join(NL_DIR, x), ignore_errors=True)
     out = render(d, assets)
     with open("newsletter.html", "w", encoding="utf-8") as f:
         f.write(out)
-    os.makedirs("site/newsletter", exist_ok=True)
-    with open("site/newsletter/latest.html", "w", encoding="utf-8") as f:
+    os.makedirs(NL_DIR, exist_ok=True)
+    with open(os.path.join(NL_DIR, "latest.html"), "w", encoding="utf-8") as f:
         f.write(out.replace("<head>", "<head><meta name=robots content=noindex>", 1))
+    publish_dir()
     print(f"Newsletter: semana {d['week']}, {len(d['champs'])} campeões, {len(d['upsets'])} surpresas, {len(d['pchamps'])} campeões de padel.")
     _status(d)
     try:
