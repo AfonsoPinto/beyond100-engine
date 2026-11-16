@@ -438,6 +438,26 @@ def render(out, total):
         p.stdin.write(im.tobytes())
     p.stdin.close()
     if p.wait() != 0: sys.exit("ffmpeg falhou")
+    try:
+        from reels import sound
+        m = sound.Mix(total)
+        m.beat(0.0, total - 0.6, bpm=104, mute=[(11.2, 15.45)])
+        m.pad(0.0, total, vol=0.04)
+        for k in range(4): m.whoosh(ST[k] - 0.25, 0.4, 0.22)
+        for (ti, x, y, r, lk) in impacts:
+            v = {R[0]: 0.16, R[1]: 0.22, R[2]: 0.32, R[3]: 0.45}.get(r, 0.95)
+            m.pop(ti, v, 1.0 if r < R[4] else 0.8)
+            if r >= R[4]: m.thock(ti + 0.02, 0.5)
+        for (ti, *_r) in UPS: m.boom(ti, 0.55)
+        m.heartbeat(11.3, FIN["land"] - 0.5, vol=0.6)
+        m.riser(FIN["ko"] - 1.6, FIN["land"], 0.18)
+        m.crowd(ST[4] - 0.3, total, 0.05, swell=(FIN["land"], 0.55))
+        m.boom(FIN["land"], 0.9)
+        wav = tmp[:-4] + ".wav"; m.write(wav, total)
+        ok = sound.mux(tmp, wav, out); os.remove(wav)
+        if ok: os.remove(tmp); return
+    except Exception as e:
+        print("som falhou:", type(e).__name__, e, file=sys.stderr)
     os.replace(tmp, out)
 
 if __name__ == "__main__":

@@ -973,6 +973,11 @@ def send():
             e["sent"], e["skipped"] = True, "stale"
     day0 = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     res_today = sum(1 for e in sent if e.get("sent_ts", 0) >= day0)   # 9/11/2026: o máximo do dia conta todos os posts, não só resultados
+    try:                                                           # 16/11/2026: os Reels contam para o máximo do dia
+        from reels.make import sent_today as _reels_today
+        res_today += _reels_today("padel")
+    except Exception:
+        pass
     cap = MAX_DAY if premier_on(load("tournaments.json", {}), now.date().isoformat()) else min(MAX_DAY, FIP_MAX_DAY)
     pend = [e for e in q["queue"] if not e.get("sent")]
     intro = sorted([e for e in pend if e["kind"] == "intro"], key=lambda e: e["n"])

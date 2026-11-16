@@ -94,15 +94,15 @@ async function reelsCard(sp){
   const which=sp==="padel"?"P1, P2, Majors e Finals":"Grand Slams, 1000 e 500";
   if(!it.length)return `<div class="card"><h3>Reels</h3><p class="mut">Ainda não há Reels. São feitos sozinhos quando acaba a final de um torneio grande (${which}): o quadro do torneio na noite da final e o ponto de campeonato no dia seguinte às 12h30.</p></div>`;
   const K={bracket:"Quadro do torneio",point:"Ponto de campeonato"};
-  const rows=it.map(r=>{const due=new Date(r.due).getTime(),pub=done.has(r.id),ready=due<=now;
-    const st=pub?'<span class="tag ok">publicado</span>':ready?'<span class="tag" style="background:var(--v);color:#0e3a2d">publica agora</span>':`<span class="tag">publica ${fmtTs(r.due)}</span>`;
+  const rows=it.map(r=>{const due=new Date(r.due).getTime(),pub=done.has(r.id)||!!r.posted,ready=due<=now;
+    const st=r.posted?`<span class="tag ok">publicado sozinho ${fmtTs(r.posted)}</span>`:pub?'<span class="tag ok">publicado</span>':r.skipped?`<span class="tag">não saiu (${esc(r.skipped)})</span>`:ready?'<span class="tag" style="background:var(--v);color:#0e3a2d">publica agora</span>':`<span class="tag">publica ${fmtTs(r.due)}</span>`;
     return `<tr><td><video src="/reels/${esc(r.file)}" controls playsinline preload="metadata" width="96" style="border-radius:8px;background:#000"></video></td>
       <td><b>${esc(K[r.kind]||r.kind)}</b> · ${esc(r.tournament)}<br><span class="mut">${esc(r.champ||"")}</span><br>${st}
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><a href="/reels/${esc(r.file)}" download style="font-size:12px;padding:4px 9px;border:1px solid currentColor;border-radius:8px;text-decoration:none;display:inline-block">Descarregar</a>
       <button class="rcap" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">Copiar legenda</button>
       <button class="rpub" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">${pub?"Publicado ✓ (desfazer)":"Já publiquei"}</button></div></td></tr>`}).join("");
   reelsCard.items=it;
-  return `<div class="card" style="border:2px solid var(--v)"><h3>Reels</h3><p class="mut">Publica-os tu no Instagram como Reel, com uma música da biblioteca do Instagram. Descarrega o vídeo, copia a legenda e marca "Já publiquei".</p><table>${rows}</table></div>`}
+  return `<div class="card" style="border:2px solid var(--v)"><h3>Reels</h3><p class="mut">Saem sozinhos à hora marcada (com som próprio), dentro do horário e do máximo de 3 posts por dia: o Reel conta. Se preferires publicar um à mão com música do Instagram, descarrega-o, copia a legenda e marca "Já publiquei" antes da hora.</p><table>${rows}</table></div>`}
 function reelsWire(sp,again){
   $("#main").querySelectorAll("button.rcap").forEach(b=>b.onclick=async()=>{const r=(reelsCard.items||[]).find(x=>x.id===b.dataset.id);
     try{await navigator.clipboard.writeText(r.caption||"");toast("Legenda copiada.")}catch(e){prompt("Copia a legenda:",r.caption||"")}});
