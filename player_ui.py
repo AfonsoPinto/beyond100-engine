@@ -132,7 +132,7 @@ def _name_size(name):
     return ("2.9rem" if longest <= 8 else "2.45rem" if longest <= 10 else "2.1rem" if longest <= 12 else "1.75rem" if longest <= 15 else "1.45rem")
 
 
-def hero(back_href, back_label, photo, name, chips, pill="", credit="", pill_href=""):
+def hero(back_href, back_label, photo, name, chips, pill="", credit="", pill_href="", follow=""):
     """Topo: foto (ou iniciais), estado mais recente, nome e factos. chips: lista de HTML já escapado."""
     words = (name or "?").split()
     ini = "".join(w[0] for w in words[:2]).upper()
@@ -145,7 +145,7 @@ def hero(back_href, back_label, photo, name, chips, pill="", credit="", pill_hre
     big = _name_size(name)
     return (f'<a class="pv-back" href="{esc(back_href)}">← {esc(back_label)}</a>'
             f'<section class="pv-hero{"" if photo else " np"}">{pic}'
-            f'<div class="tx">{pl}<h1 style="--fs:{big}">{" ".join(f"<span>{esc(w)}</span>" for w in words)}</h1>{ch}</div>'
+            f'<div class="tx">{pl}<h1 style="--fs:{big}">{" ".join(f"<span>{esc(w)}</span>" for w in words)}</h1>{ch}{follow}</div>'
             f'{f"<p class=pv-cr>{credit}</p>" if credit else ""}</section>')
 
 
