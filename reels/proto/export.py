@@ -31,8 +31,10 @@ from reels import common as C
 bw, bh = 4096, 240
 im = Image.new("RGB", (bw, bh), (10, 18, 32)); d = ImageDraw.Draw(im)
 d.rectangle([0, bh - 18, bw, bh], fill=C.ACC)
-txt = P.V["board"].replace("·", "•"); f = C.F("k", 120); tw = d.textlength(txt, font=f)
-x = 60
-while x < bw: d.text((x, bh / 2 - 8), txt, font=f, fill=C.CREAM, anchor="lm"); x += tw + 220
+# alterna o nome do torneio com a nossa marca (publicidade própria; nunca logótipos de patrocinadores reais)
+segs = [(P.V["board"].replace("·", "•"), C.CREAM), ("BEYOND 100  •  beyond100tennis.com", C.ACC)]
+f = C.F("k", 112); x = 60; k = 0
+while x < bw:
+    txt, colr = segs[k % 2]; d.text((x, bh / 2 - 8), txt, font=f, fill=colr, anchor="lm"); x += d.textlength(txt, font=f) + 200; k += 1
 im.save(os.path.join(os.path.dirname(out) or ".", "board.png"))
 print(f"{len(frames)} frames exportados")

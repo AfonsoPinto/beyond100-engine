@@ -80,7 +80,7 @@ class Rig:
         best = None
         for th, kind, B in self.hits:
             dt = t - th
-            win = (-0.9, 0.85) if kind == "smash" else (-0.65, 0.8)
+            win = (-0.9, 0.85) if kind in ("smash", "serve") else (-0.65, 0.8)
             if win[0] <= dt <= win[1] and (best is None or abs(dt) < abs(best[0])):
                 best = (dt, kind, B)
         return best
@@ -98,10 +98,11 @@ class Rig:
         coil = 0.0
         if sw:
             dt, kind, B = sw
-            if kind == "smash":
+            if kind in ("smash", "serve"):
                 coil = -0.9 * smooth((dt + 0.9) / 0.5) if dt < -0.12 else (-0.9 + 1.5 * ease_out((dt + 0.12) / 0.3) if dt < 0.35 else 0.6 * (1 - smooth((dt - 0.35) / 0.5)))
             else:
                 coil = -1.25 * smooth((dt + 0.65) / 0.35) if dt < -0.12 else (-1.25 + 2.0 * ease_out((dt + 0.12) / 0.3) if dt < 0.3 else 0.75 * (1 - smooth((dt - 0.3) / 0.5)))
+            if kind == "bh": coil = -coil                         # esquerda: roda para o outro lado
             yaw = yaw * 0.3
         f = norm(rotz(f0, yaw + coil * 0.75)); s = norm(rotz(s0, yaw + coil * 0.75))      # ombros
         fh = norm(rotz(f0, yaw + coil * 0.35)); shs = norm(rotz(s0, yaw + coil * 0.35))  # anca
@@ -110,15 +111,15 @@ class Rig:
         run = min(1, sp / 1.8)
         hz = 0.88 - 0.03 * run + 0.025 * abs(math.sin(ph)) * run
         jump = 0.0
-        if sw and sw[1] == "smash":
-            dt = sw[0]; jump = 0.45 * math.sin(math.pi * clamp((dt + 0.3) / 0.62, 0, 1))
+        if sw and sw[1] in ("smash", "serve"):
+            dt = sw[0]; jump = (0.45 if sw[1] == "smash" else 0.12) * math.sin(math.pi * clamp((dt + 0.3) / 0.62, 0, 1))
         elif sw:
             hz -= 0.07 * smooth(1 - abs(sw[0]) / 0.35)            # baixa-se para bater
         for th in self.opp:                                      # split-step quando o adversário bate
             u = (t - (th - 0.12)) / 0.28
             if 0 <= u <= 1 and sp < 2.5: jump = max(jump, 0.07 * math.sin(math.pi * u))
         P = (x, y, hz + jump)
-        lean = 0.05 + 0.1 * run + (0.08 if sw and sw[1] != "smash" and abs(sw[0]) < 0.3 else 0)
+        lean = 0.05 + 0.1 * run + (0.08 if sw and sw[1] not in ("smash", "serve") and abs(sw[0]) < 0.3 else 0)
         C = add(P, add((0, 0, 0.5), mul(f, lean)))
         neck = add(C, (0, 0, 0.1)); head = add(neck, add((0, 0, 0.15), mul(f, 0.02)))
         shL, shR = add(C, mul(s, -0.2)), add(C, mul(s, 0.2))
@@ -131,11 +132,11 @@ class Rig:
         gl = (P[0], P[1], 0.0)
         aL = add(add(gl, mul(shs, -0.17)), add(mul(mv, dl), (0, 0, 0.08 + jump * 0.85 + lift * max(0, math.cos(ph)))))
         aR = add(add(gl, mul(shs, 0.17)), add(mul(mv, dr), (0, 0, 0.08 + jump * 0.85 + lift * max(0, -math.cos(ph)))))
-        if sw and sw[1] != "smash":                                # passo à frente com o pé contrário no batimento
+        if sw and sw[1] not in ("smash", "serve"):                 # passo à frente com o pé contrário no batimento
             k = smooth(1 - abs(sw[0] + 0.05) / 0.4)
             aL = add(aL, add(mul(fh, 0.28 * k), mul(shs, 0.05 * k)))
             aR = add(aR, mul(fh, -0.12 * k))
-        if jump > 0.05 and sw and sw[1] == "smash":                # no ar: pés juntos e uma perna dobrada
+        if jump > 0.05 and sw and sw[1] in ("smash", "serve"):                # no ar: pés juntos e uma perna dobrada
             aR = add(aR, add(mul(fh, -0.18), (0, 0, 0.12)))
         kL, aL = ik(hipL, aL, THIGH, SHIN, add(mul(fh, 1.0), mul(shs, -0.2)))
         kR, aR = ik(hipR, aR, THIGH, SHIN, add(mul(fh, 1.0), mul(shs, 0.2)))
@@ -148,13 +149,19 @@ class Rig:
         lh = None
         if sw:
             dt, kind, B = sw
-            if kind == "smash":
+            if kind in ("smash", "serve"):
                 back_rc = add(shR, add((0, 0, 0.18), mul(f, -0.32))); back_rd = norm(add((0, 0, -0.9), mul(f, -0.35)))
                 con_rd = norm(add((0, 0, 0.85), mul(f, 0.45)))
                 fol_rc = add(P, add(mul(s, -0.3), add(mul(f, 0.35), (0, 0, 0.35)))); fol_rd = norm(add((0, 0, -0.75), add(mul(f, 0.5), mul(s, -0.3))))
                 ks = [(-0.9, ready_rc, ready_rd), (-0.55, back_rc, back_rd), (-0.13, back_rc, back_rd), (0.0, B, con_rd),
                       (0.3, fol_rc, fol_rd), (0.85, ready_rc, ready_rd)]
                 if dt < -0.05: lh = add(shL, add((0, 0, 0.55), mul(f, 0.22)))           # braço livre a apontar à bola
+            elif kind == "bh":                                       # esquerda: prepara do lado esquerdo e termina por cima do ombro direito
+                back_rc = add(shL, add(mul(s, -0.32), add(mul(f, -0.42), (0, 0, 0.08)))); back_rd = norm(add(mul(f, -0.7), add((0, 0, 0.5), mul(s, -0.25))))
+                con_rd = norm(add(mul(s, -0.9), add(mul(f, 0.25), (0, 0, 0.15))))
+                fol_rc = add(shR, add((0, 0, 0.28), mul(f, 0.2))); fol_rd = norm(add((0, 0, 0.8), add(mul(s, 0.45), mul(f, 0.1))))
+                ks = [(-0.65, ready_rc, ready_rd), (-0.32, back_rc, back_rd), (0.0, B, con_rd), (0.32, fol_rc, fol_rd), (0.8, ready_rc, ready_rd)]
+                lh = None                                                     # as duas mãos na raquete
             else:
                 back_rc = add(shR, add(mul(s, 0.38), add(mul(f, -0.42), (0, 0, 0.05)))); back_rd = norm(add(mul(f, -0.7), add((0, 0, 0.5), mul(s, 0.25))))
                 con_rd = norm(add(mul(s, 0.9), add(mul(f, 0.25), (0, 0, 0.15))))

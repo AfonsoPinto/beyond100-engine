@@ -347,7 +347,57 @@ def tennis_script():
     slow = [(3.6, 4.2, 0.22), (4.2, 4.6, 0.5)]
     return KP, P, shots, slow, 5.6, {}
 
-KP, PLAYERS, SHOTS, SLOW, SIM_END, _ = padel_script() if SPORT == "padel" else tennis_script()
+def build_play(sport, name):
+    """Jogada da biblioteca (reels/plays.py): bola, jogadores que vão à bola, câmaras e câmara lenta no último batimento."""
+    from reels.plays import LIB
+    p = LIB[sport][name]; ev = p["ev"]
+    KP = [(e[0], e[1], e[2], e[3]) for e in ev]
+    A = (247, 242, 230); B = (255, 138, 120)
+    n = len(p["homes"]); faces = [1, 1, -1, -1] if n == 4 else [1, -1]
+    cols = [A, A, B, B] if n == 4 else [A, B]
+    hits = [(e[0], e[4], e[5], (e[1], e[2], e[3])) for e in ev if e[4] is not None]
+    players = []
+    for i in range(n):
+        f = faces[i]; hx, hy = p["homes"][i]; way = [(0.0, hx, hy)]; my = []
+        for th, who, kind, c in hits:
+            if who != i: continue
+            off = 0.55 if kind == "fh" else -0.55 if kind == "bh" else 0.25
+            bx, by = c[0] - f * off, c[1] - f * (0.35 if kind in ("smash", "serve") else 0.3)
+            if th < 0.05: way = [(0.0, bx, by)]
+            else: way.append((th - 0.05, bx, by))
+            my.append((th, kind))
+            nxt = [h for h in hits if h[1] == i and h[0] > th]
+            if not nxt or nxt[0][0] - th > 1.4: way.append((th + 0.9, hx, hy))
+        for (t_, x_, y_) in p.get("moves", {}).get(i, []): way.append((t_, x_, y_))
+        way.sort(key=lambda w: w[0])
+        clean = []
+        for w in way:
+            if clean and w[0] - clean[-1][0] < 0.12: clean[-1] = w
+            else: clean.append(w)
+        players.append(Player(clean, cols[i], f, my))
+    tf, fw, fk, fc = hits[-1]; f = faces[fw]
+    hb = players[fw].base(tf)
+    end = ev[-1][0] + 0.6
+    bc = ((0.0, -17.5, 7.6), (0.0, -1.5, 0.3), 52) if sport == "padel" else ((0.0, -21.0, 7.0), (0.0, -2.0, 0.3), 50)
+    t1 = min(1.6, max(0.6, tf * 0.35))
+    shots = [(0.0, t1, ("fixed",) + bc)]
+    if tf - 0.55 - t1 > 0.8:
+        shots.append((t1, tf - 0.55, ("side", 7.6 if sport == "padel" else 8.6, 2.0, 60 if sport == "padel" else 58)))
+    up = 2.1 if fk in ("smash", "serve") else 1.5
+    side = 1 if hb[0] <= 0 else -1                                   # câmara do lado de dentro do campo
+    cpos = (hb[0] + side * 3.2, hb[1] + f * 3.4, up)
+    shots.append((shots[-1][1], tf + 0.35, ("fixed", cpos, (hb[0], hb[1], fc[2] * 0.8 + 0.3), 50)))
+    shots.append((tf + 0.35, end, ("follow", (hb[0] * 0.4, hb[1] - f * 4.5, 2.6), 62)))
+    slow = [(tf - 0.3, tf + 0.3, 0.22), (tf + 0.3, tf + 0.9, 0.5)]
+    fin = (tf + 0.45, end) + tuple(p["title"])
+    return KP, players, shots, slow, end, fin
+
+PLAY = V.get("play")
+if PLAY:
+    KP, PLAYERS, SHOTS, SLOW, SIM_END, _FIN = build_play(SPORT, PLAY)
+else:
+    KP, PLAYERS, SHOTS, SLOW, SIM_END, _ = padel_script() if SPORT == "padel" else tennis_script()
+    _FIN = None
 
 CTX = dict(V, foot="Illustrated rally · real score and title")
 
@@ -378,7 +428,7 @@ def build_timemap():
         sim += rate / FPS
     return m
 TM = build_timemap()
-FINISH = (6.05, SIM_END, "POR 3!", "Smash out over the back wall") if SPORT == "padel" else (4.6, SIM_END, "WINNER.", "Forehand down the line")
+FINISH = _FIN or ((6.05, SIM_END, "POR 3!", "Smash out over the back wall") if SPORT == "padel" else (4.6, SIM_END, "WINNER.", "Forehand down the line"))
 INTRO = 0.0
 OUT = 3.4                                     # cartão final
 TOTAL = len(TM) / FPS + OUT
