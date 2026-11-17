@@ -387,7 +387,7 @@ def build_play(sport, name):
     side = 1 if hb[0] <= 0 else -1                                   # câmara do lado de dentro do campo
     cpos = (hb[0] + side * 3.2, hb[1] + f * 3.4, up)
     shots.append((shots[-1][1], tf + 0.35, ("fixed", cpos, (hb[0], hb[1], fc[2] * 0.8 + 0.3), 50)))
-    shots.append((tf + 0.35, end, ("follow", (hb[0] * 0.4, hb[1] - f * 4.5, 2.6), 62)))
+    shots.append((tf + 0.35, end, ("follow", (hb[0] + side * 2.6, hb[1] - f * 5.5, 3.3), 60)))   # de lado e acima: o jogador não tapa a bola
     slow = [(tf - 0.3, tf + 0.3, 0.22), (tf + 0.3, tf + 0.9, 0.5)]
     fin = (tf + 0.45, end) + tuple(p["title"])
     return KP, players, shots, slow, end, fin
@@ -543,7 +543,9 @@ def hud(d, t, vt, slow):
     if fx and fx[0] <= t < fx[1]:
         u = (t - fx[0]) / (fx[1] - fx[0]); a = int(255 * min(1, u * 6) * min(1, (1 - u) * 5))
         sc = 1 + 0.25 * (1 - ease(min(1, u * 4)))
-        f = F("d", int(150 * sc)); d.text((540, 1010), fx[2], font=f, fill=ACC + (a,), anchor="mm")
+        size = 150
+        while size > 70 and d.textlength(fx[2], font=F("d", size)) > 900: size -= 6     # títulos compridos cabem no ecrã
+        f = F("d", int(size * sc)); d.text((540, 1010), fx[2], font=f, fill=ACC + (a,), anchor="mm")
         d.text((540, 1120), fx[3], font=F("x", 34), fill=CREAM + (a,), anchor="mm")
 
 def outro(last, u):
