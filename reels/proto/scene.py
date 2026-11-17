@@ -162,6 +162,7 @@ SHIRTS = [(200, 196, 190), (232, 230, 226), (40, 44, 52), (196, 64, 60), (60, 92
           (20, 22, 28), (210, 120, 70), (120, 70, 140), (240, 240, 240)]
 SKINS = [(222, 184, 150), (196, 150, 112), (150, 104, 70), (100, 70, 50), (236, 200, 170)]
 cbm = bmesh.new(); col_layer = cbm.loops.layers.color.new("col")
+HEADS = []      # (posição, pele, cabelo, escala): cabeças do público, que seguem a bola (geometry nodes)
 PANTS = [(40, 44, 56), (70, 80, 100), (30, 30, 34), (120, 110, 96), (180, 176, 168)]
 def _ell(M, colr, sub=1):
     r_ = bmesh.ops.create_icosphere(cbm, subdivisions=sub, radius=1.0, matrix=M)
@@ -180,8 +181,7 @@ def person(pos, rot, detail=False):
     M = Matrix.Translation(pos) @ Matrix.Rotation(rot + math.pi, 4, "Z")    # frente = -y local, virada para o campo
     if not detail:
         _ell(M @ Matrix.Translation((lean, 0, 0.32)) @ Matrix.Diagonal((0.21, 0.13, 0.3, 1)), c)
-        _ell(M @ Matrix.Translation((lean * 1.4, 0.02, 0.72)) @ Matrix.Diagonal((0.105,) * 3 + (1,)), k)
-        _ell(M @ Matrix.Translation((lean * 1.4, 0.05, 0.77)) @ Matrix.Diagonal((0.095,) * 3 + (1,)), hcol)
+        HEADS.append((M @ Vector((lean * 1.4, 0.03, 0.74)), k, hcol, 1.15))
         return
     # espectador sentado (frente = -y local): coxas para a frente, braços no colo, cabeça um pouco virada
     pc = lin(RND.choice(PANTS)); sleeve = c if RND.random() < 0.4 else k
@@ -196,9 +196,7 @@ def person(pos, rot, detail=False):
         _seg(M, sh, el, 0.05, sleeve)                                                                          # braço
         _seg(M, el, (sx * 0.08, -0.3, 0.17), 0.04, k)                                                          # antebraço no colo
     _seg(M, (hx * 0.8, 0, 0.56), (hx, -0.01, 0.66), 0.045, k)                                                  # pescoço
-    H = M @ Matrix.Translation((hx, -0.01, 0.75)) @ Matrix.Rotation(turn, 4, "Z")
-    _ell(H @ Matrix.Diagonal((0.085, 0.095, 0.11, 1)), k, 2)                                                   # cabeça
-    _ell(H @ Matrix.Translation((0, 0.022, 0.03)) @ Matrix.Diagonal((0.09, 0.095, 0.1, 1)), hcol, 2)          # cabelo
+    HEADS.append((M @ Vector((hx, -0.01, 0.75)), k, hcol, 1.0))                                              # cabeça (instância)
 def stand(cx, cy, w, rot, rows=12):
     R = Matrix.Rotation(rot, 3, "Z")
     for r in range(rows):
@@ -215,6 +213,79 @@ stand(0, STAND["y"], STAND["wy"], 0, R_); stand(0, -STAND["y"], STAND["wy"], mat
 stand(STAND["x"], 0, STAND["wx"], -math.pi / 2, R_); stand(-STAND["x"], 0, STAND["wx"], math.pi / 2, R_)
 cme = bpy.data.meshes.new("crowd"); cbm.to_mesh(cme); cbm.free()
 cob = bpy.data.objects.new("crowd", cme); bpy.context.collection.objects.link(cob); cme.materials.append(CROWD)
+
+# cabeças do público: instâncias de uma cabeça (pele + cabelo) que rodam para seguir a bola, com atraso (ballLag)
+hb = bmesh.new(); hair_l = hb.verts.layers.float.new("is_hair")
+for mtx, hv in ((Matrix.Diagonal((0.085, 0.095, 0.11, 1)), 0.0), (Matrix.Translation((0, 0.022, 0.03)) @ Matrix.Diagonal((0.09, 0.095, 0.1, 1)), 1.0)):
+    r_ = bmesh.ops.create_icosphere(hb, subdivisions=2, radius=1.0, matrix=mtx)
+    for v_ in r_["verts"]: v_[hair_l] = hv
+for f_ in hb.faces: f_.smooth = True
+hme = bpy.data.meshes.new("headproto"); hb.to_mesh(hme); hb.free()
+HM = bpy.data.materials.new("heads"); HM.use_nodes = True; hn = HM.node_tree; hbsdf = hn.nodes.get("Principled BSDF")
+a_sk = hn.nodes.new("ShaderNodeAttribute"); a_sk.attribute_type = "INSTANCER"; a_sk.attribute_name = "skin"
+a_hr = hn.nodes.new("ShaderNodeAttribute"); a_hr.attribute_type = "INSTANCER"; a_hr.attribute_name = "hair"
+a_is = hn.nodes.new("ShaderNodeAttribute"); a_is.attribute_type = "GEOMETRY"; a_is.attribute_name = "is_hair"
+mixn = hn.nodes.new("ShaderNodeMix"); mixn.data_type = "RGBA"
+hn.links.new(a_is.outputs["Fac"], mixn.inputs["Factor"]); hn.links.new(a_sk.outputs["Color"], mixn.inputs["A"]); hn.links.new(a_hr.outputs["Color"], mixn.inputs["B"])
+hn.links.new(mixn.outputs["Result"], hbsdf.inputs["Base Color"]); hbsdf.inputs["Roughness"].default_value = 0.8
+hme.materials.append(HM)
+hproto = bpy.data.objects.new("headproto", hme); bpy.context.collection.objects.link(hproto)
+hproto.hide_render = True; hproto.hide_viewport = True; hproto.location = (0, 0, -50)
+# bola com atraso (as cabeças seguem-na, como num jogo de ténis a sério)
+bpy.ops.object.empty_add(location=(0, 0, 0)); blag = bpy.context.active_object; blag.name = "ballLag"
+LAG = []; ps = Vector(FR[0]["ball"])
+for fr_ in FR:
+    b_ = Vector(fr_["ball"]); b_.z = 0; ps = ps + (b_ - ps) * (1 - math.exp(-(1 / 30) / 0.2)); LAG.append(ps.copy())
+# pontos com os atributos de cada cabeça
+pme = bpy.data.meshes.new("headpts"); pme.from_pydata([tuple(h[0]) for h in HEADS], [], [])
+for nm_, typ in (("skin", "FLOAT_COLOR"), ("hair", "FLOAT_COLOR"), ("yaw0", "FLOAT"), ("amt", "FLOAT"), ("sc", "FLOAT")):
+    pme.attributes.new(nm_, typ, "POINT")
+rr_ = random.Random(21)
+for i, (pos, k_, h_, sc_) in enumerate(HEADS):
+    pme.attributes["skin"].data[i].color = (*k_, 1); pme.attributes["hair"].data[i].color = (*h_, 1)
+    pme.attributes["yaw0"].data[i].value = math.atan2(-pos.x, pos.y) + rr_.uniform(-0.12, 0.12)    # virado para o centro do campo
+    pme.attributes["amt"].data[i].value = rr_.uniform(0.55, 1.0) if rr_.random() > 0.08 else 0.0   # alguns não seguem (conversa, telemóvel)
+    pme.attributes["sc"].data[i].value = sc_
+pobj = bpy.data.objects.new("crowdheads", pme); bpy.context.collection.objects.link(pobj)
+ng = bpy.data.node_groups.new("heads_follow", "GeometryNodeTree")
+ng.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+ng.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+N_ = ng.nodes; L_ = ng.links
+gi = N_.new("NodeGroupInput"); go = N_.new("NodeGroupOutput")
+m2p = N_.new("GeometryNodeMeshToPoints"); iop = N_.new("GeometryNodeInstanceOnPoints")
+oproto = N_.new("GeometryNodeObjectInfo"); oproto.inputs["Object"].default_value = hproto; oproto.transform_space = "ORIGINAL"
+oball = N_.new("GeometryNodeObjectInfo"); oball.inputs["Object"].default_value = blag; oball.transform_space = "RELATIVE"
+pos_ = N_.new("GeometryNodeInputPosition")
+sub = N_.new("ShaderNodeVectorMath"); sub.operation = "SUBTRACT"
+sep = N_.new("ShaderNodeSeparateXYZ")
+neg = N_.new("ShaderNodeMath"); neg.operation = "MULTIPLY"; neg.inputs[1].default_value = -1.0
+at2 = N_.new("ShaderNodeMath"); at2.operation = "ARCTAN2"
+def nattr(name):
+    n_ = N_.new("GeometryNodeInputNamedAttribute"); n_.data_type = "FLOAT"; n_.inputs["Name"].default_value = name; return n_
+y0, am, scn = nattr("yaw0"), nattr("amt"), nattr("sc")
+d1 = N_.new("ShaderNodeMath"); d1.operation = "SUBTRACT"
+wr = N_.new("ShaderNodeMath"); wr.operation = "WRAP"; wr.inputs[1].default_value = math.pi; wr.inputs[2].default_value = -math.pi
+cl1 = N_.new("ShaderNodeMath"); cl1.operation = "MINIMUM"; cl1.inputs[1].default_value = 1.0
+cl2 = N_.new("ShaderNodeMath"); cl2.operation = "MAXIMUM"; cl2.inputs[1].default_value = -1.0
+mul = N_.new("ShaderNodeMath"); mul.operation = "MULTIPLY"
+add = N_.new("ShaderNodeMath"); add.operation = "ADD"
+cxyz = N_.new("ShaderNodeCombineXYZ")
+e2r = N_.new("FunctionNodeEulerToRotation")
+L_.new(gi.outputs[0], m2p.inputs["Mesh"]); L_.new(m2p.outputs["Points"], iop.inputs["Points"])
+L_.new(oproto.outputs["Geometry"], iop.inputs["Instance"])
+L_.new(oball.outputs["Location"], sub.inputs[0]); L_.new(pos_.outputs["Position"], sub.inputs[1])
+L_.new(sub.outputs["Vector"], sep.inputs[0])
+L_.new(sep.outputs["Y"], neg.inputs[0])
+L_.new(sep.outputs["X"], at2.inputs[0]); L_.new(neg.outputs[0], at2.inputs[1])        # rotação z que leva -y à direção (dx, dy)
+L_.new(at2.outputs[0], d1.inputs[0]); L_.new(y0.outputs["Attribute"], d1.inputs[1])
+L_.new(d1.outputs[0], wr.inputs[0]); L_.new(wr.outputs[0], cl1.inputs[0]); L_.new(cl1.outputs[0], cl2.inputs[0])
+L_.new(cl2.outputs[0], mul.inputs[0]); L_.new(am.outputs["Attribute"], mul.inputs[1])
+L_.new(mul.outputs[0], add.inputs[0]); L_.new(y0.outputs["Attribute"], add.inputs[1])
+L_.new(add.outputs[0], cxyz.inputs["Z"]); L_.new(cxyz.outputs[0], e2r.inputs[0]); L_.new(e2r.outputs[0], iop.inputs["Rotation"])
+L_.new(scn.outputs["Attribute"], iop.inputs["Scale"])
+L_.new(iop.outputs["Instances"], go.inputs[0])
+mod = pobj.modifiers.new("heads", "NODES"); mod.node_group = ng
+print("cabeças do público:", len(HEADS))
 
 # painéis com o nome do torneio
 font = None
@@ -475,7 +546,7 @@ bpy.ops.object.camera_add(); cam = bpy.context.active_object; sc.camera = cam
 cam.data.sensor_fit = "VERTICAL"; cam.data.sensor_height = 24.0
 cam.data.dof.use_dof = True; cam.data.dof.aperture_fstop = float(os.environ.get("PROTO_FSTOP", "2.4"))
 
-animated = [ball, cam] + [o for P_ in FIGS for o in P_.values()] + RACKETS + [h["root"] for h in HUMANS] + [e_ for h in HUMANS for e_ in h["emp"].values()]
+animated = [ball, cam, blag] + [o for P_ in FIGS for o in P_.values()] + RACKETS + [h["root"] for h in HUMANS] + [e_ for h in HUMANS for e_ in h["emp"].values()]
 for f in keys:
     fr = FR[f]; n = f + 1
     pos, tgt = Vector(fr["cam"]), Vector(fr["tgt"])
@@ -484,6 +555,7 @@ for f in keys:
     cam.keyframe_insert("location", frame=n); cam.keyframe_insert("rotation_quaternion", frame=n)
     cam.data.keyframe_insert("lens", frame=n); cam.data.dof.keyframe_insert("focus_distance", frame=n)
     ball.location = Vector(fr["ball"]); ball.keyframe_insert("location", frame=n)
+    blag.location = LAG[f]; blag.keyframe_insert("location", frame=n)
     for P_, rk, J in zip(FIGS, RACKETS, fr["players"]):
         pose(P_, rk, J)
         for o in list(P_.values()) + [rk]:
