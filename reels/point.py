@@ -399,7 +399,7 @@ else:
     KP, PLAYERS, SHOTS, SLOW, SIM_END, _ = padel_script() if SPORT == "padel" else tennis_script()
     _FIN = None
 
-CTX = dict(V, foot="Illustrated rally · real score and title")
+CTX = dict(V, foot="Animation · real result")
 
 def camera(t):
     for (a, b, spec) in SHOTS:
@@ -529,24 +529,25 @@ def hud(d, t, vt, slow):
     d.text((80, 120), CTX["brand"], font=F("k", 32), fill=CREAM)
     d.text((W - 160, 120), CTX["handle"], font=F("b", 28), fill=SOFT, anchor="ra")
     d.text((80, 180), CTX["kick"], font=F("x", 32), fill=ACC)
-    a = int(255 * min(1, vt / 0.15))
-    d.text((80, 228), "CHAMPIONSHIP", font=F("d", 92), fill=CREAM + (a,))
-    d.text((80, 318), "POINT.", font=F("d", 92), fill=ACC + (a,))
-    x = 80
-    for txt, bg, fg in ((CTX["sit"].upper(), ACC, DEEP), (CTX["chip"], (6, 14, 26, 190), CREAM)):
-        w_ = d.textlength(txt, font=F("x", 26)) + 40
-        d.rounded_rectangle([x, 430, x + w_, 478], radius=24, fill=bg); d.text((x + 20, 454), txt, font=F("x", 26), fill=fg, anchor="lm"); x += w_ + 12
+    # 17/11/2026 (Afonso): a animação é só entretenimento; nenhum texto sugere que foi o ponto real.
+    # Gancho "WHO WON …?" grande nos primeiros 3 s, depois encolhe; a resposta (resultado real) vem no cartão final.
+    hook = CTX.get("hook") or ("WHO WON " + CTX["board"].split("·")[0].strip() + "?")
+    w1, w2 = "WHO WON", hook[len("WHO WON"):].strip() if hook.startswith("WHO WON") else hook
+    k = seg(vt, 3.0, 3.5); a = int(255 * min(1, vt / 0.15) * (1 - seg(vt, 3.0, 3.22)))
+    if a > 0:
+        size = 92
+        while size > 60 and d.textlength(w2, font=F("d", size)) > 920: size -= 4
+        d.text((80, 228), w1, font=F("d", 92), fill=CREAM + (a,))
+        d.text((80, 318), w2, font=F("d", size), fill=ACC + (a,))
+    k2 = seg(vt, 3.22, 3.5)
+    if k2 > 0:
+        d.text((80, 232), hook, font=F("d", 46), fill=CREAM + (int(255 * k2),))
+    cy = int(430 - 130 * k)
+    txt = CTX["chip"]; w_ = d.textlength(txt, font=F("x", 26)) + 40
+    d.rounded_rectangle([80, cy, 80 + w_, cy + 48], radius=24, fill=(6, 14, 26, 190)); d.text((100, cy + 24), txt, font=F("x", 26), fill=CREAM, anchor="lm")
     if slow:
         d.text((W - 88, 530), "SLOW-MO", font=F("x", 26), fill=ACC, anchor="rm")
     d.text((80, 1488), CTX["foot"], font=F("m", 24), fill=SOFT + (220,), anchor="ls")
-    fx = FINISH
-    if fx and fx[0] <= t < fx[1]:
-        u = (t - fx[0]) / (fx[1] - fx[0]); a = int(255 * min(1, u * 6) * min(1, (1 - u) * 5))
-        sc = 1 + 0.25 * (1 - ease(min(1, u * 4)))
-        size = 150
-        while size > 70 and d.textlength(fx[2], font=F("d", size)) > 900: size -= 6     # títulos compridos cabem no ecrã
-        f = F("d", int(size * sc)); d.text((540, 1010), fx[2], font=f, fill=ACC + (a,), anchor="mm")
-        d.text((540, 1120), fx[3], font=F("x", 34), fill=CREAM + (a,), anchor="mm")
 
 def outro(last, u):
     im = last.filter(ImageFilter.GaussianBlur(int(4 + 14 * ease(min(1, u * 3)))))
@@ -559,7 +560,7 @@ def outro(last, u):
     d.text((80, 560), CTX["title"], font=F("d", 120), fill=ACC + (a,))
     d.text((80, 700), CTX["champ"], font=F("d", 76), fill=CREAM + (b_,))
     d.text((80, 830), CTX["score"], font=F("k", 64), fill=CREAM + (c_,))
-    d.text((80, 940), "Full draw and results on the site · link in bio", font=F("b", 32), fill=SOFT + (c_,))
+    d.text((80, 940), "Every result · beyond100tennis.com", font=F("b", 32), fill=SOFT + (c_,))
     d.text((80, 1488), CTX["foot"], font=F("m", 24), fill=SOFT + (220,), anchor="ls")
     return im
 
