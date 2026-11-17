@@ -9,16 +9,22 @@ for z in glob.glob(os.path.join(os.getcwd(), "mh_assets", "*.zip")):
     with zipfile.ZipFile(z) as zz: zz.extractall(ud)
 print("info por omissão:", json.dumps(HS._create_default_human_info_dict(), default=str)[:1500])
 def p(kind, name, ext="mhclo"):
-    c = glob.glob(os.path.join(ud, kind, name, "*." + ext)); return c[0] if c else None
+    c = glob.glob(os.path.join(ud, kind, name, "*." + ext))
+    if c:
+        try:
+            meta = [l.strip() for l in open(c[0], errors="ignore") if l.split(" ")[0] in ("license", "author", "name")]
+            print("recurso", kind, name, meta)
+        except Exception: pass
+    return c[0] if c else None
 bpy.ops.wm.read_factory_settings(use_empty=True)
 sc = bpy.context.scene
 LOOKS = [
-    ("m", "young_caucasian_male", "short02", ["namuhekam_male_polo_shirt", "male_casualsuit03", "shoes02"]),
-    ("m", "young_african_male", "short04", ["toigo_basic_tucked_t-shirt", "male_casualsuit05", "shoes05"]),
-    ("m", "young_asian_male", "short01", ["elvs_crude_t-shirt_male", "male_casualsuit01", "shoes01"]),
-    ("f", "young_caucasian_female", "ponytail01", ["female_sportsuit01", "shoes02"]),
-    ("f", "young_african_female", "bob02", ["toigo_keyhole_tank_top", "female_casualsuit02", "shoes05"]),
-    ("m", "young_caucasian_male2", "short03", ["male_casualsuit04", "shoes06"]),
+    ("m", "young_caucasian_male", "short02", ["namuhekam_male_polo_shirt", "elvs_male_trouser_short_1", "culturalibre_sneakers"]),
+    ("m", "young_african_male", "short04", ["toigo_basic_tucked_t-shirt", "elvs_male_trouser_short_2", "culturalibre_sneakers"]),
+    ("m", "young_asian_male", "short01", ["elvs_crude_t-shirt_male", "elvs_male_trouser_short_1", "culturalibre_sneakers"]),
+    ("f", "young_caucasian_female", "ponytail01", ["toigo_keyhole_tank_top", "elvs_retro_girly_shorts1", "culturalibre_sneakers"]),
+    ("f", "young_african_female", "bob02", ["joepal_crude_t-shirt_female", "elvs_retro_girly_shorts1", "culturalibre_sneakers"]),
+    ("m", "young_caucasian_male2", "short03", ["toigo_basic_tucked_t-shirt", "elvs_male_trouser_short_2", "culturalibre_sneakers"]),
 ]
 for i, (g, skin, hair, clothes) in enumerate(LOOKS):
     try:
@@ -65,3 +71,8 @@ sc.render.filepath = os.path.join(out, "lineup.jpg"); sc.render.image_settings.f
 bpy.ops.render.render(write_still=True)
 # lista de roupa com pernas curtas (para escolher calções)
 for c in sorted(os.listdir(os.path.join(ud, "clothes"))): print("roupa:", c)
+try:
+    RS = importlib.import_module(base + ".services.rigservice").RigService
+    print("rigs:", [m for m in dir(RS) if not m.startswith("_")])
+    print("rigs builtin:", os.listdir(os.path.join(LS.get_mpfb_data(), "rigs", "standard")))
+except Exception as e: print("rig info", e)

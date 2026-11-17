@@ -14,7 +14,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -q pillow
       - uses: actions/cache@v4
-        with: { path: mh_assets, key: mh-assets-v1 }
+        with: { path: mh_assets, key: mh-assets-v2 }
       - name: Blender 4.2 LTS
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 zip >/dev/null
@@ -26,11 +26,15 @@ jobs:
           (cd mpfb2src/src && zip -qr ../../mpfb.zip mpfb)
           ./blender-4.2.3-linux-x64/blender -b --command extension install-file --repo user_default --enable mpfb.zip 2>&1 | tail -5
           mkdir -p mh_assets
-          for p in makehuman_system_assets shirts01 skins02; do
-            [ -f mh_assets/$p.zip ] || curl -fsSL --retry 3 --max-time 900 -o mh_assets/$p.zip "https://files2.makehumancommunity.org/asset_packs/$p/${p}_cc0.zip" || echo "falhou $p"
-          done
-          for pg in pants03 shoes02 pants01 pants02; do
-            echo "== $pg"; curl -fsSL "https://static.makehumancommunity.org/assets/assetpacks/$pg.html" | grep -oiE 'href="[^"]+\.zip"|cc-?by[^<]{0,40}|cc0' | sort | uniq -c | head -8 || true
+          get() { # $1 nome do ficheiro, $2.. URLs; descarrega para .part e só renomeia se completo
+            [ -f mh_assets/$1 ] && unzip -tq mh_assets/$1 >/dev/null 2>&1 && return 0
+            for u in "${@:2}"; do
+              curl -fsSL --retry 3 --max-time 1500 -o mh_assets/$1.part "$u" && unzip -tq mh_assets/$1.part >/dev/null 2>&1 && mv mh_assets/$1.part mh_assets/$1 && return 0
+            done; rm -f mh_assets/$1.part; echo "falhou $1"
+          }
+          for p in makehuman_system_assets:cc0 shirts01:cc0 skins02:cc0 pants03:ccby shoes02:ccby; do
+            n=${p%%:*}; l=${p##*:}
+            get ${n}_$l.zip "https://files2.makehumancommunity.org/asset_packs/$n/${n}_$l.zip" "https://files.makehumancommunity.org/asset_packs/$n/${n}_$l.zip"
           done
           ls -la mh_assets
       - name: Teste
