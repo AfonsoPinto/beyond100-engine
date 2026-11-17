@@ -74,17 +74,12 @@ BOARD = principled("board", lin((10, 18, 32)), rough=0.4)
 ACCM = principled("acc", lin((217, 242, 61)), emit=lin((217, 242, 61)), es=4.0)
 TXT = principled("txt", lin((247, 242, 230)), emit=lin((247, 242, 230)), es=3.0)
 
-# público: células de cor aleatória (pessoas), um pouco iluminadas
+# público: pessoas em 3D (tronco + cabeça), cor por pessoa num atributo
 CROWD = bpy.data.materials.new("crowd"); CROWD.use_nodes = True; nt = CROWD.node_tree
-b = nt.nodes.get("Principled BSDF"); tc = nt.nodes.new("ShaderNodeNewGeometry"); vo = nt.nodes.new("ShaderNodeTexVoronoi")
-hs = nt.nodes.new("ShaderNodeHueSaturation"); vo.inputs["Scale"].default_value = 2.3          # células de ~45 cm: uma pessoa
-hs.inputs["Saturation"].default_value = 0.6; hs.inputs["Value"].default_value = 0.45
-nt.links.new(tc.outputs["Position"], vo.inputs["Vector"]); nt.links.new(vo.outputs["Color"], hs.inputs["Color"])
-nt.links.new(hs.outputs["Color"], b.inputs["Base Color"])
-if "Emission Color" in b.inputs:
-    nt.links.new(hs.outputs["Color"], b.inputs["Emission Color"]); b.inputs["Emission Strength"].default_value = 0.08
-b.inputs["Roughness"].default_value = 0.9
-
+b = nt.nodes.get("Principled BSDF"); at = nt.nodes.new("ShaderNodeAttribute"); at.attribute_name = "col"
+nt.links.new(at.outputs["Color"], b.inputs["Base Color"]); b.inputs["Roughness"].default_value = 0.85
+if "Sheen Weight" in b.inputs: b.inputs["Sheen Weight"].default_value = 0.3
+SEAT = principled("seat", lin((34, 38, 46)), rough=0.8)
 # ------------------------------------------------------------------ pavilhão e campo
 bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, -0.01)); o = bpy.context.active_object; o.scale = (60, 70, 1); o.data.materials.append(OUTF)
 bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, 0)); o = bpy.context.active_object; o.scale = (2 * HW, 2 * HL, 1); o.data.materials.append(TURF)
@@ -112,16 +107,40 @@ for sgn in (-1, 1):
 for sx in (-HW, HW):
     box("rail_side", (sx + (0.06 if sx > 0 else -0.06), 0, 3.0), (0.05, 2 * HL - 8, 0.05), METAL)
 
-# bancadas (em degraus) com público
-def stand(cx, cy, w, d, rot, rows=12):
+# bancadas em degraus, com pessoas sentadas (2 700 aprox.)
+import bmesh, random
+RND = random.Random(5)
+SHIRTS = [(200, 196, 190), (232, 230, 226), (40, 44, 52), (196, 64, 60), (60, 92, 160), (230, 200, 70), (90, 120, 90), (150, 150, 160),
+          (20, 22, 28), (210, 120, 70), (120, 70, 140), (240, 240, 240)]
+SKINS = [(222, 184, 150), (196, 150, 112), (150, 104, 70), (100, 70, 50), (236, 200, 170)]
+cbm = bmesh.new(); col_layer = cbm.loops.layers.color.new("col")
+def person(pos, rot):
+    c = lin(RND.choice(SHIRTS)); k = lin(RND.choice(SKINS)); hcol = lin(RND.choice([(30, 24, 20), (60, 44, 30), (120, 90, 60), (20, 20, 20), (200, 180, 140)]))
+    lean = RND.uniform(-0.06, 0.06)
+    M = Matrix.Translation(pos) @ Matrix.Rotation(rot, 4, "Z")
+    parts = [("cube", Matrix.Translation((lean, 0, 0.3)) @ Matrix.Diagonal((0.42, 0.26, 0.56, 1)), c),
+             ("ico", Matrix.Translation((lean * 1.4, 0.02, 0.72)), k), ("ico2", Matrix.Translation((lean * 1.4, 0.05, 0.77)), hcol)]
+    for kind, Lm, colr in parts:
+        if kind == "cube": r_ = bmesh.ops.create_cube(cbm, size=1.0, matrix=M @ Lm)
+        else: r_ = bmesh.ops.create_icosphere(cbm, subdivisions=1, radius=0.105 if kind == "ico" else 0.095, matrix=M @ Lm)
+        fs = {f_ for v_ in r_["verts"] for f_ in v_.link_faces}
+        for f_ in fs:
+            for lp in f_.loops: lp[col_layer] = (*colr, 1.0)
+def stand(cx, cy, w, rot, rows=12):
+    R = Matrix.Rotation(rot, 3, "Z")
     for r in range(rows):
         bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0)); s_ = bpy.context.active_object
-        s_.scale = (w, 0.8, 0.55 * (r + 1)); s_.data.materials.append(CROWD)
-        off = Vector((0, r * 0.8, 0.275 * (r + 1)))
-        s_.location = Vector((cx, cy, 0)) + Matrix.Rotation(rot, 3, "Z") @ off
-        s_.rotation_euler = (0, 0, rot)
-stand(0, HL + 5.0, 34, 0, 0); stand(0, -HL - 5.0, 34, 0, math.pi)
-stand(HW + 5.0, 0, 30, 0, -math.pi / 2); stand(-HW - 5.0, 0, 30, 0, math.pi / 2)
+        s_.scale = (w, 0.85, 0.5 * (r + 1)); s_.data.materials.append(SEAT)
+        s_.location = Vector((cx, cy, 0)) + R @ Vector((0, r * 0.85, 0.25 * (r + 1))); s_.rotation_euler = (0, 0, rot)
+        n = int(w / 0.55)
+        for j in range(n):
+            if RND.random() < 0.12: continue                          # lugares vazios
+            off = Vector((-w / 2 + 0.275 + j * 0.55 + RND.uniform(-0.05, 0.05), r * 0.85 - 0.1, 0.5 * (r + 1)))
+            person(Vector((cx, cy, 0)) + R @ off, rot + math.pi)
+stand(0, HL + 5.0, 34, 0); stand(0, -HL - 5.0, 34, math.pi)
+stand(HW + 5.0, 0, 30, -math.pi / 2); stand(-HW - 5.0, 0, 30, math.pi / 2)
+cme = bpy.data.meshes.new("crowd"); cbm.to_mesh(cme); cbm.free()
+cob = bpy.data.objects.new("crowd", cme); bpy.context.collection.objects.link(cob); cme.materials.append(CROWD)
 
 # painéis com o nome do torneio
 font = None
@@ -132,7 +151,7 @@ def board(y, rot):
     box("board_acc", (0, y - math.copysign(0.065, y), 0.06), (2 * HW + 6, 0.01, 0.08), ACCM)
     for xo in (-5.5, 5.5):
         bpy.ops.object.text_add(location=(xo, y - math.copysign(0.07, y), 0.47)); t = bpy.context.active_object
-        t.data.body = D["board"]; t.data.size = 0.42; t.data.align_x = "CENTER"; t.data.align_y = "CENTER"
+        t.data.body = D["board"].replace("·", " ").replace("  ", " "); t.data.size = 0.42; t.data.align_x = "CENTER"; t.data.align_y = "CENTER"
         if font: t.data.font = font
         t.rotation_euler = (math.pi / 2, 0, rot); t.data.materials.append(TXT)
 board(HL + 1.6, 0.0)          # ao fundo, virado para o campo (-Y)
@@ -150,63 +169,107 @@ for (x, y) in ((-16, 0), (16, 0), (0, -20), (0, 20)):              # luz nas ban
     L.data.energy = 700; L.data.size = 8; L.data.color = (0.85, 0.9, 1.0)
     L.rotation_euler = (0, 0, 0)
 
-# ------------------------------------------------------------------ figuras (manequins anónimos)
-def cyl(name, r, m):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=20, radius=1, depth=2); o = bpy.context.active_object
-    o.name = name; o.data.materials.append(m); smooth(o); o["r"] = r; return o
-def sph(name, r, m):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=16, radius=1); o = bpy.context.active_object
+# ------------------------------------------------------------------ figuras (anónimas) e raquetes
+SKIN.node_tree.nodes.get("Principled BSDF").inputs["Subsurface Weight"].default_value = 0.15 if "Subsurface Weight" in SKIN.node_tree.nodes.get("Principled BSDF").inputs else 0
+SOCK = principled("sock", lin((240, 240, 240)), rough=0.9, sheen=0.5)
+SOLE = principled("sole", lin((220, 220, 215)), rough=0.6)
+HAIR = principled("hair", lin((40, 30, 24)), rough=0.6, sheen=0.4)
+
+def cone(name, r1, r2, m):
+    bpy.ops.mesh.primitive_cone_add(vertices=24, radius1=1, radius2=r2 / r1, depth=2); o = bpy.context.active_object
+    o.name = name; o.data.materials.append(m); smooth(o); o["r"] = r1; return o
+def sph(name, r, m, seg=28):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=seg, ring_count=seg // 2, radius=1); o = bpy.context.active_object
     o.name = name; o.scale = (r, r, r); o.data.materials.append(m); smooth(o); return o
-def place(o, a, b_, r):
+def limb(o, a, b_, r):
+    """cone/cilindro de a para b (o raio da base vem do objeto)"""
     a, b_ = Vector(a), Vector(b_); d = b_ - a; L = max(d.length, 1e-3)
     o.location = (a + b_) / 2; o.rotation_mode = "QUATERNION"
     o.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(d.normalized()); o.scale = (r, r, L / 2)
+def oriented(o, loc, x, y, z, sc_):
+    """objeto com eixos próprios (x, y, z) e escala"""
+    o.location = Vector(loc); o.rotation_mode = "QUATERNION"
+    o.rotation_quaternion = Matrix((Vector(x), Vector(y), Vector(z))).transposed().to_quaternion(); o.scale = sc_
 
-FIGS = []
+def racket_mat(frame_col):
+    face = bpy.data.materials.new("racket_face"); face.use_nodes = True; nt = face.node_tree
+    b = nt.nodes.get("Principled BSDF"); out = nt.nodes.get("Material Output")
+    b.inputs["Base Color"].default_value = (0.02, 0.02, 0.025, 1); b.inputs["Roughness"].default_value = 0.35
+    if "Coat Weight" in b.inputs: b.inputs["Coat Weight"].default_value = 0.8
+    tc = nt.nodes.new("ShaderNodeTexCoord"); vo = nt.nodes.new("ShaderNodeTexVoronoi"); vo.inputs["Scale"].default_value = 6.5
+    if "Randomness" in vo.inputs: vo.inputs["Randomness"].default_value = 0.0
+    mr = nt.nodes.new("ShaderNodeMapRange"); mr.inputs["From Min"].default_value = 0.16; mr.inputs["From Max"].default_value = 0.2
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent"); mx = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(tc.outputs["Object"], vo.inputs["Vector"]); nt.links.new(vo.outputs["Distance"], mr.inputs["Value"])
+    nt.links.new(mr.outputs["Result"], mx.inputs["Fac"]); nt.links.new(tr.outputs[0], mx.inputs[1]); nt.links.new(b.outputs[0], mx.inputs[2])
+    nt.links.new(mx.outputs[0], out.inputs["Surface"])
+    return face, principled("racket_frame", lin(frame_col), rough=0.3, coat=1.0)
+
+def make_racket(k, frame_col):
+    face_m, frame_m = racket_mat(frame_col)
+    grip_m = principled(f"grip{k}", lin((240, 240, 240)), rough=0.8)
+    bpy.ops.object.empty_add(location=(0, 0, 0)); root = bpy.context.active_object; root.name = f"racket{k}"
+    parts = []
+    bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=1, depth=2); fr_ = bpy.context.active_object       # aro
+    fr_.scale = (0.132, 0.152, 0.017); fr_.data.materials.append(frame_m); smooth(fr_); parts.append(fr_)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=1, depth=2); fc = bpy.context.active_object        # face furada
+    fc.scale = (0.122, 0.142, 0.0192); fc.data.materials.append(face_m); parts.append(fc)
+    for sgn in (-1, 1):                                                                                      # coração
+        bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=1, depth=2); h = bpy.context.active_object
+        h.scale = (0.012, 0.012, 0.045); h.location = (sgn * 0.03, -0.175, 0); h.rotation_euler = (math.pi / 2, 0, sgn * -0.55)
+        h.data.materials.append(frame_m); smooth(h); parts.append(h)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=1, depth=2); g = bpy.context.active_object        # cabo
+    g.scale = (0.019, 0.019, 0.07); g.location = (0, -0.27, 0); g.rotation_euler = (math.pi / 2, 0, 0); g.data.materials.append(grip_m); smooth(g); parts.append(g)
+    for o in parts: o.parent = root
+    return root
+
+FIGS, RACKETS = [], []
 for k, col in enumerate(D["cols"]):
     shirt = principled(f"shirt{k}", lin(col), rough=0.75, sheen=0.4)
-    P_ = dict(torso=cyl("torso", 0.16, shirt), pelvis=sph("pelvis", 0.15, SHORTS), chest=sph("chest", 0.17, shirt),
-              head=sph("head", 0.115, SKIN), hair=sph("hair", 0.118, SHORTS),
-              thL=cyl("thL", 0.075, SHORTS), thR=cyl("thR", 0.075, SHORTS), shL=cyl("shinL", 0.055, SKIN), shR_=cyl("shinR", 0.055, SKIN),
-              knL=sph("kneeL", 0.06, SKIN), knR=sph("kneeR", 0.06, SKIN), ftL=box("shoeL", (0, 0, 0), (0.11, 0.27, 0.09), SHOE), ftR=box("shoeR", (0, 0, 0), (0.11, 0.27, 0.09), SHOE),
-              uaR=cyl("uaR", 0.05, shirt), faR=cyl("faR", 0.042, SKIN), uaL=cyl("uaL", 0.05, shirt), faL=cyl("faL", 0.042, SKIN),
-              elR=sph("elR", 0.048, SKIN), elL=sph("elL", 0.048, SKIN), hdR=sph("handR", 0.05, SKIN),
-              grip=cyl("grip", 0.016, PADDLE), pad=cyl("paddle", 1.0, PADDLE))
+    P_ = dict(pelvis=sph("pelvis", 1, SHORTS), torso=cone("torso", 0.17, 0.2, shirt), chest=sph("chest", 1, shirt), neck=cone("neck", 0.055, 0.05, SKIN),
+              head=sph("head", 1, SKIN), hair=sph("hair", 1, HAIR),
+              thL=cone("thL", 0.095, 0.075, SHORTS), thR=cone("thR", 0.095, 0.075, SHORTS), lgL=cone("legL", 0.062, 0.042, SKIN), lgR=cone("legR", 0.062, 0.042, SKIN),
+              knL=sph("knL", 0.062, SKIN), knR=sph("knR", 0.062, SKIN), soL=cone("sockL", 0.046, 0.044, SOCK), soR=cone("sockR", 0.046, 0.044, SOCK),
+              shoeL=sph("shoeL", 1, SOLE), shoeR=sph("shoeR", 1, SOLE),
+              slR=cone("sleeveR", 0.07, 0.06, shirt), slL=cone("sleeveL", 0.07, 0.06, shirt),
+              uaR=cone("uaR", 0.052, 0.042, SKIN), uaL=cone("uaL", 0.052, 0.042, SKIN), faR=cone("faR", 0.042, 0.032, SKIN), faL=cone("faL", 0.042, 0.032, SKIN),
+              elR=sph("elR", 0.044, SKIN), elL=sph("elL", 0.044, SKIN), hdR=sph("hdR", 0.046, SKIN), hdL=sph("hdL", 0.046, SKIN),
+              shoR=sph("shoR", 0.07, shirt), shoL=sph("shoL", 0.07, shirt))
     FIGS.append(P_)
+    RACKETS.append(make_racket(k, [(230, 60, 50), (240, 240, 240), (40, 120, 230), (250, 200, 40)][k % 4]))
 ball = sph("ball", 0.042, BALL)
 
-def pose(P_, J):
-    V = lambda k: Vector(J[k]); face = J["face"]; fw = Vector((0, face, 0))
-    hip, sh, hd = V("hip"), V("sh"), V("head")
-    hipL, hipR = hip + Vector((-0.1, 0, -0.04)), hip + Vector((0.1, 0, -0.04))
-    fl, fr = V("fl") + Vector((0, 0, 0.09)), V("fr") + Vector((0, 0, 0.09))
-    knL = (hipL + fl) / 2 + fw * 0.09; knR = (hipR + fr) / 2 + fw * 0.09
-    place(P_["torso"], hip + Vector((0, 0, 0.1)), sh - Vector((0, 0, 0.05)), 0.15)
-    P_["pelvis"].location = hip; P_["pelvis"].scale = (0.17, 0.12, 0.13)
-    P_["chest"].location = sh - Vector((0, 0, 0.1)); P_["chest"].scale = (0.21, 0.13, 0.17)
-    P_["head"].location = hd; P_["hair"].location = hd + Vector((0, -0.01 * face, 0.03)); P_["hair"].scale = (0.118, 0.118, 0.095)
-    place(P_["thL"], hipL, knL, 0.075); place(P_["thR"], hipR, knR, 0.075)
-    place(P_["shL"], knL, fl, 0.055); place(P_["shR_"], knR, fr, 0.055)
-    P_["knL"].location = knL; P_["knR"].location = knR
-    P_["ftL"].location = V("fl") + Vector((0, 0.05 * face, 0.045)); P_["ftR"].location = V("fr") + Vector((0, 0.05 * face, 0.045))
-    shR, shL, hand, rk = V("shR"), V("shL"), V("hand"), V("rk")
-    elR = (shR + hand) / 2 + Vector((0.06 * face, -0.05 * face, -0.08))
-    place(P_["uaR"], shR, elR, 0.05); place(P_["faR"], elR, hand, 0.042); P_["elR"].location = elR; P_["hdR"].location = hand
-    handL = shL + Vector((0, 0.15, -0.42)); elL = (shL + handL) / 2 + Vector((-0.04 * face, 0.04 * face, 0))
-    place(P_["uaL"], shL, elL, 0.05); place(P_["faL"], elL, handL, 0.042); P_["elL"].location = elL
-    rd = (rk - hand); rd = rd.normalized() if rd.length > 1e-4 else Vector((0, 0, 1))
-    place(P_["grip"], hand, hand + rd * 0.16, 0.016)
-    n = rd.cross(Vector((0, 0, 1))); n = n.normalized() if n.length > 1e-3 else Vector((1, 0, 0))
-    M = Matrix((rd.cross(n), rd, n)).transposed()                    # colunas: X, Y (cabo), Z (normal da pá)
-    pad = P_["pad"]; pad.rotation_mode = "QUATERNION"; pad.rotation_quaternion = M.to_quaternion()
-    pad.location = hand + rd * 0.33; pad.scale = (0.13, 0.15, 0.018)
+def pose(P_, rk, J):
+    V = lambda k_: Vector(J[k_]); f, s_, fh, shs = V("f"), V("s"), V("fh"), V("sh"); z = Vector((0, 0, 1))
+    P, C = V("P"), V("C")
+    oriented(P_["pelvis"], P + Vector((0, 0, 0.02)), shs, fh, z, (0.19, 0.13, 0.13))
+    limb(P_["torso"], P + Vector((0, 0, 0.06)), C, 0.17); P_["torso"].scale = (0.17, 0.17, P_["torso"].scale[2])
+    up = (C - P).normalized()
+    oriented(P_["chest"], C - up * 0.06, s_, f, z, (0.21, 0.125, 0.17))
+    limb(P_["neck"], V("neck") - Vector((0, 0, 0.04)), V("head") - Vector((0, 0, 0.09)), 0.055)
+    oriented(P_["head"], V("head"), s_, f, z, (0.098, 0.11, 0.122))
+    oriented(P_["hair"], V("head") + Vector((0, 0, 0.025)) - f * 0.012, s_, f, z, (0.103, 0.112, 0.105))
+    for sd, hip, kn, an, toe in (("L", "hipL", "kneeL", "ankL", "toeL"), ("R", "hipR", "kneeR", "ankR", "toeR")):
+        h_, k_, a_, t_ = V(hip), V(kn), V(an), V(toe)
+        limb(P_["th" + sd], h_, k_, 0.095); limb(P_["lg" + sd], k_, a_ - (a_ - k_).normalized() * 0.08, 0.062)
+        P_["kn" + sd].location = k_
+        limb(P_["so" + sd], a_ - (a_ - k_).normalized() * 0.1, a_, 0.046)
+        fwd = (t_ - a_); fwd.z = 0; fwd = fwd.normalized() if fwd.length > 1e-4 else fh
+        side = fwd.cross(z)
+        oriented(P_["shoe" + sd], (a_ + t_) / 2 + Vector((0, 0, -0.005)), side, fwd, z, (0.055, 0.15, 0.045))
+    for sd in ("R", "L"):
+        sh_, el, hd = V("sh" + sd), V("el" + sd), V("hand" + sd)
+        limb(P_["ua" + sd], sh_, el, 0.052); limb(P_["sl" + sd], sh_, sh_ + (el - sh_) * 0.42, 0.07)
+        limb(P_["fa" + sd], el, hd, 0.042); P_["el" + sd].location = el; P_["hd" + sd].location = hd; P_["sho" + sd].location = sh_
+    rd, rn = V("rd"), V("rn"); xax = rd.cross(rn)
+    oriented(rk, V("rc"), xax, rd, rn, (1, 1, 1))
 
 # ------------------------------------------------------------------ câmara
 bpy.ops.object.camera_add(); cam = bpy.context.active_object; sc.camera = cam
 cam.data.sensor_fit = "VERTICAL"; cam.data.sensor_height = 24.0
 cam.data.dof.use_dof = True; cam.data.dof.aperture_fstop = float(os.environ.get("PROTO_FSTOP", "2.4"))
 
-animated = [ball, cam] + [o for P_ in FIGS for o in P_.values()]
+animated = [ball, cam] + [o for P_ in FIGS for o in P_.values()] + RACKETS
 for f in keys:
     fr = FR[f]; n = f + 1
     pos, tgt = Vector(fr["cam"]), Vector(fr["tgt"])
@@ -215,9 +278,9 @@ for f in keys:
     cam.keyframe_insert("location", frame=n); cam.keyframe_insert("rotation_quaternion", frame=n)
     cam.data.keyframe_insert("lens", frame=n); cam.data.dof.keyframe_insert("focus_distance", frame=n)
     ball.location = Vector(fr["ball"]); ball.keyframe_insert("location", frame=n)
-    for P_, J in zip(FIGS, fr["players"]):
-        pose(P_, J)
-        for o in P_.values():
+    for P_, rk, J in zip(FIGS, RACKETS, fr["players"]):
+        pose(P_, rk, J)
+        for o in list(P_.values()) + [rk]:
             o.rotation_mode = "QUATERNION"
             o.keyframe_insert("location", frame=n); o.keyframe_insert("rotation_quaternion", frame=n); o.keyframe_insert("scale", frame=n)
 # câmara: sem interpolação (há cortes entre planos); resto linear (desfoque de movimento correto)
@@ -238,7 +301,8 @@ for owner in (cam.data,):
 # ------------------------------------------------------------------ render
 r = sc.render
 r.engine = "CYCLES"; sc.cycles.device = "CPU"
-sc.cycles.samples = int(os.environ.get("PROTO_SAMPLES", "32")); sc.cycles.use_adaptive_sampling = True
+sc.cycles.samples = int(os.environ.get("PROTO_SAMPLES", "20")); sc.cycles.use_adaptive_sampling = True
+sc.cycles.adaptive_threshold = 0.04
 sc.cycles.use_denoising = True
 try: sc.cycles.denoiser = "OPENIMAGEDENOISE"
 except Exception: pass

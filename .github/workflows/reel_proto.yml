@@ -18,7 +18,7 @@ jobs:
       - id: m
         run: |
           MODE=$(cat reels/proto/mode.txt | tr -d '[:space:]')
-          if [ "$MODE" = "stills" ]; then echo 'parts=[0]' >> $GITHUB_OUTPUT; echo 'n=1' >> $GITHUB_OUTPUT; else echo 'parts=[0,1,2,3,4,5,6,7]' >> $GITHUB_OUTPUT; echo 'n=8' >> $GITHUB_OUTPUT; fi
+          if [ "$MODE" = "stills" ]; then echo 'parts=[0]' >> $GITHUB_OUTPUT; echo 'n=1' >> $GITHUB_OUTPUT; else echo 'parts=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]' >> $GITHUB_OUTPUT; echo 'n=20' >> $GITHUB_OUTPUT; fi
           echo "mode=$MODE" >> $GITHUB_OUTPUT
   render:
     needs: prep
