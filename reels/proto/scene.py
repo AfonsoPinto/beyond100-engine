@@ -162,18 +162,43 @@ SHIRTS = [(200, 196, 190), (232, 230, 226), (40, 44, 52), (196, 64, 60), (60, 92
           (20, 22, 28), (210, 120, 70), (120, 70, 140), (240, 240, 240)]
 SKINS = [(222, 184, 150), (196, 150, 112), (150, 104, 70), (100, 70, 50), (236, 200, 170)]
 cbm = bmesh.new(); col_layer = cbm.loops.layers.color.new("col")
-def person(pos, rot):
+PANTS = [(40, 44, 56), (70, 80, 100), (30, 30, 34), (120, 110, 96), (180, 176, 168)]
+def _ell(M, colr, sub=1):
+    r_ = bmesh.ops.create_icosphere(cbm, subdivisions=sub, radius=1.0, matrix=M)
+    for v_ in r_["verts"]:
+        for f_ in v_.link_faces:
+            f_.smooth = True
+            for lp in f_.loops: lp[col_layer] = (*colr, 1.0)
+def _seg(M, a, b_, r, colr):
+    """elipsoide alongado entre dois pontos (membros do público)"""
+    a, b_ = Vector(a), Vector(b_); d = b_ - a; L = d.length
+    q = d.normalized().to_track_quat("Z", "Y").to_matrix().to_4x4()
+    _ell(M @ Matrix.Translation((a + b_) / 2) @ q @ Matrix.Diagonal((r, r, L / 2 + r * 0.4, 1)), colr)
+def person(pos, rot, detail=False):
     c = lin(RND.choice(SHIRTS)); k = lin(RND.choice(SKINS)); hcol = lin(RND.choice([(30, 24, 20), (60, 44, 30), (120, 90, 60), (20, 20, 20), (200, 180, 140)]))
     lean = RND.uniform(-0.06, 0.06)
-    M = Matrix.Translation(pos) @ Matrix.Rotation(rot, 4, "Z")
-    parts = [("body", Matrix.Translation((lean, 0, 0.32)) @ Matrix.Diagonal((0.21, 0.13, 0.3, 1)), c),
-             ("ico", Matrix.Translation((lean * 1.4, 0.02, 0.72)), k), ("ico2", Matrix.Translation((lean * 1.4, 0.05, 0.77)), hcol)]
-    for kind, Lm, colr in parts:
-        if kind == "body": r_ = bmesh.ops.create_icosphere(cbm, subdivisions=1, radius=1.0, matrix=M @ Lm)
-        else: r_ = bmesh.ops.create_icosphere(cbm, subdivisions=1, radius=0.105 if kind == "ico" else 0.095, matrix=M @ Lm)
-        fs = {f_ for v_ in r_["verts"] for f_ in v_.link_faces}
-        for f_ in fs:
-            for lp in f_.loops: lp[col_layer] = (*colr, 1.0)
+    M = Matrix.Translation(pos) @ Matrix.Rotation(rot + math.pi, 4, "Z")    # frente = -y local, virada para o campo
+    if not detail:
+        _ell(M @ Matrix.Translation((lean, 0, 0.32)) @ Matrix.Diagonal((0.21, 0.13, 0.3, 1)), c)
+        _ell(M @ Matrix.Translation((lean * 1.4, 0.02, 0.72)) @ Matrix.Diagonal((0.105,) * 3 + (1,)), k)
+        _ell(M @ Matrix.Translation((lean * 1.4, 0.05, 0.77)) @ Matrix.Diagonal((0.095,) * 3 + (1,)), hcol)
+        return
+    # espectador sentado (frente = -y local): coxas para a frente, braços no colo, cabeça um pouco virada
+    pc = lin(RND.choice(PANTS)); sleeve = c if RND.random() < 0.4 else k
+    hx = lean * 1.3; turn = RND.uniform(-0.35, 0.35)
+    _ell(M @ Matrix.Translation((lean * 0.6, 0.0, 0.33)) @ Matrix.Diagonal((0.19, 0.12, 0.25, 1)), c)          # tronco
+    _ell(M @ Matrix.Translation((lean * 0.9, 0.0, 0.52)) @ Matrix.Diagonal((0.21, 0.11, 0.07, 1)), c)          # ombros
+    _ell(M @ Matrix.Translation((0, -0.02, 0.1)) @ Matrix.Diagonal((0.18, 0.13, 0.08, 1)), pc)                 # anca
+    for sx in (-1, 1):
+        _seg(M, (sx * 0.09, -0.02, 0.08), (sx * 0.1, -0.42, 0.1), 0.068, pc)                                   # coxa
+        _seg(M, (sx * 0.1, -0.44, 0.08), (sx * 0.11, -0.47, -0.36), 0.05, pc)                                  # perna
+        sh = (lean * 0.9 + sx * 0.19, 0.0, 0.52); el = (lean * 0.5 + sx * 0.2, -0.06, 0.28)
+        _seg(M, sh, el, 0.05, sleeve)                                                                          # braço
+        _seg(M, el, (sx * 0.08, -0.3, 0.17), 0.04, k)                                                          # antebraço no colo
+    _seg(M, (hx * 0.8, 0, 0.56), (hx, -0.01, 0.66), 0.045, k)                                                  # pescoço
+    H = M @ Matrix.Translation((hx, -0.01, 0.75)) @ Matrix.Rotation(turn, 4, "Z")
+    _ell(H @ Matrix.Diagonal((0.085, 0.095, 0.11, 1)), k, 2)                                                   # cabeça
+    _ell(H @ Matrix.Translation((0, 0.022, 0.03)) @ Matrix.Diagonal((0.09, 0.095, 0.1, 1)), hcol, 2)          # cabelo
 def stand(cx, cy, w, rot, rows=12):
     R = Matrix.Rotation(rot, 3, "Z")
     for r in range(rows):
@@ -184,7 +209,7 @@ def stand(cx, cy, w, rot, rows=12):
         for j in range(n):
             if RND.random() < 0.12: continue                          # lugares vazios
             off = Vector((-w / 2 + 0.275 + j * 0.55 + RND.uniform(-0.05, 0.05), r * 0.85 - 0.1, 0.5 * (r + 1)))
-            person(Vector((cx, cy, 0)) + R @ off, rot + math.pi)
+            person(Vector((cx, cy, 0)) + R @ off, rot + math.pi, detail=r < 6)
 R_ = STAND["rows"]
 stand(0, STAND["y"], STAND["wy"], 0, R_); stand(0, -STAND["y"], STAND["wy"], math.pi, R_)
 stand(STAND["x"], 0, STAND["wx"], -math.pi / 2, R_); stand(-STAND["x"], 0, STAND["wx"], math.pi / 2, R_)
