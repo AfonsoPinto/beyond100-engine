@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -q pillow
+      - uses: actions/cache@v4
+        with: { path: mh_assets, key: mh-assets-v1 }
       - name: Blender 4.2 LTS
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 zip >/dev/null
@@ -24,8 +26,11 @@ jobs:
           (cd mpfb2src/src && zip -qr ../../mpfb.zip mpfb)
           ./blender-4.2.3-linux-x64/blender -b --command extension install-file --repo user_default --enable mpfb.zip 2>&1 | tail -5
           mkdir -p mh_assets
-          for p in makehuman_system_assets shoes02 shirts01 pants03 skins02; do
-            curl -fsSL --retry 3 -o mh_assets/$p.zip "https://files2.makehumancommunity.org/asset_packs/$p/${p}_cc0.zip" || echo "falhou $p"
+          for p in makehuman_system_assets shirts01 skins02; do
+            [ -f mh_assets/$p.zip ] || curl -fsSL --retry 3 --max-time 900 -o mh_assets/$p.zip "https://files2.makehumancommunity.org/asset_packs/$p/${p}_cc0.zip" || echo "falhou $p"
+          done
+          for pg in pants03 shoes02 pants01 pants02; do
+            echo "== $pg"; curl -fsSL "https://static.makehumancommunity.org/assets/assetpacks/$pg.html" | grep -oiE 'href="[^"]+\.zip"|cc-?by[^<]{0,40}|cc0' | sort | uniq -c | head -8 || true
           done
           ls -la mh_assets
       - name: Teste
