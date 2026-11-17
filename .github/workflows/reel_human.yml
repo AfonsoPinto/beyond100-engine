@@ -1,0 +1,39 @@
+# Teste do MakeHuman (MPFB2) para os Reels: só no ramo proto/human; não mexe no site.
+name: Reel human test (MakeHuman)
+on:
+  push:
+    branches: [proto/human]
+permissions:
+  contents: write
+jobs:
+  human:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pillow
+      - name: Blender 4.2 LTS
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 zip >/dev/null
+          for i in 1 2 3; do curl -fsL --retry 3 -o b.tar.xz https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz && tar -xJf b.tar.xz && break; sleep 20; done
+      - name: MPFB2 (MakeHuman Plugin For Blender, GPLv3) e recursos CC0
+        run: |
+          git clone -q --depth 1 https://github.com/makehumancommunity/mpfb2.git mpfb2src
+          ls mpfb2src; ls mpfb2src/src || true
+          (cd mpfb2src/src && zip -qr ../../mpfb.zip mpfb)
+          ./blender-4.2.3-linux-x64/blender -b --command extension install-file --repo user_default --enable mpfb.zip 2>&1 | tail -5
+          mkdir -p mh_assets
+          for p in makehuman_system_assets shoes02 shirts01 pants03 skins02; do
+            curl -fsSL --retry 3 -o mh_assets/$p.zip "https://files2.makehumancommunity.org/asset_packs/$p/${p}_cc0.zip" || echo "falhou $p"
+          done
+          ls -la mh_assets
+      - name: Teste
+        run: ./blender-4.2.3-linux-x64/blender -b -P reels/proto/mh_test.py -- result 2>&1 | grep -v "^Read prefs\|^Blender 4" | head -200
+      - name: Publish to branch proto-human-out
+        if: always()
+        run: |
+          mkdir -p result && cd result && touch .keep && git init -q && git checkout -q -b proto-human-out
+          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
+          git add -A && git commit -q -m "human $(date -u +%H:%M)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:proto-human-out
