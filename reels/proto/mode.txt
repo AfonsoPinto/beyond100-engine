@@ -1,2 +1,2 @@
-stills
-paris,sopo,dubai
+full
+dubai,paris,sopo,dubai_volley,paris_ace

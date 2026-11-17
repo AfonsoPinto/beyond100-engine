@@ -61,7 +61,7 @@ def smooth(o):
 TURF = principled("turf", lin((28, 92, 168)), rough=0.9); add_bump(TURF, 900, 0.35)
 OUTF = principled("outfloor", lin((14, 40, 78)), rough=0.85); add_bump(OUTF, 600, 0.2)
 LINE = principled("line", lin((240, 244, 250)), rough=0.6, emit=lin((240, 244, 250)), es=0.15)
-GLASS = mixmat("glass", {"Base Color": (0.8, 0.9, 1.0, 1), "Roughness": 0.03, "Metallic": 1.0}, 0.16)
+GLASS = mixmat("glass", {"Base Color": (0.8, 0.9, 1.0, 1), "Roughness": 0.06, "Metallic": 1.0}, 0.08)
 METAL = principled("metal", lin((30, 34, 40)), rough=0.35, metal=0.9)
 NETM = mixmat("net", {"Base Color": (0.02, 0.02, 0.03, 1), "Roughness": 0.8}, 0.6)
 WHITE = principled("white", lin((245, 245, 245)), rough=0.5)
@@ -152,7 +152,7 @@ else:
     for dx in (-0.25, 0.25):
         for dy in (-0.25, 0.25): beam("chair_leg", (cx + dx, dy, 0), (cx + dx * 0.6, dy * 0.6, 1.9), 0.025, METAL)
     box("chair_seat", (cx, 0, 1.95), (0.55, 0.5, 0.08), METAL); box("chair_back", (cx + 0.25, 0, 2.25), (0.06, 0.5, 0.6), METAL)
-    STAND = dict(y=RY + 1.2, x=RX + 1.2, wy=44, wx=50, rows=int(D.get("rows", 14)))
+    STAND = dict(y=RY + 1.2, x=RX + 1.2, wy=40, wx=46, rows=min(14, int(D.get("rows", 14))))
     BOARDS = [(RY, 0.0), (-RY, math.pi)]
 
 # bancadas em degraus, com pessoas sentadas (2 700 aprox.)
@@ -169,7 +169,7 @@ def person(pos, rot):
     parts = [("body", Matrix.Translation((lean, 0, 0.32)) @ Matrix.Diagonal((0.21, 0.13, 0.3, 1)), c),
              ("ico", Matrix.Translation((lean * 1.4, 0.02, 0.72)), k), ("ico2", Matrix.Translation((lean * 1.4, 0.05, 0.77)), hcol)]
     for kind, Lm, colr in parts:
-        if kind == "body": r_ = bmesh.ops.create_icosphere(cbm, subdivisions=2, radius=1.0, matrix=M @ Lm)
+        if kind == "body": r_ = bmesh.ops.create_icosphere(cbm, subdivisions=1, radius=1.0, matrix=M @ Lm)
         else: r_ = bmesh.ops.create_icosphere(cbm, subdivisions=1, radius=0.105 if kind == "ico" else 0.095, matrix=M @ Lm)
         fs = {f_ for v_ in r_["verts"] for f_ in v_.link_faces}
         for f_ in fs:
@@ -219,12 +219,12 @@ if SETTING == "day":
     L.rotation_euler = (math.radians(50), math.radians(18), math.radians(35))
 else:
     bg.inputs[0].default_value = (0.003, 0.005, 0.009, 1) if SETTING == "indoor" else (0.004, 0.008, 0.02, 1); bg.inputs[1].default_value = 1.0
-    xs = (-4.5, 4.5) if SPORT == "padel" else (-6, 0, 6)
-    ys = (-9, 0, 9) if SPORT == "padel" else (-14, -5, 5, 14)
+    xs = (-4.5, 4.5) if SPORT == "padel" else (-5, 5)
+    ys = (-9, 0, 9) if SPORT == "padel" else (-12, 0, 12)
     for x in xs:
         for y in ys:
             bpy.ops.object.light_add(type="AREA", location=(x, y, 13 if SPORT == "padel" else 17)); L = bpy.context.active_object
-            L.data.energy = LK; L.data.size = 3.5 if SPORT == "padel" else 4.5; L.data.color = (1.0, 0.97, 0.92)
+            L.data.energy = LK * (1.0 if SPORT == "padel" else 1.7); L.data.size = 3.5 if SPORT == "padel" else 6.0; L.data.color = (1.0, 0.97, 0.92)
     for (x, y) in ((-STAND["x"] - 8, 0), (STAND["x"] + 8, 0), (0, -STAND["y"] - 8), (0, STAND["y"] + 8)):   # luz nas bancadas
         bpy.ops.object.light_add(type="AREA", location=(x * 0.75, y * 0.75, 12)); L = bpy.context.active_object
         L.data.energy = 700 if SPORT == "padel" else 1100; L.data.size = 8; L.data.color = (0.85, 0.9, 1.0)
@@ -360,18 +360,18 @@ def pose(P_, rk, J):
 # ------------------------------------------------------------------ terra batida: marcas da bola e pó
 if SURF == "clay":
     MARK = principled("mark", lin((150, 70, 40)), rough=0.95)
-    DUST = mixmat("dust", {"Base Color": (*lin((214, 140, 96)), 1), "Roughness": 1.0}, 0.55)
+    DUST = mixmat("dust", {"Base Color": (*lin((214, 150, 110)), 1), "Roughness": 1.0}, 0.18)
     import random as _r; rr = _r.Random(9)
     for (fb, x, y) in D.get("bounces", []):
         m_ = sph("mark", 1, MARK, 16); m_.location = (x, y, 0.0)
         m_.scale = (0, 0, 0); m_.keyframe_insert("scale", frame=fb)
         m_.scale = (0.05, 0.11, 0.004); m_.keyframe_insert("scale", frame=fb + 1)
-        for q in range(9):
+        for q in range(14):
             pz = sph("dust", 1, DUST, 12); an = rr.uniform(0, 2 * math.pi); sp_ = rr.uniform(0.25, 0.7)
             pz.location = (x, y, 0.03); pz.scale = (0, 0, 0); pz.keyframe_insert("location", frame=fb); pz.keyframe_insert("scale", frame=fb)
             pz.scale = (0.05, 0.05, 0.05); pz.keyframe_insert("scale", frame=fb + 2)
             pz.location = (x + math.cos(an) * sp_, y + math.sin(an) * sp_, rr.uniform(0.15, 0.45)); pz.keyframe_insert("location", frame=fb + 16)
-            pz.scale = (0.16, 0.16, 0.12); pz.keyframe_insert("scale", frame=fb + 12)
+            pz.scale = (0.3, 0.3, 0.2); pz.keyframe_insert("scale", frame=fb + 12)
             pz.scale = (0, 0, 0); pz.keyframe_insert("scale", frame=fb + 26)
 
 # ------------------------------------------------------------------ câmara
