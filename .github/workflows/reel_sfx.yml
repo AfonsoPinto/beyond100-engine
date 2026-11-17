@@ -14,23 +14,6 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -q pillow && sudo apt-get install -y -qq ffmpeg >/dev/null
-      - name: Sons CC0
+      - name: Candidatos (lista)
         env: { FREESOUND_API_KEY: "${{ secrets.FREESOUND_API_KEY }}" }
-        run: |
-          [ -z "$FREESOUND_API_KEY" ] && { echo "falta o secret FREESOUND_API_KEY"; exit 1; }
-          python -m reels.sfx_fetch reels/sfx
-          ls -la reels/sfx; du -sh reels/sfx
-      - name: Refazer o som dos vídeos de teste
-        run: |
-          git fetch -q origin proto-out && mkdir -p prev result && git archive origin/proto-out | tar -x -C prev
-          for v in sopo dubai_globo; do
-            [ -f prev/reel_point_${v}_blender.mp4 ] && python -m reels.proto.resound reels/proto/$v.json prev/reel_point_${v}_blender.mp4 result/reel_point_${v}_som.mp4
-          done
-          cp reels/sfx/FONTES.md result/ ; ls -la result
-      - name: Guardar sons (ramos proto/sfx e proto/human) e vídeos em proto-sound-out
-        run: |
-          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
-          git add reels/sfx && git commit -q -m "Sons reais CC0 (Freesound) para os Reels" || echo "sem alterações"
-          git push -q origin HEAD:proto/sfx HEAD:proto/human || echo "push dos sons falhou"
-          cd result && git init -q && git checkout -q -b proto-sound-out && git add -A && git commit -q -m "som $(date -u +%H:%M)"
-          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:proto-sound-out
+        run: python -m reels.sfx_list
