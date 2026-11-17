@@ -24,7 +24,7 @@ idx = lambda ts: next((i for i, x in enumerate(P.TM) if x >= ts), len(P.TM) - 1)
 bounces = [(idx(tk) + 1, x, y) for (tk, x, y, z) in P.KP if z == 0 and abs(x) <= P.HW + 2 and abs(y) <= P.HL + 3]
 json.dump(dict(frames=frames, cols=[list(pl.col) for pl in P.PLAYERS], HW=P.HW, HL=P.HL, NET=P.NET, sport=P.SPORT, SW=getattr(P, "SW", 4.115),
                surface=P.V.get("surface"), setting=P.V.get("setting"), rows=P.V.get("rows", 14), bounces=bounces,
-               board=P.V["board"], stills=[idx(x) for x in ((1.45, 3.9, 5.3, 5.55, 5.75) if P.SPORT == 'padel' else (0.55, 1.25, 2.65, 3.88, 4.7))]), open(out, "w"))
+               board=P.V["board"], gender=("f" if any(w in (P.V["board"] + " " + P.V.get("label", "")).upper() for w in ("WTA", "WOMEN")) else "m"), stills=[idx(x) for x in ((1.45, 3.9, 5.3, 5.55, 5.75) if P.SPORT == 'padel' else (0.55, 1.25, 2.65, 3.88, 4.7))]), open(out, "w"))
 # painel do torneio desenhado como imagem (a letra do Blender falhava letras)
 from PIL import Image, ImageDraw
 from reels import common as C

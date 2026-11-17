@@ -1,2 +1,3 @@
-full
-dubai_globo,sopo
+stills
+sopo,dubai_globo
+humans

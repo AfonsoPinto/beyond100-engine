@@ -332,6 +332,63 @@ for k, col in enumerate(D["cols"]):
     RACKETS.append(make_racket(k, cols_[k % 4]) if SPORT == "padel" else make_tennis_racket(k, cols_[(k * 2) % 4]))
 ball = sph("ball", 0.042, BALL)
 
+# ------------------------------------------------------------------ pessoas realistas (MakeHuman), se existir humans.blend
+# As articulações do nosso rig conduzem o esqueleto: cada osso aponta (Damped Track) para a articulação seguinte.
+HUMANS = []
+HB = os.environ.get("PROTO_HUMANS", "")
+if HB and os.path.exists(HB):
+    gender = D.get("gender", "m")
+    with bpy.data.libraries.load(HB, link=False) as (src, dst):
+        dst.collections = [c for c in src.collections if c.startswith("H_" + gender)][:len(D["cols"])]
+    J0 = FR[0]["players"]
+    for k, colh in enumerate(dst.collections):
+        sc.collection.children.link(colh)
+        arm = next(o for o in colh.objects if o.type == "ARMATURE")
+        bpy.ops.object.empty_add(location=(0, 0, 0)); root = bpy.context.active_object; root.name = f"hroot{k}"
+        arm.parent = root
+        EMP = {}
+        def emp(nm_):
+            if nm_ not in EMP:
+                bpy.ops.object.empty_add(location=(0, 0, 0)); e_ = bpy.context.active_object; e_.name = f"j{k}_{nm_}"; EMP[nm_] = e_
+            return EMP[nm_]
+        def side(n_):
+            l_ = n_.lower()
+            if l_.endswith((".l", "_l", ".left")) or "_l_" in l_ or l_.endswith("l") and l_[-2:-1] in "._": return "L"
+            if l_.endswith((".r", "_r", ".right")) or "_r_" in l_: return "R"
+            return ""
+        thighs = []
+        for pb in arm.pose.bones:
+            n_ = pb.name.lower(); sd = side(pb.name); tgt = None
+            if "twist" in n_ or "finger" in n_ or "thumb" in n_ or "index" in n_ or "pinky" in n_ or "ring" in n_ or "middle" in n_: continue
+            if ("upperarm" in n_ or "upper_arm" in n_) and sd: tgt = "el" + sd
+            elif ("lowerarm" in n_ or "forearm" in n_) and sd: tgt = "hand" + sd
+            elif ("upperleg" in n_ or "thigh" in n_) and sd: tgt = "knee" + sd; thighs.append(pb)
+            elif ("lowerleg" in n_ or "calf" in n_ or "shin" in n_) and sd: tgt = "ank" + sd
+            elif n_.startswith("foot") and sd: tgt = "toe" + sd
+            elif n_.startswith("spine"): tgt = "neck"
+            elif n_.startswith("neck"): tgt = "head"
+            if tgt:
+                c_ = pb.constraints.new("DAMPED_TRACK"); c_.target = emp(tgt); c_.track_axis = "TRACK_Y"
+        # medidas em repouso: altura da anca do MakeHuman vs. a do nosso rig
+        bpy.context.view_layer.update()
+        hips = [arm.matrix_world @ pb.bone.head_local for pb in thighs] or [Vector((0, 0, 0.95))]
+        mh_hip = sum(hips, Vector()) / len(hips)
+        ours = (Vector(J0[k]["hipL"]) + Vector(J0[k]["hipR"])) / 2
+        sk = max(0.85, min(1.15, ours.z / max(0.5, mh_hip.z)))
+        HUMANS.append(dict(root=root, arm=arm, emp=EMP, hip=mh_hip, sc=sk))
+        print("pessoa", k, colh.name, "ossos com alvo:", len([1 for pb in arm.pose.bones if pb.constraints]), "escala", round(sk, 3))
+    for P_ in FIGS[:len(HUMANS)]:
+        for o in P_.values(): o.hide_render = True; o.hide_viewport = True
+
+def pose_human(h, J):
+    V = lambda k_: Vector(J[k_])
+    for nm_, e_ in h["emp"].items(): e_.location = V(nm_)
+    fh = V("fh"); yaw = math.atan2(fh.y, fh.x) + math.pi / 2
+    R = Matrix.Rotation(yaw, 4, "Z")
+    root = h["root"]; root.rotation_mode = "XYZ"; root.rotation_euler = (0, 0, yaw); root.scale = (h["sc"],) * 3
+    hipmid = (V("hipL") + V("hipR")) / 2
+    root.location = hipmid - (R @ (h["hip"] * h["sc"]))
+
 def pose(P_, rk, J):
     V = lambda k_: Vector(J[k_]); f, s_, fh, shs = V("f"), V("s"), V("fh"), V("sh"); z = Vector((0, 0, 1))
     P, C = V("P"), V("C")
@@ -379,7 +436,7 @@ bpy.ops.object.camera_add(); cam = bpy.context.active_object; sc.camera = cam
 cam.data.sensor_fit = "VERTICAL"; cam.data.sensor_height = 24.0
 cam.data.dof.use_dof = True; cam.data.dof.aperture_fstop = float(os.environ.get("PROTO_FSTOP", "2.4"))
 
-animated = [ball, cam] + [o for P_ in FIGS for o in P_.values()] + RACKETS
+animated = [ball, cam] + [o for P_ in FIGS for o in P_.values()] + RACKETS + [h["root"] for h in HUMANS] + [e_ for h in HUMANS for e_ in h["emp"].values()]
 for f in keys:
     fr = FR[f]; n = f + 1
     pos, tgt = Vector(fr["cam"]), Vector(fr["tgt"])
@@ -393,6 +450,11 @@ for f in keys:
         for o in list(P_.values()) + [rk]:
             o.rotation_mode = "QUATERNION"
             o.keyframe_insert("location", frame=n); o.keyframe_insert("rotation_quaternion", frame=n); o.keyframe_insert("scale", frame=n)
+    for h, J in zip(HUMANS, fr["players"]):
+        pose_human(h, J)
+        for o in [h["root"]] + list(h["emp"].values()):
+            o.keyframe_insert("location", frame=n)
+        h["root"].keyframe_insert("rotation_euler", frame=n); h["root"].keyframe_insert("scale", frame=n)
 # câmara: sem interpolação (há cortes entre planos); resto linear (desfoque de movimento correto)
 for o in animated:
     for owner in (o, getattr(o, "data", None)):

@@ -2,7 +2,7 @@
 name: Reel human test (MakeHuman)
 on:
   push:
-    branches: [proto/human]
+    branches: [proto/mhtest]
 permissions:
   contents: write
 jobs:

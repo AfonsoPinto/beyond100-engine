@@ -4,7 +4,7 @@
 name: Reel prototype (Blender)
 on:
   push:
-    branches: [proto/blender]
+    branches: [proto/blender, proto/human]
 permissions:
   contents: write
 concurrency: { group: reel-proto, cancel-in-progress: false }
@@ -15,6 +15,7 @@ jobs:
       jobs: ${{ steps.m.outputs.jobs }}
       venues: ${{ steps.m.outputs.venues }}
       mode: ${{ steps.m.outputs.mode }}
+      humans: ${{ steps.m.outputs.humans }}
       n: ${{ steps.m.outputs.n }}
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +30,7 @@ jobs:
           print("venues=" + json.dumps(v)); print(f"n={n}")
           PY
           echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "humans=$(sed -n 3p reels/proto/mode.txt | tr -d '[:space:]')" >> $GITHUB_OUTPUT
   mocap:
     needs: prep
     if: needs.prep.outputs.mode == 'mocap'
@@ -52,9 +54,44 @@ jobs:
           git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
           git add -A && git commit -q -m "mocap $(date -u +%H:%M)"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:proto-out
-  render:
+  humans:
     needs: prep
-    if: needs.prep.outputs.mode != 'mocap'
+    if: needs.prep.outputs.humans == 'humans'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with: { path: mh_assets, key: mh-assets-v2 }
+      - name: Blender 4.2 LTS
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 zip >/dev/null
+          for i in 1 2 3; do curl -fsL --retry 3 -o b.tar.xz https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz && tar -xJf b.tar.xz && break; sleep 20; done
+      - name: MPFB2 (MakeHuman Plugin For Blender, GPLv3) e recursos CC0
+        run: |
+          git clone -q --depth 1 https://github.com/makehumancommunity/mpfb2.git mpfb2src
+          ls mpfb2src; ls mpfb2src/src || true
+          (cd mpfb2src/src && zip -qr ../../mpfb.zip mpfb)
+          ./blender-4.2.3-linux-x64/blender -b --command extension install-file --repo user_default --enable mpfb.zip 2>&1 | tail -5
+          mkdir -p mh_assets
+          get() { # $1 nome do ficheiro, $2.. URLs; descarrega para .part e só renomeia se completo
+            [ -f mh_assets/$1 ] && unzip -tq mh_assets/$1 >/dev/null 2>&1 && return 0
+            for u in "${@:2}"; do
+              curl -fsSL --retry 3 --max-time 1500 -o mh_assets/$1.part "$u" && unzip -tq mh_assets/$1.part >/dev/null 2>&1 && mv mh_assets/$1.part mh_assets/$1 && return 0
+            done; rm -f mh_assets/$1.part; echo "falhou $1"
+          }
+          for p in makehuman_system_assets:cc0 shirts01:cc0 skins02:cc0 pants03:ccby shoes02:ccby; do
+            n=${p%%:*}; l=${p##*:}
+            get ${n}_$l.zip "https://files2.makehumancommunity.org/asset_packs/$n/${n}_$l.zip" "https://files.makehumancommunity.org/asset_packs/$n/${n}_$l.zip"
+          done
+          ls -la mh_assets
+      - name: Personagens
+        run: ./blender-4.2.3-linux-x64/blender -b -P reels/proto/mh_build.py -- humans.blend 2>&1 | grep -vE "^Fra:|^\[INFO" | tail -40
+      - uses: actions/upload-artifact@v4
+        with: { name: humans, path: humans.blend, retention-days: 3 }
+  render:
+    needs: [prep, humans]
+    if: always() && needs.prep.result == 'success' && needs.prep.outputs.mode != 'mocap' && (needs.humans.result == 'success' || needs.humans.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 300
     strategy:
@@ -74,18 +111,22 @@ jobs:
               || curl -fsL --retry 3 -o b.tar.xz https://mirrors.dotsrc.org/blender/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz
             tar -xJf b.tar.xz && break; echo "download falhou, nova tentativa"; sleep $((i * 20))
           done
+      - uses: actions/download-artifact@v4
+        if: needs.prep.outputs.humans == 'humans'
+        with: { name: humans, path: . }
       - run: python -m reels.proto.export reels/proto/${{ matrix.venue }}.json frames.json
       - name: Render
         run: |
           start=$(date +%s)
-          ./blender-4.2.3-linux-x64/blender -b --factory-startup -P reels/proto/scene.py -- frames.json ${{ matrix.part }} ${{ needs.prep.outputs.n }} out ${{ needs.prep.outputs.mode }} 2>&1 | grep -E "frame .* feito|Error|Traceback|error" | tail -40
+          [ -f humans.blend ] && export PROTO_HUMANS=$PWD/humans.blend
+          ./blender-4.2.3-linux-x64/blender -b --factory-startup -P reels/proto/scene.py -- frames.json ${{ matrix.part }} ${{ needs.prep.outputs.n }} out ${{ needs.prep.outputs.mode }} 2>&1 | grep -E "frame .* feito|Error|Traceback|error|pessoa" | tail -40
           echo "tempo: $(( $(date +%s) - start )) s"
           ls out | wc -l
       - uses: actions/upload-artifact@v4
         with: { name: "frames-${{ matrix.venue }}-${{ matrix.part }}", path: out/, retention-days: 3 }
   compose:
     needs: [prep, render]
-    if: needs.prep.outputs.mode != 'mocap'
+    if: always() && needs.render.result == 'success'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -105,7 +146,7 @@ jobs:
         with: { name: "result-${{ matrix.venue }}", path: result/, retention-days: 3 }
   publish:
     needs: [prep, compose]
-    if: needs.prep.outputs.mode != 'mocap'
+    if: always() && needs.compose.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
