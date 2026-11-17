@@ -118,10 +118,10 @@ def person(pos, rot):
     c = lin(RND.choice(SHIRTS)); k = lin(RND.choice(SKINS)); hcol = lin(RND.choice([(30, 24, 20), (60, 44, 30), (120, 90, 60), (20, 20, 20), (200, 180, 140)]))
     lean = RND.uniform(-0.06, 0.06)
     M = Matrix.Translation(pos) @ Matrix.Rotation(rot, 4, "Z")
-    parts = [("cube", Matrix.Translation((lean, 0, 0.3)) @ Matrix.Diagonal((0.42, 0.26, 0.56, 1)), c),
+    parts = [("body", Matrix.Translation((lean, 0, 0.32)) @ Matrix.Diagonal((0.21, 0.13, 0.3, 1)), c),
              ("ico", Matrix.Translation((lean * 1.4, 0.02, 0.72)), k), ("ico2", Matrix.Translation((lean * 1.4, 0.05, 0.77)), hcol)]
     for kind, Lm, colr in parts:
-        if kind == "cube": r_ = bmesh.ops.create_cube(cbm, size=1.0, matrix=M @ Lm)
+        if kind == "body": r_ = bmesh.ops.create_icosphere(cbm, subdivisions=2, radius=1.0, matrix=M @ Lm)
         else: r_ = bmesh.ops.create_icosphere(cbm, subdivisions=1, radius=0.105 if kind == "ico" else 0.095, matrix=M @ Lm)
         fs = {f_ for v_ in r_["verts"] for f_ in v_.link_faces}
         for f_ in fs:
@@ -146,17 +146,17 @@ cob = bpy.data.objects.new("crowd", cme); bpy.context.collection.objects.link(co
 font = None
 fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "fonts", "Inter-Black.otf")
 # a letra Inter (OTF) falha no Blender: fica a letra de origem do Blender
+BIMG = bpy.data.images.load(os.path.join(os.path.dirname(os.path.abspath(argv[0])), "board.png"))
+BM = bpy.data.materials.new("boardimg"); BM.use_nodes = True; nt = BM.node_tree; bb = nt.nodes.get("Principled BSDF")
+ti = nt.nodes.new("ShaderNodeTexImage"); ti.image = BIMG
+nt.links.new(ti.outputs["Color"], bb.inputs["Base Color"])
+if "Emission Color" in bb.inputs:
+    nt.links.new(ti.outputs["Color"], bb.inputs["Emission Color"]); bb.inputs["Emission Strength"].default_value = 1.6
+bb.inputs["Roughness"].default_value = 0.4
 def board(y, rot):
     box("board", (0, y, 0.45), (2 * HW + 6, 0.12, 0.9), BOARD)
-    box("board_acc", (0, y - math.copysign(0.065, y), 0.06), (2 * HW + 6, 0.01, 0.08), ACCM)
-    for xo in (-5.5, 5.5):
-        bpy.ops.object.text_add(location=(xo, y - math.copysign(0.07, y), 0.47)); t = bpy.context.active_object
-        t.data.body = D["board"].replace("·", " ").replace("  ", " "); t.data.size = 0.42; t.data.align_x = "CENTER"; t.data.align_y = "CENTER"
-        if font: t.data.font = font
-        t.rotation_euler = (math.pi / 2, 0, rot); t.data.materials.append(TXT)
-board(HL + 1.6, 0.0)          # ao fundo, virado para o campo (-Y)
-board(-HL - 1.6, math.pi)     # do lado da câmara, virado para +Y
-
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, y - math.copysign(0.065, y), 0.45)); pl = bpy.context.active_object
+    pl.scale = (2 * HW + 6, 0.86, 1); pl.rotation_euler = (math.pi / 2, 0, rot); pl.data.materials.append(BM)
 # ------------------------------------------------------------------ luz
 w = bpy.data.worlds.new("w"); sc.world = w; w.use_nodes = True
 bg = w.node_tree.nodes.get("Background"); bg.inputs[0].default_value = (0.003, 0.005, 0.009, 1); bg.inputs[1].default_value = 1.0

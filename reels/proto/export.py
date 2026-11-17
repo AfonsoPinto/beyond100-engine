@@ -1,5 +1,5 @@
 """Exporta para o Blender, frame a frame, a mesma jogada do motor atual (câmara, bola, articulações dos jogadores)."""
-import json, math, sys
+import json, math, os, sys
 cfg, out = sys.argv[1], sys.argv[2]
 sys.argv = ["point", cfg]
 from reels import point as P
@@ -22,4 +22,14 @@ for i, t in enumerate(P.TM):
 idx = lambda ts: next((i for i, x in enumerate(P.TM) if x >= ts), len(P.TM) - 1)
 json.dump(dict(frames=frames, cols=[list(pl.col) for pl in P.PLAYERS], HW=P.HW, HL=P.HL, NET=P.NET, sport=P.SPORT,
                board=P.V["board"], stills=[idx(x) for x in (1.45, 3.9, 5.3, 5.55, 5.75)]), open(out, "w"))
+# painel do torneio desenhado como imagem (a letra do Blender falhava letras)
+from PIL import Image, ImageDraw
+from reels import common as C
+bw, bh = 4096, 240
+im = Image.new("RGB", (bw, bh), (10, 18, 32)); d = ImageDraw.Draw(im)
+d.rectangle([0, bh - 18, bw, bh], fill=C.ACC)
+txt = P.V["board"].replace("·", "•"); f = C.F("k", 120); tw = d.textlength(txt, font=f)
+x = 60
+while x < bw: d.text((x, bh / 2 - 8), txt, font=f, fill=C.CREAM, anchor="lm"); x += tw + 220
+im.save(os.path.join(os.path.dirname(out) or ".", "board.png"))
 print(f"{len(frames)} frames exportados")
