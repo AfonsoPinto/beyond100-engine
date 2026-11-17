@@ -21,6 +21,20 @@ def rotz(v, a):
 Z = (0.0, 0.0, 1.0)
 
 UPPER, FORE = 0.30, 0.29          # braço
+
+# movimento real: ciclo de corrida da CMU Graphics Lab Motion Capture Database (mocap.cs.cmu.edu, NSF EIA-0196217)
+import json as _json, os as _os
+try:
+    _MC = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mocap_cycles.json")))["clips"]
+except (OSError, ValueError, KeyError):
+    _MC = {}
+
+def mocap_pose(name, phase):
+    """articulações do ciclo (referencial do movimento: x = lado, y = frente, z = altura), interpoladas na fase 0-1"""
+    c = _MC.get(name)
+    if not c: return None
+    fr = c["frames"]; n = len(fr); u = (phase % 1.0) * n; i = int(u) % n; j = (i + 1) % n; w = u - int(u)
+    return {k: tuple(fr[i][k][q] * (1 - w) + fr[j][k][q] * w for q in range(3)) for k in fr[i]}
 THIGH, SHIN = 0.45, 0.44          # perna
 R_OFF = 0.29                      # da mão ao centro da raquete
 
@@ -38,7 +52,7 @@ def ik(root, target, l1, l2, pole):
 
 class Rig:
     def __init__(self, pl, KP, ball_at, others_hits, r_off=0.29):
-        self.roff = r_off
+        self.roff = r_off; self._mc = None
         self.pl, self.KP, self.ball_at = pl, KP, ball_at
         self.face = pl.face
         self.hits = [(th, kind, ball_at(KP, th)) for th, kind in pl.hits]
@@ -138,10 +152,31 @@ class Rig:
             aR = add(aR, mul(fh, -0.12 * k))
         if jump > 0.05 and sw and sw[1] in ("smash", "serve"):                # no ar: pés juntos e uma perna dobrada
             aR = add(aR, add(mul(fh, -0.18), (0, 0, 0.12)))
-        kL, aL = ik(hipL, aL, THIGH, SHIN, add(mul(fh, 1.0), mul(shs, -0.2)))
-        kR, aR = ik(hipR, aR, THIGH, SHIN, add(mul(fh, 1.0), mul(shs, 0.2)))
+        # ---- corrida real (CMU): pernas, anca e balanço quando se desloca; a parte de cima continua a ser do batimento
+        wmc = smooth((sp - 0.7) / 1.3) * (0.35 if (sw and abs(sw[0]) < 0.25) else 1.0)
+        mpose = mocap_pose("run", self.dist(t) / max(0.9, min(2.0, 0.72 * sp))) if wmc > 0 and _MC else None
+        if mpose:
+            fm = norm((v[0], v[1], 0.0)); sm = (fm[1], -fm[0], 0.0)
+            W_ = lambda l: (x + sm[0] * l[0] + fm[0] * l[1], y + sm[1] * l[0] + fm[1] * l[1], l[2] + jump * 0.85)
+            dz = (mpose["P"][2] + jump) - P[2]
+            P = (P[0], P[1], P[2] + dz * wmc)
+            hipL = lerp(hipL, W_(mpose["hipL"]), wmc); hipR = lerp(hipR, W_(mpose["hipR"]), wmc)
+            aL = lerp(aL, W_(mpose["ankL"]), wmc); aR = lerp(aR, W_(mpose["ankR"]), wmc)
+            C = add(C, (0, 0, dz * wmc)); neck = add(neck, (0, 0, dz * wmc)); head = add(head, (0, 0, dz * wmc))
+            shL = add(shL, (0, 0, dz * wmc)); shR = add(shR, (0, 0, dz * wmc))
+            pkL = sub(W_(mpose["kneeL"]), lerp(W_(mpose["hipL"]), W_(mpose["ankL"]), 0.5))
+            pkR = sub(W_(mpose["kneeR"]), lerp(W_(mpose["hipR"]), W_(mpose["ankR"]), 0.5))
+            polL = norm(lerp(add(mul(fh, 1.0), mul(shs, -0.2)), pkL, wmc)); polR = norm(lerp(add(mul(fh, 1.0), mul(shs, 0.2)), pkR, wmc))
+            self._mc = (mpose, W_, wmc)
+        else:
+            polL, polR = add(mul(fh, 1.0), mul(shs, -0.2)), add(mul(fh, 1.0), mul(shs, 0.2)); self._mc = None
+        kL, aL = ik(hipL, aL, THIGH, SHIN, polL)
+        kR, aR = ik(hipR, aR, THIGH, SHIN, polR)
         toeL = add(aL, add(mul(norm(add(fh, mul(shs, -0.15))), 0.17), (0, 0, -0.06)))
         toeR = add(aR, add(mul(norm(add(fh, mul(shs, 0.15))), 0.17), (0, 0, -0.06)))
+        if self._mc:
+            mp, W_, wm = self._mc
+            toeL = lerp(toeL, add(aL, sub(W_(mp["toeL"]), W_(mp["ankL"]))), wm); toeR = lerp(toeR, add(aR, sub(W_(mp["toeR"]), W_(mp["ankR"]))), wm)
         # ------------------------------------------------ raquete e braços
         ready_rc = add(C, add(mul(f, 0.42), add(mul(s, 0.08), (0, 0, -0.12))))
         ready_rd = norm(add(mul(f, 0.55), add((0, 0, 0.7), mul(s, 0.15))))
@@ -177,7 +212,11 @@ class Rig:
         handR = sub(rc, mul(rd, self.roff))
         eR, handR = ik(shR, handR, UPPER, FORE, add((0, 0, -0.7), add(mul(f, -0.3), mul(s, 0.35))))
         rc = add(handR, mul(rd, self.roff))
-        if lh is None: lh = sub(rc, mul(rd, 0.17))                        # em espera: a mão livre segura a raquete
+        if lh is None:
+            lh = sub(rc, mul(rd, 0.17))                                   # em espera: a mão livre segura a raquete
+            if self._mc and not sw:
+                mp, W_, wm = self._mc
+                lh = lerp(lh, add(shL, sub(W_(mp["handL"]), W_(mp["shL"]))), wm * 0.85)
         eL, handL = ik(shL, lh, UPPER, FORE, add((0, 0, -0.7), add(mul(f, -0.2), mul(s, -0.35))))
         rn = sub(f, mul(rd, dot(f, rd))); rn = norm(rn) if length(rn) > 1e-3 else Z
         return dict(P=P, C=C, neck=neck, head=head, shL=shL, shR=shR, elL=eL, elR=eR, handL=handL, handR=handR,

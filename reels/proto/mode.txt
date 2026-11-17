@@ -1,2 +1,2 @@
-mocap
-
+full
+dubai_globo,sopo
