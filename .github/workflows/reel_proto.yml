@@ -138,6 +138,10 @@ jobs:
       - run: pip install -q pillow && sudo apt-get install -y -qq ffmpeg >/dev/null
       - uses: actions/download-artifact@v4
         with: { pattern: "frames-${{ matrix.venue }}-*", merge-multiple: true, path: frames }
+      - name: Sons reais CC0 (Freesound)
+        env: { FREESOUND_API_KEY: "${{ secrets.FREESOUND_API_KEY }}" }
+        run: |
+          if [ -n "$FREESOUND_API_KEY" ]; then python -m reels.sfx_fetch reels/sfx || echo "sons falharam: fica o som antigo"; fi
       - run: |
           mkdir -p result
           if [ "${{ needs.prep.outputs.mode }}" = "stills" ]; then python -m reels.proto.compose reels/proto/${{ matrix.venue }}.json frames result/${{ matrix.venue }} stills
