@@ -373,9 +373,23 @@ if HB and os.path.exists(HB):
         bpy.context.view_layer.update()
         hips = [arm.matrix_world @ pb.bone.head_local for pb in thighs] or [Vector((0, 0, 0.95))]
         mh_hip = sum(hips, Vector()) / len(hips)
-        ours = (Vector(J0[k]["hipL"]) + Vector(J0[k]["hipR"])) / 2
-        sk = max(0.85, min(1.15, ours.z / max(0.5, mh_hip.z)))
-        HUMANS.append(dict(root=root, arm=arm, emp=EMP, hip=mh_hip, sc=sk))
+        ours_z = max((fr_["players"][k]["hipL"][2] + fr_["players"][k]["hipR"][2]) / 2 for fr_ in FR)
+        sk = max(0.85, min(1.15, ours_z / max(0.5, mh_hip.z)))
+        # roupa lisa, com as cores do jogador/equipa (sem padrões nem estampados)
+        team = lin(D["cols"][k]); dark = lin((24, 28, 36)) if sum(D["cols"][k]) > 380 else lin((236, 236, 232))
+        for o in colh.objects:
+            role = o.get("b100_role", "")
+            if role not in ("top", "shorts") or o.type != "MESH": continue
+            m_ = principled(f"{role}{k}", team if role == "top" else dark, rough=0.8, sheen=0.5)
+            o.data.materials.clear(); o.data.materials.append(m_)
+        # dedos da mão da raquete fechados no cabo
+        for pb in arm.pose.bones:
+            n_ = pb.name
+            if n_.endswith("_r") and n_.split("_")[0] in ("index", "middle", "ring", "pinky"):
+                pb.rotation_mode = "XYZ"; pb.rotation_euler = (0, 0, 1.25 if n_.split("_")[1] == "01" else 1.35)
+            if n_ == "thumb_02_r" or n_ == "thumb_03_r":
+                pb.rotation_mode = "XYZ"; pb.rotation_euler = (0, 0, 0.6)
+        HUMANS.append(dict(root=root, arm=arm, emp=EMP, hip=mh_hip, sc=sk, hand=arm.pose.bones.get("hand_r")))
         print("pessoa", k, colh.name, "ossos com alvo:", len([1 for pb in arm.pose.bones if pb.constraints]), "escala", round(sk, 3))
     for P_ in FIGS[:len(HUMANS)]:
         for o in P_.values(): o.hide_render = True; o.hide_viewport = True
@@ -450,8 +464,16 @@ for f in keys:
         for o in list(P_.values()) + [rk]:
             o.rotation_mode = "QUATERNION"
             o.keyframe_insert("location", frame=n); o.keyframe_insert("rotation_quaternion", frame=n); o.keyframe_insert("scale", frame=n)
-    for h, J in zip(HUMANS, fr["players"]):
+    for h, rk, J in zip(HUMANS, RACKETS, fr["players"]):
         pose_human(h, J)
+        # raquete presa à mão do esqueleto (palma), com a mesma orientação do nosso rig
+        bpy.context.view_layer.update()
+        hb = h["hand"]
+        if hb:
+            Mw = h["arm"].matrix_world
+            palm = Mw @ (hb.head + (hb.tail - hb.head) * 0.75)
+            rk.location = rk.location + (palm - Vector(J["handR"]))
+            rk.keyframe_insert("location", frame=n)
         for o in [h["root"]] + list(h["emp"].values()):
             o.keyframe_insert("location", frame=n)
         h["root"].keyframe_insert("rotation_euler", frame=n); h["root"].keyframe_insert("scale", frame=n)

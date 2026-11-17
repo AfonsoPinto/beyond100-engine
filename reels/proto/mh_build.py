@@ -21,10 +21,10 @@ LOOKS = {
           ("young_african_male", "short04", "toigo_basic_tucked_t-shirt", "elvs_male_trouser_short_2"),
           ("young_asian_male", "short01", "elvs_crude_t-shirt_male", "elvs_male_trouser_short_1"),
           ("young_caucasian_male2", "short03", "toigo_basic_tucked_t-shirt", "elvs_male_trouser_short_2")],
-    "f": [("young_caucasian_female", "ponytail01", "joepal_crude_t-shirt_female", "elvs_retro_girly_shorts1"),
-          ("young_african_female", "braid01", "toigo_keyhole_tank_top", "elvs_retro_girly_shorts1"),
-          ("young_asian_female", "ponytail01", "joepal_crude_t-shirt_female", "elvs_retro_girly_shorts1"),
-          ("young_caucasian_female2", "bob01", "toigo_camisole_top", "elvs_retro_girly_shorts1")],
+    "f": [("young_caucasian_female", "ponytail01", "joepal_crude_t-shirt_female", "elvs_male_trouser_short_2"),
+          ("young_african_female", "braid01", "joepal_crude_t-shirt_female", "elvs_male_trouser_short_2"),
+          ("young_asian_female", "ponytail01", "joepal_crude_t-shirt_female", "elvs_male_trouser_short_2"),
+          ("young_caucasian_female2", "long01", "joepal_crude_t-shirt_female", "elvs_male_trouser_short_2")],
 }
 info = {}
 for g, looks in LOOKS.items():
@@ -35,11 +35,14 @@ for g, looks in LOOKS.items():
         except Exception as e: print("macro falhou", e); bm = HS.create_human()
         arm = HS.add_builtin_rig(bm, RIG)
         HS.set_character_skin(p("skins", skin, "mhmat"), bm)
+        bm["b100_role"] = "body"
         for kind, a, t in (("eyes", "high-poly", "Eyes"), ("eyebrows", "eyebrow001", "Eyebrows"), ("eyelashes", "eyelashes01", "Eyelashes"), ("hair", hair, "Hair"),
                            ("clothes", top, "Clothes"), ("clothes", shorts, "Clothes"), ("clothes", "culturalibre_sneakers", "Clothes")):
             f = p(kind, a)
             if f:
-                try: HS.add_mhclo_asset(f, bm, asset_type=t)
+                try:
+                    ob = HS.add_mhclo_asset(f, bm, asset_type=t)
+                    ob["b100_role"] = "top" if a == top else ("shorts" if a == shorts else ("shoes" if "sneakers" in a else kind))
                 except Exception as e: print("falhou", a, e)
             else: print("sem", kind, a)
         col = bpy.data.collections.new(nm); bpy.context.scene.collection.children.link(col)
