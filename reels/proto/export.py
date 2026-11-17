@@ -31,10 +31,25 @@ from reels import common as C
 bw, bh = 4096, 240
 im = Image.new("RGB", (bw, bh), (10, 18, 32)); d = ImageDraw.Draw(im)
 d.rectangle([0, bh - 18, bw, bh], fill=C.ACC)
-# alterna o nome do torneio com a nossa marca (publicidade própria; nunca logótipos de patrocinadores reais)
-segs = [(P.V["board"].replace("·", "•"), C.CREAM), ("BEYOND 100  •  beyond100tennis.com", C.ACC)]
+# alterna o nome do torneio com a nossa marca: emblema Beyond100 + endereço (publicidade própria; nunca marcas de terceiros)
+from reels.proto.emblem import emblem
+EMB = emblem(1024, "TENNIS · CHALLENGER · ITF" if P.SPORT != "padel" else "PADEL · RANKINGS · RESULTS")
+EMB.save(os.path.join(os.path.dirname(out) or ".", "emblem.png"))
+# fita da rede: BEYOND100 em creme sobre verde, com o emblema pequeno
+nb = Image.new("RGBA", (1400, 100), (14, 58, 45, 255)); dn = ImageDraw.Draw(nb)
+ne = EMB.resize((84, 84), Image.LANCZOS); nb.paste(ne, (12, 8), ne)
+from reels.proto.emblem import _font
+dn.text((110, 50), "BEYOND100", font=_font(64), fill=(247, 242, 230), anchor="lm")
+dn.text((1388, 50), "beyond100tennis.com", font=C.F("k", 44), fill=(217, 242, 61), anchor="rm")
+nb.save(os.path.join(os.path.dirname(out) or ".", "netband.png"))
+small = EMB.resize((bh - 40, bh - 40), Image.LANCZOS)
 f = C.F("k", 112); x = 60; k = 0
 while x < bw:
-    txt, colr = segs[k % 2]; d.text((x, bh / 2 - 8), txt, font=f, fill=colr, anchor="lm"); x += d.textlength(txt, font=f) + 200; k += 1
+    if k % 2 == 0:
+        txt = P.V["board"].replace("·", "•"); d.text((x, bh / 2 - 8), txt, font=f, fill=C.CREAM, anchor="lm"); x += d.textlength(txt, font=f) + 200
+    else:
+        im.paste(small, (int(x), 12), small); x += small.width + 40
+        txt = "beyond100tennis.com"; d.text((x, bh / 2 - 8), txt, font=f, fill=C.ACC, anchor="lm"); x += d.textlength(txt, font=f) + 200
+    k += 1
 im.save(os.path.join(os.path.dirname(out) or ".", "board.png"))
 print(f"{len(frames)} frames exportados")

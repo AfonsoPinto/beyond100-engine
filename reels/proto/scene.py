@@ -3,7 +3,8 @@ painéis com o nome do torneio, quatro figuras anónimas (manequins) e a bola. C
   blender -b -P reels/proto/scene.py -- frames.json <parte> <nº de partes> <pasta> <full|stills>
 A jogada, as câmaras e os tempos vêm do motor atual (export.py), por isso o resultado é o mesmo ponto, só que renderizado."""
 import bpy, json, math, os, sys
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Quaternion
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 D = json.load(open(argv[0])); part, parts, outdir, mode = int(argv[1]), int(argv[2]), argv[3], argv[4]
@@ -304,6 +305,35 @@ def board(y, rot):
     bpy.ops.mesh.primitive_plane_add(size=1, location=(0, y - math.copysign(0.065, y), 0.45)); pl = bpy.context.active_object
     pl.scale = (BW, 0.86, 1); pl.rotation_euler = (math.pi / 2, 0, rot); pl.data.materials.append(BM)
 for (y_, r_) in BOARDS: board(y_, r_)
+# ------------------------------------------------------------------ marca própria: emblema Beyond100 no campo, na rede e na cadeira
+_DIR = os.path.dirname(os.path.abspath(argv[0]))
+def decal_mat(name, path, emit=0.0):
+    m = bpy.data.materials.new(name); m.use_nodes = True; nt = m.node_tree; b = nt.nodes.get("Principled BSDF")
+    ti = nt.nodes.new("ShaderNodeTexImage"); ti.image = bpy.data.images.load(path); ti.extension = "CLIP"
+    nt.links.new(ti.outputs["Color"], b.inputs["Base Color"]); nt.links.new(ti.outputs["Alpha"], b.inputs["Alpha"])
+    b.inputs["Roughness"].default_value = 0.7
+    if emit and "Emission Color" in b.inputs:
+        nt.links.new(ti.outputs["Color"], b.inputs["Emission Color"]); b.inputs["Emission Strength"].default_value = emit
+    try: m.blend_method = "BLEND"
+    except Exception: pass
+    return m
+def decal(m, loc, sx, sy, rot):
+    bpy.ops.mesh.primitive_plane_add(size=1, location=loc); pl = bpy.context.active_object
+    pl.scale = (sx, sy, 1); pl.rotation_euler = rot; pl.data.materials.append(m); return pl
+if os.path.exists(os.path.join(_DIR, "emblem.png")):
+    EMBM = decal_mat("emblem", os.path.join(_DIR, "emblem.png"))
+    if SPORT == "padel":
+        for sgn in (-1, 1): decal(EMBM, (0, sgn * 8.4, 0.004), 1.5, 1.5, (0, 0, 0 if sgn > 0 else math.pi))   # pintado na relva, atrás da linha de serviço
+    else:
+        for sgn in (-1, 1): decal(EMBM, (0, sgn * (HL + 3.4), 0.004), 2.2, 2.2, (0, 0, 0 if sgn > 0 else math.pi))  # pintado atrás da linha de fundo
+        cx_ = HW + 0.914 + 1.1                                   # cadeira do árbitro (os dois lados)
+        for sgn in (-1, 1): decal(EMBM, (cx_, sgn * 0.27, 1.55), 0.42, 0.42, (math.pi / 2, 0, 0 if sgn < 0 else math.pi))
+    if os.path.exists(os.path.join(_DIR, "netband.png")):
+        NBM = decal_mat("netband", os.path.join(_DIR, "netband.png"), emit=0.15)
+        ztop = (NET if SPORT == "padel" else NET + (1.07 - NET) * (2.6 / (HW + 0.914)) ** 2) - 0.035
+        for xs_ in (-2.6, 2.6):
+            for sgn in (-1, 1):
+                decal(NBM, (xs_, sgn * 0.035, ztop), 1.4, 0.1, (math.pi / 2, 0, 0 if sgn < 0 else math.pi))
 # ------------------------------------------------------------------ luz (pavilhão, dia ou noite)
 w = bpy.data.worlds.new("w"); sc.world = w; w.use_nodes = True
 bg = w.node_tree.nodes.get("Background")
@@ -411,7 +441,8 @@ def make_racket(k, frame_col):
     for o in parts: o.parent = root
     return root
 
-FIGS, RACKETS = [], []
+from reels.proto import racket as RK
+FIGS, RACKETS, GRIPS = [], [], []
 for k, col in enumerate(D["cols"]):
     shirt = principled(f"shirt{k}", lin(col), rough=0.75, sheen=0.4)
     P_ = dict(pelvis=sph("pelvis", 1, SHORTS), torso=cone("torso", 0.17, 0.2, shirt), chest=sph("chest", 1, shirt), neck=cone("neck", 0.055, 0.05, SKIN),
@@ -425,7 +456,8 @@ for k, col in enumerate(D["cols"]):
               shoR=sph("shoR", 0.07, shirt), shoL=sph("shoL", 0.07, shirt))
     FIGS.append(P_)
     cols_ = [(230, 60, 50), (240, 240, 240), (40, 120, 230), (250, 200, 40)]
-    RACKETS.append(make_racket(k, cols_[k % 4]) if SPORT == "padel" else make_tennis_racket(k, cols_[(k * 2) % 4]))
+    rk_, gp_ = RK.padel(k, cols_[k % 4]) if SPORT == "padel" else RK.tennis(k, cols_[(k * 2 + 1) % 4] if k % 2 else (28, 92, 200))
+    RACKETS.append(rk_); GRIPS.append(gp_)
 ball = sph("ball", 0.042, BALL)
 
 # ------------------------------------------------------------------ pessoas realistas (MakeHuman), se existir humans.blend
@@ -478,14 +510,38 @@ if HB and os.path.exists(HB):
             if role not in ("top", "shorts") or o.type != "MESH": continue
             m_ = principled(f"{role}{k}", team if role == "top" else dark, rough=0.8, sheen=0.5)
             o.data.materials.clear(); o.data.materials.append(m_)
-        # dedos da mão da raquete fechados no cabo
-        for pb in arm.pose.bones:
-            n_ = pb.name
-            if n_.endswith("_r") and n_.split("_")[0] in ("index", "middle", "ring", "pinky"):
-                pb.rotation_mode = "XYZ"; pb.rotation_euler = (0, 0, 1.25 if n_.split("_")[1] == "01" else 1.35)
-            if n_ == "thumb_02_r" or n_ == "thumb_03_r":
-                pb.rotation_mode = "XYZ"; pb.rotation_euler = (0, 0, 0.6)
-        HUMANS.append(dict(root=root, arm=arm, emp=EMP, hip=mh_hip, sc=sk, hand=arm.pose.bones.get("hand_r")))
+        # mão da raquete: eixos da palma a partir dos ossos em repouso (espaço do esqueleto)
+        B_ = arm.data.bones; hand_b = B_.get("hand_r"); grip = None
+        if hand_b and B_.get("index_01_r") and B_.get("pinky_01_r") and B_.get("thumb_01_r"):
+            kx = (B_["index_01_r"].head_local - B_["pinky_01_r"].head_local).normalized()
+            yb = (hand_b.tail_local - hand_b.head_local).normalized(); y2 = (yb - kx * yb.dot(kx)).normalized()
+            v_ = B_["thumb_01_r"].head_local - hand_b.head_local; nv = (v_ - kx * v_.dot(kx) - y2 * v_.dot(y2)).normalized()
+            hd = (kx * math.cos(math.radians(22)) + y2 * math.sin(math.radians(22))).normalized()
+            Rh = hand_b.matrix_local.to_3x3(); RhT = Rh.transposed()
+            hd_l, n_l = RhT @ hd, RhT @ nv
+            n_l = (n_l - hd_l * n_l.dot(hd_l)).normalized()
+            Lm = Matrix((hd_l, n_l, hd_l.cross(n_l))).transposed()
+            # rotação relativa mão/antebraço em repouso (para escolher o lado da palma mais natural)
+            fa_b = B_.get("lowerarm_r"); rel = (fa_b.matrix_local.to_3x3().inverted() @ Rh) if fa_b else None
+            bpy.ops.object.empty_add(location=(0, 0, 0)); hrot = bpy.context.active_object; hrot.name = f"hrot{k}"; hrot.rotation_mode = "QUATERNION"
+            cr = arm.pose.bones["hand_r"].constraints.new("COPY_ROTATION"); cr.target = hrot
+            cr.target_space = "WORLD"; cr.owner_space = "WORLD"
+            grip = dict(L=Lm, rel=rel, hrot=hrot, nv_l=RhT @ nv)
+            # dedos: dobram à volta do cabo (sinal testado para fecharem para o lado da palma)
+            for pb in arm.pose.bones:
+                nm = pb.name; parts_ = nm.split("_")
+                if len(parts_) != 3 or parts_[0] not in ("index", "middle", "ring", "pinky", "thumb"): continue
+                Rf = pb.bone.matrix_local.to_3x3(); ax = (Rf.transposed() @ kx).normalized()
+                if parts_[0] == "thumb": ax = (Rf.transposed() @ y2).normalized()
+                yl = Vector((0, 1, 0)); q = Quaternion(ax, 0.5)
+                sgn = 1 if (Rf @ (q @ yl)).dot(nv) > (Rf @ yl).dot(nv) else -1
+                if parts_[2] == "r":
+                    ang = {"01": 1.1, "02": 1.25, "03": 0.75}[parts_[1]] if parts_[0] != "thumb" else (0.0 if parts_[1] == "01" else 0.45)
+                else:
+                    ang = 0.3 if parts_[0] != "thumb" else 0.15
+                pb.rotation_mode = "QUATERNION"; pb.rotation_quaternion = Quaternion(ax, sgn * ang)
+        HUMANS.append(dict(root=root, arm=arm, emp=EMP, hip=mh_hip, sc=sk, hand=arm.pose.bones.get("hand_r"), grip=grip,
+                           fore=arm.pose.bones.get("lowerarm_r")))
         print("pessoa", k, colh.name, "ossos com alvo:", len([1 for pb in arm.pose.bones if pb.constraints]), "escala", round(sk, 3))
     for P_ in FIGS[:len(HUMANS)]:
         for o in P_.values(): o.hide_render = True; o.hide_viewport = True
@@ -546,7 +602,7 @@ bpy.ops.object.camera_add(); cam = bpy.context.active_object; sc.camera = cam
 cam.data.sensor_fit = "VERTICAL"; cam.data.sensor_height = 24.0
 cam.data.dof.use_dof = True; cam.data.dof.aperture_fstop = float(os.environ.get("PROTO_FSTOP", "2.4"))
 
-animated = [ball, cam, blag] + [o for P_ in FIGS for o in P_.values()] + RACKETS + [h["root"] for h in HUMANS] + [e_ for h in HUMANS for e_ in h["emp"].values()]
+animated = [ball, cam, blag] + [h["grip"]["hrot"] for h in HUMANS if h.get("grip")] + [o for P_ in FIGS for o in P_.values()] + RACKETS + [h["root"] for h in HUMANS] + [e_ for h in HUMANS for e_ in h["emp"].values()]
 for f in keys:
     fr = FR[f]; n = f + 1
     pos, tgt = Vector(fr["cam"]), Vector(fr["tgt"])
@@ -563,13 +619,27 @@ for f in keys:
             o.keyframe_insert("location", frame=n); o.keyframe_insert("rotation_quaternion", frame=n); o.keyframe_insert("scale", frame=n)
     for h, rk, J in zip(HUMANS, RACKETS, fr["players"]):
         pose_human(h, J)
-        # raquete presa à mão do esqueleto (palma), com a mesma orientação do nosso rig
-        bpy.context.view_layer.update()
-        hb = h["hand"]
-        if hb:
+        g_ = h["grip"]
+        if g_:
+            rd_, rn_ = Vector(J["rd"]).normalized(), Vector(J["rn"])
+            rn_ = (rn_ - rd_ * rn_.dot(rd_)).normalized()
+            bpy.context.view_layer.update()
             Mw = h["arm"].matrix_world
-            palm = Mw @ (hb.head + (hb.tail - hb.head) * 0.75)
-            rk.location = rk.location + (palm - Vector(J["handR"]))
+            fore_w = (Mw @ h["fore"].matrix).to_3x3().normalized() if h["fore"] else None
+            best = None
+            for sg in (1, -1):
+                Wm = Matrix((rd_, rn_ * sg, rd_.cross(rn_ * sg))).transposed()
+                Bn = Wm @ g_["L"].transposed()
+                score = (fore_w @ g_["rel"]).to_quaternion().dot(Bn.to_quaternion()) if (fore_w is not None and g_["rel"] is not None) else sg
+                score = abs(score)
+                if best is None or score > best[0]: best = (score, Bn, sg)
+            g_["hrot"].rotation_quaternion = best[1].to_quaternion(); g_["hrot"].keyframe_insert("rotation_quaternion", frame=n)
+            bpy.context.view_layer.update()
+            hb = h["hand"]; Hw = Mw @ hb.matrix
+            palm_n = (Hw.to_3x3().normalized() @ g_["nv_l"]).normalized()
+            palm = Mw @ (hb.head + (hb.tail - hb.head) * 0.55) + palm_n * 0.024 * h["sc"]
+            Rr = rk.rotation_quaternion.to_matrix()
+            rk.location = palm - Rr @ GRIPS[RACKETS.index(rk)]
             rk.keyframe_insert("location", frame=n)
         for o in [h["root"]] + list(h["emp"].values()):
             o.keyframe_insert("location", frame=n)
@@ -592,7 +662,7 @@ for owner in (cam.data,):
 # ------------------------------------------------------------------ render
 r = sc.render
 r.engine = "CYCLES"; sc.cycles.device = "CPU"
-sc.cycles.samples = int(os.environ.get("PROTO_SAMPLES", "20")); sc.cycles.use_adaptive_sampling = True
+sc.cycles.samples = int(os.environ.get("PROTO_SAMPLES", "32")); sc.cycles.use_adaptive_sampling = True
 sc.cycles.adaptive_threshold = 0.04
 sc.cycles.use_denoising = True
 try: sc.cycles.denoiser = "OPENIMAGEDENOISE"
@@ -614,3 +684,23 @@ for f in todo:
     r.filepath = os.path.join(outdir, f"f_{f:04d}.jpg")
     bpy.ops.render.render(write_still=True)
     print("frame", f, "feito", flush=True)
+
+# ------------------------------------------------------------------ grandes planos de controlo (só em stills): mão + raquete e corpo inteiro
+if mode == "stills" and HUMANS:
+    bpy.ops.object.camera_add(); cam2 = bpy.context.active_object
+    cam2.data.dof.use_dof = True; cam2.data.dof.aperture_fstop = 2.8; cam2.data.sensor_fit = "VERTICAL"; cam2.data.sensor_height = 24.0
+    sc.camera = cam2
+    for f in todo:
+        sc.frame_set(f + 1)
+        for hi, h in enumerate(HUMANS[:2]):
+            arm = h["arm"]; hb = h["hand"]
+            if not hb: continue
+            hand_w = arm.matrix_world @ hb.head; J = FR[f]["players"][hi]
+            fwd = Vector(J["fh"]); fwd.z = 0; fwd.normalize(); side = fwd.cross(Vector((0, 0, 1)))
+            for tag, dist, lens, tgt in (("c", 1.25, 55, hand_w + Vector(J["rd"]) * 0.18), ("m", 4.2, 45, (Vector(J["P"]) + Vector(J["C"])) / 2)):
+                pos = tgt + (fwd * 0.8 + side * 0.6).normalized() * dist + Vector((0, 0, 0.25 if tag == "c" else 0.4))
+                cam2.location = pos; cam2.rotation_mode = "QUATERNION"; cam2.rotation_quaternion = (tgt - pos).normalized().to_track_quat("-Z", "Y")
+                cam2.data.lens = lens; cam2.data.dof.focus_distance = (tgt - pos).length
+                r.filepath = os.path.join(outdir, f"{tag}{hi}_{f:04d}.jpg"); bpy.ops.render.render(write_still=True)
+                print("grande plano", tag, hi, f, flush=True)
+

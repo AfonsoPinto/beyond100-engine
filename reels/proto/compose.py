@@ -13,8 +13,12 @@ def deco(i):
     return im
 if mode == "stills":
     os.makedirs(out, exist_ok=True)
+    import shutil
     for fn in sorted(os.listdir(fdir)):
-        i = int(fn[2:6]); deco(i).save(os.path.join(out, f"still_{i:04d}.jpg"), quality=90)
+        if fn.startswith("f_"):
+            i = int(fn[2:6]); deco(i).save(os.path.join(out, f"still_{i:04d}.jpg"), quality=90)
+        else:
+            shutil.copy(os.path.join(fdir, fn), os.path.join(out, "close_" + fn))
     sys.exit(0)
 tmp = out[:-4] + ".part.mp4"; p = C.encoder(tmp, P.W, P.H, P.FPS)
 last = None
