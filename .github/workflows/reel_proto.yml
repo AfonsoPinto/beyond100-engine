@@ -1,24 +1,33 @@
 # Protótipo de Reels realistas (Blender/Cycles). Só corre no ramo proto/blender; não mexe no site.
-# O resultado (imagens ou vídeo) vai para o ramo proto-out deste repositório.
+# reels/proto/mode.txt: 1.ª linha "stills" ou "full"; 2.ª linha os recintos (ex.: "dubai,paris,sopo").
+# O resultado (imagens ou vídeos) vai para o ramo proto-out deste repositório.
 name: Reel prototype (Blender)
 on:
   push:
     branches: [proto/blender]
 permissions:
   contents: write
+concurrency: { group: reel-proto, cancel-in-progress: true }
 jobs:
   prep:
     runs-on: ubuntu-latest
     outputs:
-      parts: ${{ steps.m.outputs.parts }}
-      n: ${{ steps.m.outputs.n }}
+      jobs: ${{ steps.m.outputs.jobs }}
+      venues: ${{ steps.m.outputs.venues }}
       mode: ${{ steps.m.outputs.mode }}
+      n: ${{ steps.m.outputs.n }}
     steps:
       - uses: actions/checkout@v4
       - id: m
         run: |
-          MODE=$(cat reels/proto/mode.txt | tr -d '[:space:]')
-          if [ "$MODE" = "stills" ]; then echo 'parts=[0]' >> $GITHUB_OUTPUT; echo 'n=1' >> $GITHUB_OUTPUT; else echo 'parts=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]' >> $GITHUB_OUTPUT; echo 'n=20' >> $GITHUB_OUTPUT; fi
+          MODE=$(sed -n 1p reels/proto/mode.txt | tr -d '[:space:]'); VEN=$(sed -n 2p reels/proto/mode.txt | tr -d '[:space:]'); [ -z "$VEN" ] && VEN=dubai
+          N=1; [ "$MODE" = "full" ] && N=${PARTS:-20}
+          python3 - "$VEN" "$N" >> $GITHUB_OUTPUT <<'PY'
+          import json, sys
+          v = sys.argv[1].split(","); n = int(sys.argv[2])
+          print("jobs=" + json.dumps([{"venue": x, "part": p} for x in v for p in range(n)]))
+          print("venues=" + json.dumps(v)); print(f"n={n}")
+          PY
           echo "mode=$MODE" >> $GITHUB_OUTPUT
   render:
     needs: prep
@@ -27,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: ${{ fromJson(needs.prep.outputs.parts) }}
+        include: ${{ fromJson(needs.prep.outputs.jobs) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,7 +46,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 >/dev/null
           curl -sL https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz | tar -xJ
-      - run: python -m reels.proto.export reels/proto/dubai.json frames.json
+      - run: python -m reels.proto.export reels/proto/${{ matrix.venue }}.json frames.json
       - name: Render
         run: |
           start=$(date +%s)
@@ -45,25 +54,35 @@ jobs:
           echo "tempo: $(( $(date +%s) - start )) s"
           ls out | wc -l
       - uses: actions/upload-artifact@v4
-        with: { name: "frames-${{ matrix.part }}", path: out/, retention-days: 3 }
+        with: { name: "frames-${{ matrix.venue }}-${{ matrix.part }}", path: out/, retention-days: 3 }
   compose:
     needs: [prep, render]
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        venue: ${{ fromJson(needs.prep.outputs.venues) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -q pillow && sudo apt-get install -y -qq ffmpeg >/dev/null
       - uses: actions/download-artifact@v4
-        with: { pattern: "frames-*", merge-multiple: true, path: frames }
+        with: { pattern: "frames-${{ matrix.venue }}-*", merge-multiple: true, path: frames }
       - run: |
           mkdir -p result
-          if [ "${{ needs.prep.outputs.mode }}" = "stills" ]; then python -m reels.proto.compose reels/proto/dubai.json frames result stills
-          else python -m reels.proto.compose reels/proto/dubai.json frames result/reel_point_dubai_blender.mp4 full; fi
-          ls -la result
+          if [ "${{ needs.prep.outputs.mode }}" = "stills" ]; then python -m reels.proto.compose reels/proto/${{ matrix.venue }}.json frames result/${{ matrix.venue }} stills
+          else python -m reels.proto.compose reels/proto/${{ matrix.venue }}.json frames result/reel_point_${{ matrix.venue }}_blender.mp4 full; fi
+      - uses: actions/upload-artifact@v4
+        with: { name: "result-${{ matrix.venue }}", path: result/, retention-days: 3 }
+  publish:
+    needs: compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: "result-*", merge-multiple: true, path: result }
       - name: Publish to branch proto-out
         run: |
-          cd result && git init -q && git checkout -q -b proto-out
+          cd result && ls -R | head -40 && git init -q && git checkout -q -b proto-out
           git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
-          git add -A && git commit -q -m "proto ${{ needs.prep.outputs.mode }} $(date -u +%H:%M)"
+          git add -A && git commit -q -m "proto $(date -u +%H:%M)"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:proto-out

@@ -80,32 +80,80 @@ b = nt.nodes.get("Principled BSDF"); at = nt.nodes.new("ShaderNodeAttribute"); a
 nt.links.new(at.outputs["Color"], b.inputs["Base Color"]); b.inputs["Roughness"].default_value = 0.85
 if "Sheen Weight" in b.inputs: b.inputs["Sheen Weight"].default_value = 0.3
 SEAT = principled("seat", lin((34, 38, 46)), rough=0.8)
-# ------------------------------------------------------------------ pavilhão e campo
-bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, -0.01)); o = bpy.context.active_object; o.scale = (60, 70, 1); o.data.materials.append(OUTF)
-bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, 0)); o = bpy.context.active_object; o.scale = (2 * HW, 2 * HL, 1); o.data.materials.append(TURF)
-W_ = 0.05
-for (x0, y0, x1, y1) in ((-HW, -HL, HW, -HL), (-HW, HL, HW, HL), (-HW, -6.95, HW, -6.95), (-HW, 6.95, HW, 6.95), (0, -6.95, 0, 6.95),
-                         (-HW, -HL, -HW, HL), (HW, -HL, HW, HL)):
-    box("line", ((x0 + x1) / 2, (y0 + y1) / 2, 0.002), (max(W_, abs(x1 - x0)), max(W_, abs(y1 - y0)), 0.004), LINE)
-# rede
-box("net", (0, 0, NET / 2), (2 * HW, 0.02, NET), NETM)
-box("netband", (0, 0, NET - 0.03), (2 * HW, 0.03, 0.06), WHITE)
-for sx in (-HW - 0.05, HW + 0.05): box("post", (sx, 0, 0.5), (0.08, 0.08, 1.0), METAL)
-# vidros e estrutura metálica
-for sgn in (-1, 1):
-    y = sgn * HL
-    box("glass_back", (0, y + sgn * 0.01, 1.5), (2 * HW, 0.012, 3.0), GLASS)
+# ------------------------------------------------------------------ pavilhão e campo (padel ou ténis)
+SPORT, SURF, SETTING = D.get("sport", "padel"), D.get("surface", "padel"), D.get("setting", "indoor")
+SW = D.get("SW", 4.115)
+def beam(name, a, b_, r, m):
+    bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=1, depth=2); o = bpy.context.active_object
+    a, b_ = Vector(a), Vector(b_); d = b_ - a
+    o.location = (a + b_) / 2; o.rotation_mode = "QUATERNION"; o.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(d.normalized())
+    o.scale = (r, r, d.length / 2); o.data.materials.append(m); return o
+if SPORT == "padel":
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, -0.01)); o = bpy.context.active_object; o.scale = (60, 70, 1); o.data.materials.append(OUTF)
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, 0)); o = bpy.context.active_object; o.scale = (2 * HW, 2 * HL, 1); o.data.materials.append(TURF)
+    W_ = 0.05
+    for (x0, y0, x1, y1) in ((-HW, -HL, HW, -HL), (-HW, HL, HW, HL), (-HW, -6.95, HW, -6.95), (-HW, 6.95, HW, 6.95), (0, -6.95, 0, 6.95),
+                             (-HW, -HL, -HW, HL), (HW, -HL, HW, HL)):
+        box("line", ((x0 + x1) / 2, (y0 + y1) / 2, 0.002), (max(W_, abs(x1 - x0)), max(W_, abs(y1 - y0)), 0.004), LINE)
+    box("net", (0, 0, NET / 2), (2 * HW, 0.02, NET), NETM)
+    box("netband", (0, 0, NET - 0.03), (2 * HW, 0.03, 0.06), WHITE)
+    for sx in (-HW - 0.05, HW + 0.05): box("post", (sx, 0, 0.5), (0.08, 0.08, 1.0), METAL)
+    for sgn in (-1, 1):
+        y = sgn * HL
+        box("glass_back", (0, y + sgn * 0.01, 1.5), (2 * HW, 0.012, 3.0), GLASS)
+        for sx in (-HW, HW):
+            box("glass_side", (sx + (0.01 if sx > 0 else -0.01), sgn * (HL - 1), 1.5), (0.012, 2.0, 3.0), GLASS)
+            box("glass_side2", (sx + (0.01 if sx > 0 else -0.01), sgn * (HL - 3), 1.0), (0.012, 2.0, 2.0), GLASS)
+        for i in range(6):
+            box("post", (-HW + 2 * i, y + sgn * 0.06, 2.0), (0.06, 0.06, 4.0), METAL)
+        box("rail", (0, y + sgn * 0.06, 4.0), (2 * HW + 0.1, 0.06, 0.06), METAL)
+        for sx in (-HW, HW):
+            for yy in (HL - 2, HL - 4):
+                box("post", (sx + (0.06 if sx > 0 else -0.06), sgn * yy, 1.5), (0.06, 0.06, 3.0), METAL)
     for sx in (-HW, HW):
-        box("glass_side", (sx + (0.01 if sx > 0 else -0.01), sgn * (HL - 1), 1.5), (0.012, 2.0, 3.0), GLASS)
-        box("glass_side2", (sx + (0.01 if sx > 0 else -0.01), sgn * (HL - 3), 1.0), (0.012, 2.0, 2.0), GLASS)
-    for i in range(6):
-        box("post", (-HW + 2 * i, y + sgn * 0.06, 2.0), (0.06, 0.06, 4.0), METAL)
-    box("rail", (0, y + sgn * 0.06, 4.0), (2 * HW + 0.1, 0.06, 0.06), METAL)
-    for sx in (-HW, HW):
-        for yy in (HL - 2, HL - 4):
-            box("post", (sx + (0.06 if sx > 0 else -0.06), sgn * yy, 1.5), (0.06, 0.06, 3.0), METAL)
-for sx in (-HW, HW):
-    box("rail_side", (sx + (0.06 if sx > 0 else -0.06), 0, 3.0), (0.05, 2 * HL - 8, 0.05), METAL)
+        box("rail_side", (sx + (0.06 if sx > 0 else -0.06), 0, 3.0), (0.05, 2 * HL - 8, 0.05), METAL)
+    STAND = dict(y=HL + 5.0, x=HW + 5.0, wy=34, wx=30, rows=12)
+    BOARDS = [(HL + 1.6, 0.0), (-HL - 1.6, math.pi)]
+else:
+    # cores do piso por superfície (dentro e fora das linhas)
+    pal = {"hard": ((34, 92, 156), (28, 74, 120)), "clay": ((188, 94, 56), (178, 88, 52)), "grass": ((76, 140, 64), (70, 130, 58))}[SURF if SURF in ("hard", "clay", "grass") else "hard"]
+    IN = principled("court_in", lin(pal[0]), rough=0.85 if SURF != "hard" else 0.6); add_bump(IN, 700 if SURF == "clay" else 500, 0.35 if SURF == "clay" else 0.15)
+    OUT = principled("court_out", lin(pal[1]), rough=0.85 if SURF != "hard" else 0.6); add_bump(OUT, 700, 0.3 if SURF == "clay" else 0.12)
+    if SURF == "grass":                                              # riscas do corte da relva
+        for m_ in (IN, OUT):
+            nt = m_.node_tree; b = nt.nodes.get("Principled BSDF")
+            g = nt.nodes.new("ShaderNodeNewGeometry"); sx_ = nt.nodes.new("ShaderNodeSeparateXYZ"); mu = nt.nodes.new("ShaderNodeMath"); mu.operation = "MULTIPLY"; mu.inputs[1].default_value = 1 / 2.4
+            fr_ = nt.nodes.new("ShaderNodeMath"); fr_.operation = "FRACT"; lt = nt.nodes.new("ShaderNodeMath"); lt.operation = "LESS_THAN"; lt.inputs[1].default_value = 0.5
+            mx = nt.nodes.new("ShaderNodeMixRGB"); mx.inputs[1].default_value = (*lin(pal[0]), 1); mx.inputs[2].default_value = (*lin((96, 162, 78)), 1)
+            nt.links.new(g.outputs["Position"], sx_.inputs[0]); nt.links.new(sx_.outputs["Y"], mu.inputs[0]); nt.links.new(mu.outputs[0], fr_.inputs[0])
+            nt.links.new(fr_.outputs[0], lt.inputs[0]); nt.links.new(lt.outputs[0], mx.inputs["Fac"]); nt.links.new(mx.outputs[0], b.inputs["Base Color"])
+    RX, RY = HW + 3.7, HL + 6.4                                     # zona à volta do campo
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, -0.012)); o = bpy.context.active_object; o.scale = (80, 90, 1); o.data.materials.append(principled("concourse", lin((40, 44, 52)), rough=0.8))
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, -0.002)); o = bpy.context.active_object; o.scale = (2 * RX, 2 * RY, 1); o.data.materials.append(OUT)
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 0, 0)); o = bpy.context.active_object; o.scale = (2 * HW, 2 * HL, 1); o.data.materials.append(IN)
+    W_ = 0.05
+    for (x0, y0, x1, y1) in ((-HW, -HL, HW, -HL), (-HW, HL, HW, HL), (-HW, -HL, -HW, HL), (HW, -HL, HW, HL), (-SW, -HL, -SW, HL), (SW, -HL, SW, HL),
+                             (-SW, -6.4, SW, -6.4), (-SW, 6.4, SW, 6.4), (0, -6.4, 0, 6.4), (0, -HL, 0, -HL + 0.1), (0, HL, 0, HL - 0.1)):
+        box("line", ((x0 + x1) / 2, (y0 + y1) / 2, 0.002), (max(W_, abs(x1 - x0)), max(W_, abs(y1 - y0)), 0.004), LINE)
+    # rede com curva (1,07 m nos postes, 0,914 m ao centro), fita branca e cinta central
+    import bmesh as _bm
+    nx = HW + 0.914; bm_ = _bm.new(); vs = []
+    for i in range(41):
+        x = -nx + 2 * nx * i / 40; top = NET + (1.07 - NET) * (x / nx) ** 2
+        vs.append((bm_.verts.new((x, 0, 0.0)), bm_.verts.new((x, 0, top))))
+    for i in range(40): bm_.faces.new((vs[i][0], vs[i + 1][0], vs[i + 1][1], vs[i][1]))
+    me_ = bpy.data.meshes.new("net"); bm_.to_mesh(me_); bm_.free(); on = bpy.data.objects.new("net", me_); bpy.context.collection.objects.link(on); me_.materials.append(NETM)
+    for i in range(8):
+        xa, xb = -nx + 2 * nx * i / 8, -nx + 2 * nx * (i + 1) / 8
+        beam("tape", (xa, 0, NET + (1.07 - NET) * (xa / nx) ** 2 - 0.02), (xb, 0, NET + (1.07 - NET) * (xb / nx) ** 2 - 0.02), 0.03, WHITE)
+    box("strap", (0, 0, NET / 2), (0.05, 0.025, NET), WHITE)
+    for sx in (-nx - 0.05, nx + 0.05): beam("post", (sx, 0, 0), (sx, 0, 1.1), 0.05, METAL)
+    cx = nx + 1.1                                                   # cadeira do árbitro
+    for dx in (-0.25, 0.25):
+        for dy in (-0.25, 0.25): beam("chair_leg", (cx + dx, dy, 0), (cx + dx * 0.6, dy * 0.6, 1.9), 0.025, METAL)
+    box("chair_seat", (cx, 0, 1.95), (0.55, 0.5, 0.08), METAL); box("chair_back", (cx + 0.25, 0, 2.25), (0.06, 0.5, 0.6), METAL)
+    STAND = dict(y=RY + 1.2, x=RX + 1.2, wy=44, wx=50, rows=int(D.get("rows", 14)))
+    BOARDS = [(RY, 0.0), (-RY, math.pi)]
 
 # bancadas em degraus, com pessoas sentadas (2 700 aprox.)
 import bmesh, random
@@ -137,8 +185,9 @@ def stand(cx, cy, w, rot, rows=12):
             if RND.random() < 0.12: continue                          # lugares vazios
             off = Vector((-w / 2 + 0.275 + j * 0.55 + RND.uniform(-0.05, 0.05), r * 0.85 - 0.1, 0.5 * (r + 1)))
             person(Vector((cx, cy, 0)) + R @ off, rot + math.pi)
-stand(0, HL + 5.0, 34, 0); stand(0, -HL - 5.0, 34, math.pi)
-stand(HW + 5.0, 0, 30, -math.pi / 2); stand(-HW - 5.0, 0, 30, math.pi / 2)
+R_ = STAND["rows"]
+stand(0, STAND["y"], STAND["wy"], 0, R_); stand(0, -STAND["y"], STAND["wy"], math.pi, R_)
+stand(STAND["x"], 0, STAND["wx"], -math.pi / 2, R_); stand(-STAND["x"], 0, STAND["wx"], math.pi / 2, R_)
 cme = bpy.data.meshes.new("crowd"); cbm.to_mesh(cme); cbm.free()
 cob = bpy.data.objects.new("crowd", cme); bpy.context.collection.objects.link(cob); cme.materials.append(CROWD)
 
@@ -153,21 +202,32 @@ nt.links.new(ti.outputs["Color"], bb.inputs["Base Color"])
 if "Emission Color" in bb.inputs:
     nt.links.new(ti.outputs["Color"], bb.inputs["Emission Color"]); bb.inputs["Emission Strength"].default_value = 1.6
 bb.inputs["Roughness"].default_value = 0.4
+BW = 2 * HW + (6 if SPORT == "padel" else 12)
 def board(y, rot):
-    box("board", (0, y, 0.45), (2 * HW + 6, 0.12, 0.9), BOARD)
+    box("board", (0, y, 0.45), (BW, 0.12, 0.9), BOARD)
     bpy.ops.mesh.primitive_plane_add(size=1, location=(0, y - math.copysign(0.065, y), 0.45)); pl = bpy.context.active_object
-    pl.scale = (2 * HW + 6, 0.86, 1); pl.rotation_euler = (math.pi / 2, 0, rot); pl.data.materials.append(BM)
-# ------------------------------------------------------------------ luz
+    pl.scale = (BW, 0.86, 1); pl.rotation_euler = (math.pi / 2, 0, rot); pl.data.materials.append(BM)
+for (y_, r_) in BOARDS: board(y_, r_)
+# ------------------------------------------------------------------ luz (pavilhão, dia ou noite)
 w = bpy.data.worlds.new("w"); sc.world = w; w.use_nodes = True
-bg = w.node_tree.nodes.get("Background"); bg.inputs[0].default_value = (0.003, 0.005, 0.009, 1); bg.inputs[1].default_value = 1.0
-for x in (-4.5, 4.5):
-    for y in (-9, 0, 9):
-        bpy.ops.object.light_add(type="AREA", location=(x, y, 13)); L = bpy.context.active_object
-        L.data.energy = float(os.environ.get("PROTO_LIGHT", "1300")); L.data.size = 3.5; L.data.color = (1.0, 0.97, 0.92)
-for (x, y) in ((-16, 0), (16, 0), (0, -20), (0, 20)):              # luz nas bancadas
-    bpy.ops.object.light_add(type="AREA", location=(x, y, 11)); L = bpy.context.active_object
-    L.data.energy = 700; L.data.size = 8; L.data.color = (0.85, 0.9, 1.0)
-    L.rotation_euler = (0, 0, 0)
+bg = w.node_tree.nodes.get("Background")
+LK = float(os.environ.get("PROTO_LIGHT", "1300")) * (1.6 if SPORT == "tennis" else 1.0)
+if SETTING == "day":
+    bg.inputs[0].default_value = (0.32, 0.5, 0.85, 1); bg.inputs[1].default_value = float(os.environ.get("PROTO_SKY", "1.0"))
+    bpy.ops.object.light_add(type="SUN", location=(0, 0, 30)); L = bpy.context.active_object
+    L.data.energy = float(os.environ.get("PROTO_SUN", "4.5")); L.data.angle = math.radians(1.5); L.data.color = (1.0, 0.96, 0.9)
+    L.rotation_euler = (math.radians(50), math.radians(18), math.radians(35))
+else:
+    bg.inputs[0].default_value = (0.003, 0.005, 0.009, 1) if SETTING == "indoor" else (0.004, 0.008, 0.02, 1); bg.inputs[1].default_value = 1.0
+    xs = (-4.5, 4.5) if SPORT == "padel" else (-6, 0, 6)
+    ys = (-9, 0, 9) if SPORT == "padel" else (-14, -5, 5, 14)
+    for x in xs:
+        for y in ys:
+            bpy.ops.object.light_add(type="AREA", location=(x, y, 13 if SPORT == "padel" else 17)); L = bpy.context.active_object
+            L.data.energy = LK; L.data.size = 3.5 if SPORT == "padel" else 4.5; L.data.color = (1.0, 0.97, 0.92)
+    for (x, y) in ((-STAND["x"] - 8, 0), (STAND["x"] + 8, 0), (0, -STAND["y"] - 8), (0, STAND["y"] + 8)):   # luz nas bancadas
+        bpy.ops.object.light_add(type="AREA", location=(x * 0.75, y * 0.75, 12)); L = bpy.context.active_object
+        L.data.energy = 700 if SPORT == "padel" else 1100; L.data.size = 8; L.data.color = (0.85, 0.9, 1.0)
 
 # ------------------------------------------------------------------ figuras (anónimas) e raquetes
 SKIN.node_tree.nodes.get("Principled BSDF").inputs["Subsurface Weight"].default_value = 0.15 if "Subsurface Weight" in SKIN.node_tree.nodes.get("Principled BSDF").inputs else 0
@@ -205,6 +265,38 @@ def racket_mat(frame_col):
     nt.links.new(mx.outputs[0], out.inputs["Surface"])
     return face, principled("racket_frame", lin(frame_col), rough=0.3, coat=1.0)
 
+def strings_mat():
+    m = bpy.data.materials.new("strings"); m.use_nodes = True; nt = m.node_tree
+    b = nt.nodes.get("Principled BSDF"); out = nt.nodes.get("Material Output")
+    b.inputs["Base Color"].default_value = (0.85, 0.85, 0.8, 1); b.inputs["Roughness"].default_value = 0.5
+    tc = nt.nodes.new("ShaderNodeTexCoord"); sx = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(tc.outputs["Object"], sx.inputs[0])
+    mxs = []
+    for ax, n_ in (("X", 9.0), ("Y", 10.5)):
+        mu = nt.nodes.new("ShaderNodeMath"); mu.operation = "MULTIPLY"; mu.inputs[1].default_value = n_
+        fr = nt.nodes.new("ShaderNodeMath"); fr.operation = "PINGPONG"; fr.inputs[1].default_value = 0.5
+        lt = nt.nodes.new("ShaderNodeMath"); lt.operation = "LESS_THAN"; lt.inputs[1].default_value = 0.06
+        nt.links.new(sx.outputs[ax], mu.inputs[0]); nt.links.new(mu.outputs[0], fr.inputs[0]); nt.links.new(fr.outputs[0], lt.inputs[0]); mxs.append(lt)
+    mxm = nt.nodes.new("ShaderNodeMath"); mxm.operation = "MAXIMUM"
+    nt.links.new(mxs[0].outputs[0], mxm.inputs[0]); nt.links.new(mxs[1].outputs[0], mxm.inputs[1])
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent"); mx = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(mxm.outputs[0], mx.inputs["Fac"]); nt.links.new(tr.outputs[0], mx.inputs[1]); nt.links.new(b.outputs[0], mx.inputs[2])
+    nt.links.new(mx.outputs[0], out.inputs["Surface"])
+    return m
+
+def make_tennis_racket(k, frame_col):
+    """raquete de ténis: aro oval, cordas, garganta aberta e cabo (68,5 cm)"""
+    frame_m = principled(f"tframe{k}", lin(frame_col), rough=0.3, coat=1.0); grip_m = principled(f"tgrip{k}", lin((30, 30, 34)), rough=0.8)
+    bpy.ops.object.empty_add(location=(0, 0, 0)); root = bpy.context.active_object; root.name = f"racket{k}"; parts = []
+    bpy.ops.mesh.primitive_torus_add(major_radius=1, minor_radius=0.075, major_segments=64, minor_segments=10); t = bpy.context.active_object
+    t.scale = (0.125, 0.155, 0.125); t.data.materials.append(frame_m); smooth(t); parts.append(t)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=64, radius=1, depth=2); c = bpy.context.active_object
+    c.scale = (0.118, 0.148, 0.0015); c.data.materials.append(strings_mat()); parts.append(c)
+    for sgn in (-1, 1):
+        parts.append(beam("throat", (sgn * 0.06, -0.135, 0), (sgn * 0.012, -0.25, 0), 0.011, frame_m))
+    g = beam("handle", (0, -0.25, 0), (0, -0.52, 0), 0.016, grip_m); parts.append(g)
+    for o in parts: o.parent = root
+    return root
+
 def make_racket(k, frame_col):
     face_m, frame_m = racket_mat(frame_col)
     grip_m = principled(f"grip{k}", lin((240, 240, 240)), rough=0.8)
@@ -236,7 +328,8 @@ for k, col in enumerate(D["cols"]):
               elR=sph("elR", 0.044, SKIN), elL=sph("elL", 0.044, SKIN), hdR=sph("hdR", 0.046, SKIN), hdL=sph("hdL", 0.046, SKIN),
               shoR=sph("shoR", 0.07, shirt), shoL=sph("shoL", 0.07, shirt))
     FIGS.append(P_)
-    RACKETS.append(make_racket(k, [(230, 60, 50), (240, 240, 240), (40, 120, 230), (250, 200, 40)][k % 4]))
+    cols_ = [(230, 60, 50), (240, 240, 240), (40, 120, 230), (250, 200, 40)]
+    RACKETS.append(make_racket(k, cols_[k % 4]) if SPORT == "padel" else make_tennis_racket(k, cols_[(k * 2) % 4]))
 ball = sph("ball", 0.042, BALL)
 
 def pose(P_, rk, J):
@@ -263,6 +356,23 @@ def pose(P_, rk, J):
         limb(P_["fa" + sd], el, hd, 0.042); P_["el" + sd].location = el; P_["hd" + sd].location = hd; P_["sho" + sd].location = sh_
     rd, rn = V("rd"), V("rn"); xax = rd.cross(rn)
     oriented(rk, V("rc"), xax, rd, rn, (1, 1, 1))
+
+# ------------------------------------------------------------------ terra batida: marcas da bola e pó
+if SURF == "clay":
+    MARK = principled("mark", lin((150, 70, 40)), rough=0.95)
+    DUST = mixmat("dust", {"Base Color": (*lin((214, 140, 96)), 1), "Roughness": 1.0}, 0.55)
+    import random as _r; rr = _r.Random(9)
+    for (fb, x, y) in D.get("bounces", []):
+        m_ = sph("mark", 1, MARK, 16); m_.location = (x, y, 0.0)
+        m_.scale = (0, 0, 0); m_.keyframe_insert("scale", frame=fb)
+        m_.scale = (0.05, 0.11, 0.004); m_.keyframe_insert("scale", frame=fb + 1)
+        for q in range(9):
+            pz = sph("dust", 1, DUST, 12); an = rr.uniform(0, 2 * math.pi); sp_ = rr.uniform(0.25, 0.7)
+            pz.location = (x, y, 0.03); pz.scale = (0, 0, 0); pz.keyframe_insert("location", frame=fb); pz.keyframe_insert("scale", frame=fb)
+            pz.scale = (0.05, 0.05, 0.05); pz.keyframe_insert("scale", frame=fb + 2)
+            pz.location = (x + math.cos(an) * sp_, y + math.sin(an) * sp_, rr.uniform(0.15, 0.45)); pz.keyframe_insert("location", frame=fb + 16)
+            pz.scale = (0.16, 0.16, 0.12); pz.keyframe_insert("scale", frame=fb + 12)
+            pz.scale = (0, 0, 0); pz.keyframe_insert("scale", frame=fb + 26)
 
 # ------------------------------------------------------------------ câmara
 bpy.ops.object.camera_add(); cam = bpy.context.active_object; sc.camera = cam

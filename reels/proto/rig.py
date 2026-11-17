@@ -37,7 +37,8 @@ def ik(root, target, l1, l2, pole):
 
 
 class Rig:
-    def __init__(self, pl, KP, ball_at, others_hits):
+    def __init__(self, pl, KP, ball_at, others_hits, r_off=0.29):
+        self.roff = r_off
         self.pl, self.KP, self.ball_at = pl, KP, ball_at
         self.face = pl.face
         self.hits = [(th, kind, ball_at(KP, th)) for th, kind in pl.hits]
@@ -55,7 +56,7 @@ class Rig:
             sh_h = 1.42 + (0.45 if kind == "smash" else 0)
             s0 = (self.face, 0, 0)
             shR = (x + s0[0] * 0.2, y, sh_h)
-            reach = 0.86 if kind != "smash" else 0.9
+            reach = 0.57 + r_off + (0.04 if kind == "smash" else 0)
             v = sub(B, shR); L = length(v)
             ex = (0, 0, 0) if L <= reach else mul(norm((v[0], v[1], 0)), L - reach)
             self.corr.append((th, ex))
@@ -166,9 +167,9 @@ class Rig:
                     u = (dt - ta) / (tb - ta)
                     u = ease_in(u) if tb == 0.0 else ease_out(u) if ta == 0.0 else smooth(u)
                     rc, rd = lerp(rca, rcb, u), norm(lerp(rda, rdb, u)); break
-        handR = sub(rc, mul(rd, R_OFF))
+        handR = sub(rc, mul(rd, self.roff))
         eR, handR = ik(shR, handR, UPPER, FORE, add((0, 0, -0.7), add(mul(f, -0.3), mul(s, 0.35))))
-        rc = add(handR, mul(rd, R_OFF))
+        rc = add(handR, mul(rd, self.roff))
         if lh is None: lh = sub(rc, mul(rd, 0.17))                        # em espera: a mão livre segura a raquete
         eL, handL = ik(shL, lh, UPPER, FORE, add((0, 0, -0.7), add(mul(f, -0.2), mul(s, -0.35))))
         rn = sub(f, mul(rd, dot(f, rd))); rn = norm(rn) if length(rn) > 1e-3 else Z
