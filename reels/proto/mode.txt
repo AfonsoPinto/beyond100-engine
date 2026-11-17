@@ -1,2 +1,2 @@
-full
-dubai,paris,sopo,dubai_volley,paris_ace
+mocap
+

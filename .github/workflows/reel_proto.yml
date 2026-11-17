@@ -29,8 +29,32 @@ jobs:
           print("venues=" + json.dumps(v)); print(f"n={n}")
           PY
           echo "mode=$MODE" >> $GITHUB_OUTPUT
+  mocap:
+    needs: prep
+    if: needs.prep.outputs.mode == 'mocap'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pillow
+      - name: CMU Motion Capture Database (mocap.cs.cmu.edu)
+        run: |
+          mkdir -p cmu && cd cmu
+          for f in 02/02.asf 02/02_03.amc 127/127.asf 127/127_13.amc 127/127_14.amc 02/02_04.amc; do
+            curl -fsSL --retry 3 -O "http://mocap.cs.cmu.edu/subjects/$f" || echo "falhou: $f"
+          done
+          ls -la
+      - run: mkdir -p result && python -m reels.proto.mocap cmu result/mocap_cycles.json result/mocap_preview.png
+      - name: Publish to branch proto-out
+        run: |
+          cd result && git init -q && git checkout -q -b proto-out
+          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
+          git add -A && git commit -q -m "mocap $(date -u +%H:%M)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:proto-out
   render:
     needs: prep
+    if: needs.prep.outputs.mode != 'mocap'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     strategy:
@@ -61,6 +85,7 @@ jobs:
         with: { name: "frames-${{ matrix.venue }}-${{ matrix.part }}", path: out/, retention-days: 3 }
   compose:
     needs: [prep, render]
+    if: needs.prep.outputs.mode != 'mocap'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -79,7 +104,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: "result-${{ matrix.venue }}", path: result/, retention-days: 3 }
   publish:
-    needs: compose
+    needs: [prep, compose]
+    if: needs.prep.outputs.mode != 'mocap'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
