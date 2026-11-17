@@ -122,6 +122,22 @@ class Mix:
             out.append((0.5 * math.sin(ph) + lp) * x * x)
         self._add(i0, out, vol)
 
+    # ---------------------------------------------------------- sons reais (reels/sfx, CC0 do Freesound)
+    def sample(self, t, cat, vol=0.7, loop_to=None):
+        """toca um som gravado da categoria (uma das variantes, ao acaso); loop_to repete até esse tempo (ambiente)"""
+        xs = SFX.get(cat)
+        if not xs: return False
+        smp = self.rnd.choice(xs)
+        if loop_to:
+            out = []; L = int((loop_to - t) * SR)
+            while len(out) < L: out.extend(smp)
+            out = out[:L]; f = int(0.8 * SR)
+            for k in range(min(f, L)): out[k] *= k / f; out[L - 1 - k] *= k / f
+            self._add(int(t * SR), out, vol)
+        else:
+            self._add(int(t * SR), smp, vol)
+        return True
+
     # ---------------------------------------------------------- saída
     def write(self, path, dur):
         n = int(dur * SR); peak = max(1e-6, max(abs(v) for v in self.b[:n]))
@@ -129,6 +145,23 @@ class Mix:
         out = array.array("h", (int(max(-1, min(1, self.b[i] * g * min(1, i / (0.02 * SR), (n - i) / (0.4 * SR)))) * 32767) for i in range(n)))
         with wave.open(path, "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes(out.tobytes())
+
+
+def _load_sfx():
+    import glob, os
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sfx"); out = {}
+    for f in sorted(glob.glob(os.path.join(d, "*.wav"))):
+        try:
+            with wave.open(f) as w:
+                if w.getframerate() != SR or w.getnchannels() != 1 or w.getsampwidth() != 2: continue
+                a = array.array("h"); a.frombytes(w.readframes(w.getnframes()))
+            out.setdefault(os.path.basename(f).rsplit("_", 1)[0], []).append([v / 32768 for v in a])
+        except Exception:
+            pass
+    return out
+
+
+SFX = _load_sfx()
 
 
 def mux(video, wav, out):
