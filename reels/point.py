@@ -590,7 +590,8 @@ def soundtrack(tmp, out):
         if sound.SFX.get("crowd") and (sound.SFX.get("hit_tennis") or sound.SFX.get("hit_padel")):
             hit = "hit_padel" if SPORT == "padel" and sound.SFX.get("hit_padel") else "hit_tennis"
             bounce = "bounce_clay" if V.get("surface") == "clay" and sound.SFX.get("bounce_clay") else "bounce"
-            m.sample(0.0, "crowd", 0.22, loop_to=TOTAL)
+            indoor = str(V.get("setting", "")).startswith("indoor") or "INDOOR" in str(V.get("chip", "")).upper()
+            m.sample(0.0, "crowd_indoor" if indoor and sound.SFX.get("crowd_indoor") else "crowd", 0.22, loop_to=TOTAL)
             last = None
             for (tk, x, y, z) in KP:
                 t_ = vt(tk)
@@ -600,8 +601,9 @@ def soundtrack(tmp, out):
                     if last is None or t_ - last > 0.9: m.sample(max(0, t_ - 0.35), "squeak", 0.35)   # apoio antes da pancada
                     last = t_
                 elif z == 0 and abs(y) <= HL + 0.5: m.sample(t_, bounce, 0.55)
-                elif SPORT == "padel" and abs(abs(y) - HL) < 0.05 and z < 3.2: m.sample(t_, "glass", 0.7)
-            if KP[0][0] == 0: m.sample(0.0, hit, 0.7)
+                elif SPORT == "padel" and abs(abs(y) - HL) < 0.05 and z < 3.2:
+                    if not m.sample(t_, "glass", 0.7): m.glass(t_, 0.3); m.sample(t_, bounce, 0.4)
+            if KP[0][0] == 0: m.sample(0.0, "serve" if sound.SFX.get("serve") and SPORT != "padel" else hit, 0.8)
             if FINISH and sound.SFX.get("ooh"): m.sample(max(0, vt(FINISH[0]) - 0.1), "ooh", 0.45)
             m.sample(end - 0.2, "applause", 0.85)
         else:
