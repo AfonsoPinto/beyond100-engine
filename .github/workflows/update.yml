@@ -41,6 +41,9 @@ jobs:
           [ -f fonts/BarlowCondensed-Bold.ttf ] || curl -sSfL -o fonts/BarlowCondensed-Bold.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/barlowcondensed/BarlowCondensed-Bold.ttf || echo "fonte não descarregada (usa a de recurso)"
       - name: System fonts (retries; the cards also ship Inter in fonts/)
         run: for i in 1 2 3; do timeout 120 sudo apt-get update -qq && timeout 180 sudo apt-get install -y fonts-dejavu-core fonts-liberation fonts-inter && break; echo "apt falhou, nova tentativa"; sleep 15; done || true
+      - name: "Fotos do Red Bull Content Pool: busca as pedidas no browser (sem IA)"
+        run: |
+          python -m padel.rbcp fetch || echo "RBCP: busca falhou (ignorado)"
       - name: Build results + site
         env:
           LIVETENNIS_KEY: ${{ secrets.LIVETENNIS_KEY }}
@@ -143,9 +146,12 @@ jobs:
           path: out/
           retention-days: 7
           if-no-files-found: ignore
+      - name: "Fotos do Red Bull Content Pool: lista do que falta (para a tarefa do browser)"
+        run: |
+          python -m padel.rbcp needs || echo "RBCP: lista falhou (ignorado)"
       - name: Save state (public display data only)
         run: |
-          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json reels.json weeks posts photos reel_files reels_hq newsletter_img padel/data
+          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json reels.json weeks posts photos reel_files reels_hq rbcp newsletter_img padel/data
       - name: "Reels 3D (Blender): pedido ao workflow próprio, depois de o cenário estar guardado"
         env:
           GH_DISPATCH_TOKEN: ${{ github.token }}

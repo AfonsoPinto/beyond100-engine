@@ -103,8 +103,9 @@ def other(t):
     return "team_2" if t == "team_1" else "team_1"
 
 
-def best_photo(ps):
-    """Foto de um dos jogadores (prefere fotos em court)."""
+def best_photo(ps, tournament=None):
+    """Foto de um dos jogadores (prefere fotos em court). Sem foto própria: foto do Red Bull Content Pool
+    (padel/rbcp.py; do próprio torneio primeiro). 18/11/2026."""
     found = []
     for p in ps:
         fp, cr, off = cards.photo_of(p.get("id"))
@@ -118,7 +119,17 @@ def best_photo(ps):
             return 0
     from PIL import Image
     found.sort(key=lambda x: (x[0], -area(x[1]["path"])))           # em court primeiro, depois a de melhor resolução
-    return found[0][1] if found else None
+    if found:
+        return found[0][1]
+    try:
+        from padel import rbcp
+        for p in ps:
+            ph = rbcp.photo_for(p, tournament)
+            if ph:
+                return ph
+    except Exception as e:
+        print("Padel: fotos RBCP indisponíveis", type(e).__name__)
+    return None
 
 
 def rank_sum(ps, rk):
@@ -249,7 +260,7 @@ def make():
                 continue
         w = m["winner"]
         W, L = team(m, w), team(m, other(w))
-        ph = best_photo(W)
+        ph = best_photo(W, t.get("name"))
         if not ph:
             print(f"Padel {mid}: {'/'.join(p.get('short_name') or '' for p in W)} sem foto livre, não sai.")
             continue
@@ -271,7 +282,8 @@ def make():
                  "reasons": info["why"], "winners_pre_match_chance_pct_elo_estimate": info.get("elo_w"), "photo_of": next((p.get("name") for p in W if p.get("id") == ph["pid"]), None)}
         q["queue"].append({"id": f"r-{mid}", "kind": "result", "score": info["score"], "created": time.time(), "image": fn,
                            **({"variants": dict(_vs, C=fn)} if _vs else {}),
-                           "facts": facts, "sent": False, "players": [str(p.get("id")) for p in W + L], "photo_pids": [str(ph["pid"])]})
+                           "facts": facts, "sent": False, "players": [str(p.get("id")) for p in W + L], "photo_pids": [str(ph["pid"])],
+                           **({"rbcp": [ph["rbcp"]]} if ph.get("rbcp") else {})})
         made += 1
         print(f"Padel {mid}: cartão ({info['score']}: {', '.join(info['why']) or 'round'}).")
     made += make_previews(q, tours, matches, rk)
@@ -318,7 +330,7 @@ def nations_post(q, m, t, matches, rk, seen, info):
                      "score": ((tie.get("score") or {}).get(w), (tie.get("score") or {}).get(other(w))), "rubbers": rub})
     if not ties:
         return None
-    ph = best_photo([p for tt in ties for r in tt["rubbers"] if r["champ"] for p in r["winners"]])
+    ph = best_photo([p for tt in ties for r in tt["rubbers"] if r["champ"] for p in r["winners"]], (t or {}).get("name"))
     if not ph:                                                    # sem foto real de um campeão: não há post (nada de cartões só com texto)
         return None
     try:
@@ -335,7 +347,8 @@ def nations_post(q, m, t, matches, rk, seen, info):
     for x in fin:
         seen[str(x.get("id"))] = time.time()
     q["queue"].append({"id": pid, "kind": "result", "score": info["score"] + 2, "created": time.time(), "image": fn,
-                       "facts": facts, "sent": False, "players": [str(p.get("id")) for tt in ties for r in tt["rubbers"] for p in r["winners"] + r["losers"]]})
+                       "facts": facts, "sent": False, "players": [str(p.get("id")) for tt in ties for r in tt["rubbers"] for p in r["winners"] + r["losers"]],
+                       **({"rbcp": [ph["rbcp"]]} if ph.get("rbcp") else {})})
     return 1
 
 
@@ -368,7 +381,7 @@ def champions_post(q, m, t, matches, rk, seen, info):
         _tie = x.get("tie") or {}
         _nat = _tie.get(w) if isinstance(_tie, dict) else None               # Mundial: país que ganhou
         fins.append({"label": ("Men" if x.get("category") == "men" else "Women") + (f" · {_nat}" if _nat else ""), "winners": W, "losers": L,
-                     "sets": [(s.get(w), s.get(other(w))) for s in x["score"]], "photo": best_photo(W)})
+                     "sets": [(s.get(w), s.get(other(w))) for s in x["score"]], "photo": best_photo(W, (t or {}).get("name"))})
     if not any(f["photo"] for f in fins):
         return None
     seen[str(o.get("id"))] = time.time()
@@ -385,7 +398,8 @@ def champions_post(q, m, t, matches, rk, seen, info):
                                            "losers": [{"name": p.get("name"), "country": p.get("nationality"), "ranking": rk.get(str(p.get("id")))} for p in f["losers"]],
                                            "score": " ".join(f"{a}-{b}" for a, b in f["sets"])} for f in fins]}
     q["queue"].append({"id": pid, "kind": "result", "score": info["score"] + 2, "created": time.time(), "image": fn,
-                       "facts": facts, "sent": False, "players": [str(p.get("id")) for f in fins for p in f["winners"] + f["losers"]]})
+                       "facts": facts, "sent": False, "players": [str(p.get("id")) for f in fins for p in f["winners"] + f["losers"]],
+                       **({"rbcp": [f["photo"]["rbcp"] for f in fins if (f.get("photo") or {}).get("rbcp")]} if any((f.get("photo") or {}).get("rbcp") for f in fins) else {})})
     print(f"Padel {pid}: cartão de campeões (homens e mulheres).")
     return 1
 
@@ -768,7 +782,8 @@ def make_previews(q, tours, matches, rk):
         ids = {str(p.get("id")) for p in A + B}
         if not ids & feat:
             continue
-        pa, pb = best_photo(A), best_photo(B)
+        _tn = (tours.get(str(m.get("tid"))) or {}).get("name")
+        pa, pb = best_photo(A, _tn), best_photo(B, _tn)
         if not (pa and pb):                 # só com foto real dos dois lados (7/11/2026: meio cartão vazio ou só texto parece feito por máquina)
             continue
         t = tours.get(str(m.get("tid"))) or {}
@@ -780,6 +795,7 @@ def make_previews(q, tours, matches, rk):
                             "photos": [pa, pb], "ranks": rk, "teams": [tie.get("team_1"), tie.get("team_2")] if tie else None},
                            os.path.join(POSTS_DIR, fn))
         q["queue"].append({"id": f"p-{m.get('id')}", "kind": "preview", "score": 0, "created": time.time(), "image": fn, "sent": False,
+                           **({"rbcp": [x["rbcp"] for x in (pa, pb) if x.get("rbcp")]} if (pa.get("rbcp") or pb.get("rbcp")) else {}),
                            "players": list(ids), "facts": {"tournament": t.get("name"), "category": m.get("category"), "when": when,
                                                            "pair_1": [p.get("name") for p in A], "pair_2": [p.get("name") for p in B]}})
         n += 1
@@ -876,8 +892,17 @@ PADEL_FOLLOW = "Follow @beyond100.padel for every draw, not just the finals."
 
 
 def caption(e):
-    """Legenda + linha para seguir a conta (antes das hashtags), como no ténis."""
+    """Legenda + linha para seguir a conta (antes das hashtags), como no ténis.
+    Posts com foto do Red Bull Content Pool: crédito e marcações @premierpadel @redbull (termos do RBCP, 4.6 c)."""
     t = _caption(e)
+    if e.get("rbcp"):
+        from padel import rbcp
+        cred = f"📸 {rbcp.CREDIT} · {rbcp.TAGS}"
+        lines = t.rstrip().split("\n")
+        if lines and lines[-1].lstrip().startswith("#"):
+            t = "\n".join(lines[:-1]).rstrip() + "\n\n" + cred + "\n\n" + lines[-1]
+        else:
+            t = t.rstrip() + "\n\n" + cred
     if e["kind"] == "intro" or "follow @beyond100" in t.lower():
         return t
     lines = t.rstrip().split("\n")
@@ -890,7 +915,7 @@ def _caption(e):
     if e["kind"] == "intro":
         return INTRO[e["n"]]
     f = e.get("facts") or {}
-    key = os.environ.get("ANTHROPIC_API_KEY") if e["kind"] not in NO_AI else None      # notícias de dados: modelo de texto, custo zero
+    key = os.environ.get("ANTHROPIC_API_KEY") if (e["kind"] not in NO_AI and not e.get("rbcp")) else None   # RBCP: sem IA (termos)      # notícias de dados: modelo de texto, custo zero
     if key:
         try:
             import requests
