@@ -1,0 +1,175 @@
+# Reels 3D (Blender) em produção, à experiência (18/11/2026, Afonso aprovou o PoC).
+# Pedido pelo reels.make (atualização de hora a hora) quando há uma final: só recebe o id; o cenário vem do repositório de dados.
+# Faz o vídeo em 20 partes, junta textos e som real (CC0) e troca o vídeo do motor atual no reels.json (se ainda não saiu).
+# Se falhar, fica o vídeo do motor atual (rede de segurança).
+name: Reel 3D (Blender)
+run-name: "Reel 3D ${{ github.event.inputs.id || 'teste' }}"
+on:
+  push:
+    branches: [feat/reels-hq]                  # teste do ramo (id test-…: cenário do protótipo, sem tocar nos dados)
+    paths: [".github/workflows/reel_hq.yml"]
+  workflow_dispatch:
+    inputs:
+      id: { description: "id do Reel (ex.: p-750-point)", required: true }
+permissions:
+  contents: read
+concurrency: { group: "reel-hq-${{ github.event.inputs.id || 'teste' }}", cancel-in-progress: false }
+env:
+  PARTS: "20"
+  ID: ${{ github.event.inputs.id || 'test-dubai_globo' }}
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    outputs:
+      jobs: ${{ steps.m.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}", path: data, sparse-checkout: "reels_hq" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pillow
+      - name: Cenário e jogada
+        run: |
+          case "$ID" in *[!a-zA-Z0-9._-]*) echo "id inválido"; exit 1;; esac
+          mkdir -p scene
+          if [ -f "data/reels_hq/$ID.json" ]; then cp "data/reels_hq/$ID.json" scene/cfg.json
+          elif [ "${ID#test-}" != "$ID" ]; then cp "reels/proto/${ID#test-}.json" scene/cfg.json
+          else echo "cenário $ID não encontrado"; exit 1; fi
+          python -m reels.proto.export scene/cfg.json scene/frames.json
+          ls -la scene
+      - uses: actions/upload-artifact@v4
+        with: { name: scene, path: scene/, retention-days: 2 }
+      - id: m
+        run: python3 -c "import json; print('jobs=' + json.dumps(list(range(int('${{ env.PARTS }}')))))" >> $GITHUB_OUTPUT
+  humans:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - id: hc
+        uses: actions/cache@v4
+        with: { path: humans.blend, key: "humans-${{ hashFiles('reels/proto/mh_build.py') }}" }
+      - uses: actions/cache@v4
+        if: steps.hc.outputs.cache-hit != 'true'
+        with: { path: mh_assets, key: mh-assets-v2 }
+      - name: Blender 4.2 LTS
+        if: steps.hc.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 zip >/dev/null
+          for i in 1 2 3 4 5; do
+            curl -fsL --retry 3 -o b.tar.xz https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz \
+              || curl -fsL --retry 3 -o b.tar.xz https://mirrors.dotsrc.org/blender/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz
+            tar -xJf b.tar.xz && break; echo "download falhou, nova tentativa"; sleep $((i * 20))
+          done
+      - name: MPFB2 (MakeHuman Plugin For Blender, GPLv3) e recursos CC0
+        if: steps.hc.outputs.cache-hit != 'true'
+        run: |
+          git clone -q --depth 1 https://github.com/makehumancommunity/mpfb2.git mpfb2src
+          ls mpfb2src; ls mpfb2src/src || true
+          (cd mpfb2src/src && zip -qr ../../mpfb.zip mpfb)
+          ./blender-4.2.3-linux-x64/blender -b --command extension install-file --repo user_default --enable mpfb.zip 2>&1 | tail -5
+          mkdir -p mh_assets
+          get() { # $1 nome do ficheiro, $2.. URLs; descarrega para .part e só renomeia se completo
+            [ -f mh_assets/$1 ] && unzip -tq mh_assets/$1 >/dev/null 2>&1 && return 0
+            for u in "${@:2}"; do
+              curl -fsSL --retry 3 --max-time 1500 -o mh_assets/$1.part "$u" && unzip -tq mh_assets/$1.part >/dev/null 2>&1 && mv mh_assets/$1.part mh_assets/$1 && return 0
+            done; rm -f mh_assets/$1.part; echo "falhou $1"
+          }
+          for p in makehuman_system_assets:cc0 shirts01:cc0 skins02:cc0 pants03:ccby shoes02:ccby; do
+            n=${p%%:*}; l=${p##*:}
+            get ${n}_$l.zip "https://files2.makehumancommunity.org/asset_packs/$n/${n}_$l.zip" "https://files.makehumancommunity.org/asset_packs/$n/${n}_$l.zip"
+          done
+          ls -la mh_assets
+      - name: Personagens
+        if: steps.hc.outputs.cache-hit != 'true'
+        run: ./blender-4.2.3-linux-x64/blender -b -P reels/proto/mh_build.py -- humans.blend 2>&1 | grep -vE "^Fra:|^\\[INFO" | tail -20
+      - uses: actions/upload-artifact@v4
+        with: { name: humans, path: humans.blend, retention-days: 2 }
+  render:
+    needs: [prep, humans]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJson(needs.prep.outputs.jobs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: scene, path: scene }
+      - uses: actions/download-artifact@v4
+        with: { name: humans, path: . }
+      - name: Blender 4.2 LTS
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libegl1 libxkbcommon-x11-0 zip >/dev/null
+          for i in 1 2 3 4 5; do
+            curl -fsL --retry 3 -o b.tar.xz https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz \
+              || curl -fsL --retry 3 -o b.tar.xz https://mirrors.dotsrc.org/blender/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz
+            tar -xJf b.tar.xz && break; echo "download falhou, nova tentativa"; sleep $((i * 20))
+          done
+      - name: Render
+        run: |
+          export PROTO_HUMANS=$PWD/humans.blend
+          ./blender-4.2.3-linux-x64/blender -b --factory-startup -P reels/proto/scene.py -- scene/frames.json ${{ matrix.part }} ${{ env.PARTS }} out full 2>&1 | grep -E "frame .* feito|Error|Traceback|pessoa" | tail -20
+          n=$(ls out | wc -l); echo "$n frames"; [ "$n" -gt 0 ] || [ "${{ matrix.part }}" -ge 19 ]
+      - uses: actions/upload-artifact@v4
+        with: { name: "frames-${{ matrix.part }}", path: out/, retention-days: 2 }
+  compose:
+    needs: [prep, render]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q pillow && sudo apt-get install -y -qq ffmpeg >/dev/null
+      - uses: actions/download-artifact@v4
+        with: { name: scene, path: scene }
+      - uses: actions/download-artifact@v4
+        with: { pattern: "frames-*", merge-multiple: true, path: frames }
+      - name: Sons reais CC0 (Freesound)
+        env: { FREESOUND_API_KEY: "${{ secrets.FREESOUND_API_KEY }}" }
+        run: |
+          if [ -n "$FREESOUND_API_KEY" ]; then python -m reels.sfx_fetch reels/sfx || echo "sons falharam, fica o som gerado"; fi
+      - name: Vídeo
+        run: |
+          N=$(python3 -c "import json; print(len(json.load(open('scene/frames.json'))['frames']))"); H=$(ls frames | wc -l)
+          echo "frames: $H de $N"; [ "$H" -ge "$N" ] || { echo "faltam frames: fica o vídeo normal"; exit 1; }
+          mkdir -p result && python -m reels.proto.compose scene/cfg.json frames result/video.mp4 full
+      - uses: actions/upload-artifact@v4
+        with: { name: video, path: result/video.mp4, retention-days: 3 }
+  publish:
+    needs: compose
+    if: ${{ !startsWith(github.event.inputs.id || 'test-', 'test-') }}
+    runs-on: ubuntu-latest
+    concurrency: { group: update, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/download-artifact@v4
+        with: { name: video, path: _new }
+      - name: Trocar o vídeo no reels.json (só se ainda não saiu)
+        run: |
+          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git pull -q --rebase origin main || true
+            python3 - "$ID" <<'PY'
+          import json, os, shutil, sys
+          rid = sys.argv[1]; st = json.load(open("reels.json", encoding="utf-8"))
+          it = next((i for i in st["items"] if i["id"] == rid), None)
+          if not it: print("item não encontrado (já saiu da lista)"); sys.exit(0)
+          if it.get("posted"): it["hq"] = "late"; print("já tinha sido publicado: fica o normal")
+          else:
+              os.makedirs("reel_files", exist_ok=True); fn = rid + "-3d.mp4"
+              shutil.copy("_new/video.mp4", os.path.join("reel_files", fn))
+              old = it["file"]; it.update(file=fn, hq="done", v=3)
+              if old != fn and os.path.exists(os.path.join("reel_files", old)): os.remove(os.path.join("reel_files", old))
+              print("versão 3D no lugar da normal:", fn)
+          p = os.path.join("reels_hq", rid + ".json")
+          if os.path.exists(p): os.remove(p)
+          json.dump(st, open("reels.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+          PY
+            git add -A reels.json reel_files reels_hq && git commit -q -m "Reel 3D: $ID" || { echo "nada a guardar"; break; }
+            git push -q origin HEAD:main && break
+            git reset -q --hard HEAD~1; sleep $((i * 15))
+          done

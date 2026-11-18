@@ -158,6 +158,44 @@ def render(kind, f, path):
     return {}
 
 
+HQ_DIR = "reels_hq"
+
+
+def hq_request(rid, venue):
+    """18/11/2026 (Afonso: PoC aprovado, à experiência): guarda o cenário do ponto para a versão 3D (Blender).
+    O pedido ao workflow reel_hq.yml sai depois de o estado estar guardado (hq_dispatch), para o workflow já o encontrar."""
+    if (os.environ.get("REELS_HQ") or "0").strip() != "1":
+        return False
+    os.makedirs(HQ_DIR, exist_ok=True)
+    json.dump(venue, open(os.path.join(HQ_DIR, rid + ".json"), "w", encoding="utf-8"), ensure_ascii=False)
+    return True
+
+
+def hq_dispatch():
+    """Pede ao GitHub a versão 3D dos Reels em fila (hq = queued). O workflow só recebe o id; o cenário fica no repositório de dados."""
+    tok, repo = os.environ.get("GH_DISPATCH_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
+    st = load(); changed = False
+    for i in st["items"]:
+        if i.get("hq") != "queued": continue
+        if not tok or not repo:
+            print("reels: sem token para pedir a versão 3D"); break
+        try:
+            import requests
+            r = requests.post(f"https://api.github.com/repos/{repo}/actions/workflows/reel_hq.yml/dispatches", timeout=30,
+                              headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"},
+                              json={"ref": os.environ.get("HQ_REF", "main"), "inputs": {"id": i["id"]}})
+            if r.status_code >= 300:
+                print(f"reels: pedido da versão 3D de {i['id']} recusado ({r.status_code})"); i["hq"] = "failed"
+            else:
+                i["hq"] = "pending"; i["hq_at"] = iso(now())
+                print(f"reels: versão 3D de {i['id']} pedida (pronta em ~3 h; até lá fica a versão normal)")
+        except Exception as e:
+            print(f"reels: pedido da versão 3D falhou ({type(e).__name__})"); continue
+        changed = True
+    if changed:
+        json.dump(st, open(STATE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+
 def plan(finals, st):
     """Que vídeos fazer e para quando."""
     jobs = []
@@ -248,6 +286,8 @@ def publish():
         if due > now(): continue
         if (now() - due).total_seconds() > 30 * 3600:
             i["skipped"] = "caducou"; changed = True; print(f"reels: {i['id']} caducou sem sair"); continue
+        if i.get("hq") in ("queued", "pending") and (now() - due).total_seconds() < 3 * 3600:
+            print(f"reels: {i['id']} espera pela versão 3D"); continue
         c = cfg[i["sport"]]
         if not c["on"] or not (c["a"] <= h < c["b"]): continue
         if sent_today(i["sport"]) >= 1:
@@ -288,14 +328,26 @@ def main():
             print("reels: ffmpeg indisponível, fica para a próxima execução"); jobs = []
         for kind, f, rid, due in jobs[:MAX_RENDER]:
             path = os.path.join(DIR, rid + ".mp4")
+            if kind == "point":                        # 18/11/2026: jogada ligada à final e sem repetir as últimas da conta
+                try:
+                    from reels import plays
+                    recent = [i.get("play") for i in st["items"] if i.get("sport") == f["sport"] and i.get("play")][-3:]
+                    f["venue"] = dict(f["venue"], gender=f["gender"],
+                                      play=plays.choose(f["sport"], f["sets"], f["venue"].get("surface"), f["venue"].get("setting"), recent))
+                except Exception as e:
+                    print(f"reels: escolha da jogada falhou ({e})")
             try:
                 extra = render(kind, f, path)
             except Exception as e:
                 print(f"reels: {rid} não foi feito ({e})")
                 st["done"].append(rid)                 # não insistir num quadro incompleto
                 continue
-            st["items"].append(dict(id=rid, kind=kind, sport=f["sport"], gender=f["gender"], tournament=f["name"], champ=f["champ"],
-                                    file=os.path.basename(path), due=iso(due), made=iso(now()), caption=caption(kind, f, extra), posted=None, v=VERSION))
+            item = dict(id=rid, kind=kind, sport=f["sport"], gender=f["gender"], tournament=f["name"], champ=f["champ"],
+                        file=os.path.basename(path), due=iso(due), made=iso(now()), caption=caption(kind, f, extra), posted=None, v=VERSION)
+            if kind == "point":
+                item["play"] = f["venue"].get("play")
+                if hq_request(rid, f["venue"]): item["hq"] = "queued"
+            st["items"].append(item)
             st["done"].append(rid)
             print(f"reels: {rid} feito ({kind}, para {due.astimezone(LIS):%d/%m %H:%M})")
         # só os mais recentes ficam
@@ -310,4 +362,4 @@ def main():
 
 
 if __name__ == "__main__":
-    publish() if "publish" in sys.argv[1:2] else main()
+    {"publish": publish, "hq": hq_dispatch}.get(sys.argv[1] if len(sys.argv) > 1 else "", main)()

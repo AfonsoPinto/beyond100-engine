@@ -16,6 +16,7 @@ on:
         default: "0"
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: update
   cancel-in-progress: false
@@ -58,6 +59,7 @@ jobs:
           WEEKLY_DAY: ${{ vars.WEEKLY_DAY }}
           STORY_HOUR: ${{ vars.STORY_HOUR }}
           HISTORY: ${{ vars.HISTORY }}
+          REELS_HQ: ${{ vars.REELS_HQ || '1' }}
           HISTORY_MIRROR: ${{ vars.HISTORY_MIRROR }}
           ALLOW_SA: ${{ vars.ALLOW_SA }}
           FLICKR_KEY: ${{ secrets.FLICKR_KEY }}
@@ -143,7 +145,12 @@ jobs:
           if-no-files-found: ignore
       - name: Save state (public display data only)
         run: |
-          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json reels.json weeks posts photos reel_files newsletter_img padel/data
+          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json reels.json weeks posts photos reel_files reels_hq newsletter_img padel/data
+      - name: "Reels 3D (Blender): pedido ao workflow próprio, depois de o cenário estar guardado"
+        env:
+          GH_DISPATCH_TOKEN: ${{ github.token }}
+        run: |
+          python -m reels.make hq || echo "reels: pedido da versão 3D falhou (ignorado)"
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -189,11 +196,12 @@ jobs:
           MAKE_WEBHOOK_CAROUSEL_URL: ${{ secrets.MAKE_WEBHOOK_CAROUSEL_URL }}
           MAKE_WEBHOOK_STORY_URL: ${{ secrets.MAKE_WEBHOOK_STORY_URL }}
           MAKE_WEBHOOK_REEL_URL: ${{ secrets.MAKE_WEBHOOK_REEL_URL }}
+          REELS_AUTO: ${{ vars.REELS_AUTO || '0' }}
           DAY_MAX_POSTS: ${{ vars.DAY_MAX_POSTS }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
         run: |
-          # 16/11/2026 (Afonso): Reels em pausa até aprovar a versão de mais qualidade; voltam com REELS_AUTO=1
+          # 16/11/2026 (Afonso): Reels em pausa até aprovar a versão de mais qualidade; voltam com REELS_AUTO=1 (variável do repositório)
           if [ "${REELS_AUTO:-0}" = "1" ]; then python -m reels.make publish || echo "reels: envio falhou (ignorado)"; else echo "reels: publicação em pausa"; fi
           python publisher.py send
           python -m padel.posts send || echo "padel: envio falhou (ignorado)"
