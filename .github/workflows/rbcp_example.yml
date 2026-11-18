@@ -1,0 +1,25 @@
+# Exemplo de post com foto do Red Bull Content Pool (ramo feat/rbcp). A imagem fica no repositório privado (ramo rbcp-inbox).
+name: RBCP example
+on:
+  push:
+    branches: [feat/rbcp]
+    paths: [tools/rbcp_example.py]
+permissions:
+  contents: read
+jobs:
+  ex:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: rbcp-inbox, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - run: rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf -
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q -r requirements.txt && sudo apt-get install -y -qq fonts-dejavu-core fonts-liberation >/dev/null || true
+      - run: python tools/rbcp_example.py
+      - name: Guardar o exemplo no repositório privado
+        run: |
+          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
+          git add -f rbcp/exemplo.jpg && git commit -q -m "RBCP: exemplo de post" && git push -q origin HEAD:rbcp-inbox
