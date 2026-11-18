@@ -29,7 +29,7 @@ async def main():
             try:
                 await pg.click(sel, timeout=4000); break
             except Exception: pass
-        await pg.wait_for_load_state("networkidle")
+        await pg.wait_for_timeout(6000)
         print("página de login:", re.sub(r"[?#].*", "", pg.url))
         inputs = await pg.evaluate("Array.from(document.querySelectorAll('input')).map(i=>[i.type,i.name,i.id,i.autocomplete])")
         print("campos:", inputs)
@@ -42,14 +42,14 @@ async def main():
                 await pg.click("button[type=submit], button[name=action]", timeout=5000); await pg.wait_for_timeout(2500)
             await pg.fill("input[type=password]", PWD, timeout=8000)
             await pg.click("button[type=submit], button[name=action]", timeout=5000)
-            await pg.wait_for_load_state("networkidle"); await pg.wait_for_timeout(4000)
+            await pg.wait_for_timeout(9000)
         except Exception as e:
             print("login automático falhou:", type(e).__name__)
         print("depois do login:", re.sub(r"[?#].*", "", pg.url))
         print("captcha no login?", any(k in (await pg.content()).lower() for k in ("recaptcha", "hcaptcha", "turnstile", "captcha", "arkose")))
         who = await pg.evaluate("fetch('/api/auth/who-am-i').then(r=>r.status).catch(()=>0)")
         print("who-am-i:", who)
-        await pg.goto("https://www.redbullcontentpool.com/search?q=Augsburger", wait_until="networkidle"); await pg.wait_for_timeout(5000)
+        await pg.goto("https://www.redbullcontentpool.com/search?q=Augsburger", wait_until="load"); await pg.wait_for_timeout(8000)
         imgs = await pg.evaluate("document.querySelectorAll('img').length")
         print("imagens na pesquisa:", imgs)
         su = [u for m, u in calls if "newseditor" in u and "/v2/search" in u]
