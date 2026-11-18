@@ -25,3 +25,10 @@ for src in scripts[:40]:
         print("--", u.split("/")[-1][:60], "| auth:", kw)
         for h in sorted(hits)[:40]:
             if h not in seen: seen.add(h); print("    ", h[:140])
+print("== detalhe do main.js")
+js = s.get("https://www.redbullcontentpool.com/" + [x for x in scripts if x.startswith("main")][0], timeout=30).text
+for k in ("apiUrl", "apiBase", "baseUrl", "baseURL", "apiEndpoint", "clientId", "authority", "issuer", "redirectUri", "Bearer", "/oauth", "login", "/search", "download"):
+    for m in list(re.finditer(re.escape(k), js))[:3]:
+        print(f"[{k}]", js[max(0, m.start() - 120): m.end() + 160].replace("\n", " "))
+doms = sorted(set(re.findall(r'https://[a-z0-9.-]+\.[a-z]{2,}', js)))
+print("domínios:", doms[:60])
