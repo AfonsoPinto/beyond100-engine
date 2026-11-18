@@ -107,6 +107,15 @@ def best_photo(ps, tournament=None):
     """Foto de um dos jogadores (prefere fotos em court). Sem foto própria: foto do Red Bull Content Pool
     (padel/rbcp.py; do próprio torneio primeiro). 18/11/2026."""
     found = []
+    try:                                                         # 18/11/2026 (Afonso): foto DO PRÓPRIO TORNEIO primeiro, mesmo havendo foto própria antiga
+        from padel import rbcp
+        if tournament:
+            for p in ps:
+                ph = rbcp.photo_for(p, tournament)
+                if ph and rbcp.same_event(ph, tournament):
+                    return ph
+    except Exception:
+        pass
     for p in ps:
         fp, cr, off = cards.photo_of(p.get("id"))
         if fp:

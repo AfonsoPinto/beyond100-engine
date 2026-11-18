@@ -79,13 +79,21 @@ def matches(e, player):
     return False
 
 
+_SKIP = {"premier", "padel", "p1", "p2", "major", "fip", "2026", "2027"}
+
+
+def same_event(ph, tournament):
+    tn = set(norm(tournament or "")) - _SKIP
+    return bool(tn) and tn <= set(norm((ph or {}).get("event") or ""))
+
+
 def photo_for(player, tournament=None):
     """Melhor foto válida do jogador: do próprio torneio primeiro, depois a mais recente.
     Devolve {"path", "credit", "pid", "rbcp", "event"} ou None."""
     cands = [(pid, e) for pid, e in valid().items() if matches(e, player)]
     if not cands:
         return None
-    tn = set(norm(tournament or "")) - {"premier", "padel", "p1", "p2", "major", "fip", "2026", "2027"}
+    tn = set(norm(tournament or "")) - _SKIP
     def key(x):
         ev = set(norm(x[1].get("event") or ""))
         same = bool(tn) and tn <= ev
