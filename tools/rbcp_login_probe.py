@@ -8,7 +8,10 @@ if not EMAIL or not PWD:
     print("faltam os secrets RBCP_EMAIL / RBCP_PASSWORD"); sys.exit(0)
 calls = []
 def clean(u):
-    u = re.sub(r"[?#].*", "", u); return u
+    if "newseditor" in u and "?" in u:                        # mostra os nomes dos parâmetros da pesquisa (não os valores)
+        from urllib.parse import urlparse, parse_qs
+        q = parse_qs(urlparse(u).query); return re.sub(r"[?#].*", "", u) + " ?" + ",".join(f"{k}={v[0][:30]}" for k, v in q.items())
+    return re.sub(r"[?#].*", "", u)
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(); ctx = await b.new_context(locale="en-GB"); pg = await ctx.new_page()
@@ -16,8 +19,13 @@ async def main():
         await pg.goto("https://www.redbullcontentpool.com/", wait_until="networkidle")
         cfg = await pg.evaluate("fetch('/api/config').then(r=>r.ok?r.json():null).catch(()=>null)")
         if cfg: print("config (chaves):", sorted(cfg.keys())[:40] if isinstance(cfg, dict) else type(cfg))
+        try: await pg.click("#onetrust-accept-btn-handler", timeout=6000)      # banner dos cookies
+        except Exception: print("sem banner de cookies")
+        # resposta pública da pesquisa: só as chaves (estrutura)
+        async def keys_of(url):
+            return await pg.evaluate("u=>fetch(u).then(r=>r.json().then(j=>[r.status, JSON.stringify(j).slice(0,1500)])).catch(e=>[0,String(e)])", url)
         # botão de login
-        for sel in ["text=Log in", "text=Login", "text=Sign in", "rbcp-user-icon cosmos-button", "cosmos-button:has-text('Log')"]:
+        for sel in ["rbcp-user-icon cosmos-button", "text=Log in", "text=Login", "text=Sign in", "cosmos-button:has-text('Log')"]:
             try:
                 await pg.click(sel, timeout=4000); break
             except Exception: pass
@@ -28,20 +36,28 @@ async def main():
         html = await pg.content()
         print("captcha?", any(k in html.lower() for k in ("recaptcha", "hcaptcha", "turnstile", "captcha")))
         try:
-            await pg.fill("input[type=email], input[name*=mail i], input[name=username], input[id*=mail i]", EMAIL, timeout=8000)
-            try: await pg.click("button[type=submit]", timeout=3000); await pg.wait_for_timeout(2500)
-            except Exception: pass
+            await pg.wait_for_selector("input[name=username], input[type=email], #username", timeout=15000)
+            await pg.fill("input[name=username], input[type=email], #username", EMAIL, timeout=8000)
+            if not await pg.query_selector("input[type=password]"):
+                await pg.click("button[type=submit], button[name=action]", timeout=5000); await pg.wait_for_timeout(2500)
             await pg.fill("input[type=password]", PWD, timeout=8000)
-            await pg.click("button[type=submit]", timeout=5000)
+            await pg.click("button[type=submit], button[name=action]", timeout=5000)
             await pg.wait_for_load_state("networkidle"); await pg.wait_for_timeout(4000)
         except Exception as e:
             print("login automático falhou:", type(e).__name__)
         print("depois do login:", re.sub(r"[?#].*", "", pg.url))
+        print("captcha no login?", any(k in (await pg.content()).lower() for k in ("recaptcha", "hcaptcha", "turnstile", "captcha", "arkose")))
         who = await pg.evaluate("fetch('/api/auth/who-am-i').then(r=>r.status).catch(()=>0)")
         print("who-am-i:", who)
         await pg.goto("https://www.redbullcontentpool.com/search?q=Augsburger", wait_until="networkidle"); await pg.wait_for_timeout(5000)
         imgs = await pg.evaluate("document.querySelectorAll('img').length")
         print("imagens na pesquisa:", imgs)
+        su = [u for m, u in calls if "newseditor" in u and "/v2/search" in u]
+        print("amostra da resposta da pesquisa:")
+        if su:
+            base = su[-1].split(" ?")[0]
+            st, body = await keys_of(base + "?q=Augsburger&limit=2")
+            print("  status", st); print("  ", body[:1500])
         await b.close()
     seen = []
     for m, u in calls:
