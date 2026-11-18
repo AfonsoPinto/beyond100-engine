@@ -13,14 +13,15 @@ for g in ("men", "women"):
 print(f"Top 50 + 50 do ranking: {len(miss)} sem foto utilizável")
 LIC = "cc0,pdm,by,by-sa"
 won = 0
-for p in miss:
+for p in miss[:6] + [{"name": "Agustin Tapia", "short_name": "Tapia"}]:
     sur = (p.get("short_name") or p["name"].split()[-1]).lower()
     hits = []
     for q in (f'"{p["name"]}" padel', p["name"]):
         try:
             r = requests.get("https://api.openverse.org/v1/images/", params={"q": q, "license": LIC, "page_size": 20}, timeout=30,
                              headers={"User-Agent": "Beyond100/1.0 (beyond100tennis.com)"})
-            res = r.json().get("results") or [] if r.status_code == 200 else []
+            res = (r.json().get("results") or []) if r.status_code == 200 else []
+            print("  openverse", q, r.status_code, len(res), [((x.get("title") or "")[:40], x.get("source")) for x in res[:3]])
         except Exception as e:
             res = []; print("erro", e)
         for x in res:
@@ -37,10 +38,12 @@ for p in miss:
 print(f"RESUMO: {won} de {len(miss)} jogadores sem foto têm candidata na Openverse (a confirmar à mão: identidade e qualidade)")
 # exemplo: resultado com a foto livre da cidade do torneio
 from padel.posts import place_photo
-ph = place_photo("Aguascalientes")
-print("foto do local:", ph)
+ph = None
+for c_ in ("Aguascalientes", "Aguascalientes City", "Mexico City", "Dubai", "Milan"):
+    ph = place_photo(c_); print("foto do local:", c_, ph)
+    if ph: city_ = c_; break
 if ph:
-    d = {"kicker": "Win", "level": "FIP PLATINUM", "round": "Round of 32", "tournament": "FIP Platinum Aguascalientes", "city": "Aguascalientes",
+    d = {"kicker": "Win", "level": "FIP PLATINUM", "round": "Round of 32", "tournament": "FIP Platinum Aguascalientes", "city": city_,
          "date": "17 NOV 2026", "winners": [{"id": 1, "name": "Javier Valdes", "short_name": "Valdes", "nationality": "CL"}, {"id": 2, "name": "Renzo Gabriel Nuñez", "short_name": "Nuñez", "nationality": "AR"}],
          "losers": [{"id": 3, "name": "Juanlu Esbri", "short_name": "Esbri", "nationality": "ES"}, {"id": 4, "name": "Pol Hernandez", "short_name": "Hernandez", "nationality": "ES"}],
          "sets": [(7, 6), (4, 6), (6, 3)], "photo": {"path": ph["path"], "credit": ph.get("credit")}, "ranks": {}, "note": ""}
