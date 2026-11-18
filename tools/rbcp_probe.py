@@ -32,3 +32,15 @@ for k in ("apiUrl", "apiBase", "baseUrl", "baseURL", "apiEndpoint", "clientId", 
         print(f"[{k}]", js[max(0, m.start() - 120): m.end() + 160].replace("\n", " "))
 doms = sorted(set(re.findall(r'https://[a-z0-9.-]+\.[a-z]{2,}', js)))
 print("domínios:", doms[:60])
+
+print("== endpoints api/")
+eps = sorted(set(re.findall(r'`(api/[a-zA-Z0-9/_${}.-]+)`', js)))
+for e in eps[:120]: print("  ", e)
+for k in ("authorize", "redirect_uri", "accounts.", "oidc", "openid", "authority", "loginUrl", "/auth/", "sso", "idp", "issuer"):
+    for m in list(re.finditer(re.escape(k), js))[:2]:
+        print(f"[{k}]", js[max(0, m.start() - 150): m.end() + 150].replace("\n", " "))
+for e in ("api/products/search", "api/search"):
+    try:
+        r = s.get("https://www.redbullcontentpool.com/" + e, params={"q": "Augsburger"}, timeout=30)
+        print("sem login", e, r.status_code, r.headers.get("content-type"), r.text[:200].replace("\n", " "))
+    except Exception as ex: print("erro", e, ex)
