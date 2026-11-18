@@ -1,0 +1,26 @@
+# Teste das alternativas às fotos dos jogadores (só no ramo proto/photos; só lê os dados, não publica nada).
+name: Photo alternatives test
+on:
+  push:
+    branches: [proto/photos]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - run: rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf -
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q -r requirements.txt
+      - run: sudo apt-get install -y -qq fonts-dejavu-core fonts-liberation >/dev/null || true
+      - run: python tools/photo_alt_test.py result 2>&1 | grep -v "não serve para post"
+      - name: Exemplo para proto-photos-out
+        run: |
+          cd result && ls && git init -q && git checkout -q -b proto-photos-out
+          git config user.name "beyond100-bot" && git config user.email "bot@users.noreply.github.com"
+          git add -A && git commit -q -m "exemplo $(date -u +%H:%M)" && git push -q -f "https://x-access-token:${{ github.token }}@github.com/AfonsoPinto/beyond100-engine.git" HEAD:proto-photos-out
