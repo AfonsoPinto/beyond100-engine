@@ -1,0 +1,16 @@
+# Sondagem técnica do Red Bull Content Pool (ramo proto/rbcp; sem login, não descarrega fotos).
+name: RBCP probe
+on:
+  push:
+    branches: [proto/rbcp]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q requests
+      - run: python tools/rbcp_probe.py
