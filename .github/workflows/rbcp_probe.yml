@@ -14,3 +14,10 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -q requests
       - run: python tools/rbcp_probe.py
+      - name: Sondagem com login (só corre se os secrets existirem)
+        env:
+          RBCP_EMAIL: ${{ secrets.RBCP_EMAIL }}
+          RBCP_PASSWORD: ${{ secrets.RBCP_PASSWORD }}
+        run: |
+          pip install -q playwright && python -m playwright install --with-deps chromium >/dev/null 2>&1
+          python tools/rbcp_login_probe.py
