@@ -16,7 +16,7 @@ for u in ("https://www.redbullcontentpool.com/", "https://www.redbullcontentpool
 seen = set(); pats = re.compile(r'(?:"|\')((?:https?:)?//[a-z0-9.-]+[a-z0-9./_-]*(?:api|graphql|auth|login|oauth|token|search|asset|download)[a-z0-9./_?=&-]*)(?:"|\')', re.I)
 pats2 = re.compile(r'(?:"|\')(/(?:api|graphql|v\d)[a-z0-9./_-]*)(?:"|\')', re.I)
 for src in scripts[:40]:
-    u = src if src.startswith("http") else "https://www.redbullcontentpool.com" + src
+    u = src if src.startswith("http") else "https://www.redbullcontentpool.com/" + src.lstrip("/")
     try: js = s.get(u, timeout=30).text
     except Exception as e: print("js falhou", u, e); continue
     hits = set(pats.findall(js)) | set(pats2.findall(js))
