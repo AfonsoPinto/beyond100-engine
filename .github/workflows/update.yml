@@ -196,12 +196,12 @@ jobs:
           MAKE_WEBHOOK_CAROUSEL_URL: ${{ secrets.MAKE_WEBHOOK_CAROUSEL_URL }}
           MAKE_WEBHOOK_STORY_URL: ${{ secrets.MAKE_WEBHOOK_STORY_URL }}
           MAKE_WEBHOOK_REEL_URL: ${{ secrets.MAKE_WEBHOOK_REEL_URL }}
-          REELS_AUTO: ${{ vars.REELS_AUTO || '0' }}
+          REELS_AUTO: ${{ vars.REELS_AUTO || '1' }}
           DAY_MAX_POSTS: ${{ vars.DAY_MAX_POSTS }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
         run: |
-          # 16/11/2026 (Afonso): Reels em pausa até aprovar a versão de mais qualidade; voltam com REELS_AUTO=1 (variável do repositório)
+          # 18/11/2026 (Afonso): PoC 3D aprovado, publicação automática ligada (à experiência). Pausa: variável REELS_AUTO=0
           if [ "${REELS_AUTO:-0}" = "1" ]; then python -m reels.make publish || echo "reels: envio falhou (ignorado)"; else echo "reels: publicação em pausa"; fi
           python publisher.py send
           python -m padel.posts send || echo "padel: envio falhou (ignorado)"
