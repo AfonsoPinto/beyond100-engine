@@ -24,3 +24,4 @@ for it in items:
 json.dump(meta, open(meta_f, "w"), ensure_ascii=False, indent=1)
 json.dump(left, open(inbox, "w"), ensure_ascii=False)
 print("guardadas:", len(items) - len(left), "| por buscar:", len(left))
+# força
