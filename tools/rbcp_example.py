@@ -18,3 +18,4 @@ e = {"id": "x", "kind": "result", "rbcp": [ph["rbcp"]], "score": 0, "facts": {"t
      "winners": [{"name": p["name"]} for p in W], "losers": [{"name": p["name"]} for p in L],
      "score": " ".join(f"{a}-{b}" for a, b in sets), "round": "Final"}}
 print("legenda:\n" + posts.caption(e))
+# v2
