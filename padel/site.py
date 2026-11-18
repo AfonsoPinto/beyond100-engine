@@ -388,6 +388,19 @@ PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "photos")
 _PHOTO_IDS = None
 
 
+_RBCP = {}                                                         # fotos a solo do Red Bull Content Pool (18/11/2026): ganham à foto própria
+
+
+def load_rbcp(players):
+    try:
+        from padel import rbcp
+        _RBCP.clear()
+        _RBCP.update(rbcp.site_photos(players))
+        print(f"Padel site: {len(_RBCP)} fotos do Red Bull Content Pool.")
+    except Exception as e:
+        print("Padel site: fotos RBCP falharam:", type(e).__name__, e)
+
+
 def has_photo(pid):
     global _PHOTO_IDS
     if _PHOTO_IDS is None:
@@ -395,7 +408,7 @@ def has_photo(pid):
             _PHOTO_IDS = {f[:-4] for f in os.listdir(PHOTOS_DIR) if f.endswith(".jpg")}
         except OSError:
             _PHOTO_IDS = set()
-    return str(pid) in _PHOTO_IDS
+    return str(pid) in _PHOTO_IDS or str(pid) in _RBCP
 
 
 def avatar(p, cls="pd-av"):
@@ -412,16 +425,18 @@ def write_photos(out):
     from PIL import Image, ImageOps
     od = os.path.join(out, "padel", "img")
     os.makedirs(od, exist_ok=True)
-    for f in os.listdir(PHOTOS_DIR):
-        if not f.endswith(".jpg"):
-            continue
-        pid = f[:-4]
-        im = Image.open(os.path.join(PHOTOS_DIR, f)).convert("RGB")
+    src = {f[:-4]: os.path.join(PHOTOS_DIR, f) for f in os.listdir(PHOTOS_DIR) if f.endswith(".jpg")}
+    src.update({pid: r["path"] for pid, r in _RBCP.items() if os.path.exists(r["path"])})
+    for pid, fp in src.items():
+        f = pid + ".jpg"
+        im = Image.open(fp).convert("RGB")
         ImageOps.fit(im, (160, 160), centering=(0.5, 0.22)).save(os.path.join(od, f"{pid}-s.jpg"), quality=82, optimize=True)
         ImageOps.fit(im, (600, 750), centering=(0.5, 0.25)).save(os.path.join(od, f"{pid}.jpg"), quality=82, optimize=True)
 
 
 def photo_credit(pid):
+    if str(pid) in _RBCP:
+        return {"credit": "Photo: " + _RBCP[str(pid)]["credit"], "license": "Editorial"}
     try:
         c = json.load(open(os.path.join(PHOTOS_DIR, "credits.json"), encoding="utf-8")).get(str(pid)) or {}
     except (OSError, ValueError):
@@ -2063,6 +2078,7 @@ def update_rank_hist(db):
 
 def build(out_dir="site"):
     db = DB()
+    load_rbcp(db.players.values())
     out = out_dir
     paths = []
     from padel import site_extras as sx

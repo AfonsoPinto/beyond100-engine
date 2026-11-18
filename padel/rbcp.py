@@ -1,7 +1,8 @@
 """Fotos do Red Bull Content Pool (RBCP) para os posts de padel (18/11/2026, Afonso).
 
 Licença "EDITORIAL Use" (termos do RBCP, 4.2 e 4.6):
-- só em posts de resultados/notícias (cobertura de eventos), nunca no site como foto fixa;
+- cobertura de eventos (uso editorial, sem publicidade): posts de resultados/notícias e, desde 18/11/2026 (Afonso), as fotos
+  dos jogadores no site (só fotos a solo; a mais recente ganha à foto própria; sai do site quando acaba a licença);
 - válida 6 meses a contar do dia do download (aqui: 182 dias; depois a foto deixa de ser usada e é apagada);
 - crédito "Premier Padel / Red Bull Content Pool" na imagem e, no Instagram, marcar @redbull e o fotógrafo (@premierpadel);
 - "AI Prohibition": a foto não pode passar por IA. O motor só a recorta e compõe em Python; as legendas destes posts
@@ -104,6 +105,28 @@ def photo_for(player, tournament=None):
             "event": e.get("event")}
 
 
+def solo(e):
+    """Foto de um jogador só (para o site: perfil e miniaturas). Pela etiqueta Person; sem ela, pelo título."""
+    ps = [x for x in (e.get("persons") or []) if (x or "").strip()]
+    if ps:
+        return len(ps) == 1
+    return not re.search(r",| and | y | e | & |/", e.get("title") or "")
+
+
+def site_photos(players):
+    """{id do jogador: {"path", "credit", "rbcp", "downloaded"}}: a foto a solo válida mais recente de cada jogador."""
+    have = [(pid, e) for pid, e in valid().items() if solo(e)]
+    out = {}
+    if not have:
+        return out
+    for p in players:
+        c = [(e.get("downloaded") or "", pid, e) for pid, e in have if matches(e, p)]
+        if c:
+            d, pid, e = max(c)
+            out[str(p.get("id"))] = {"path": os.path.join(LIB, pid + ".jpg"), "credit": e.get("credit") or CREDIT, "rbcp": pid, "downloaded": d}
+    return out
+
+
 def fetch():
     """Busca as fotos pedidas no browser (links em rbcp/inbox.json). Sem IA: só descarrega e confirma que é uma imagem.
     Nunca escreve os links nos registos (são privados). Apaga as fotos fora da licença."""
@@ -144,7 +167,8 @@ def fetch():
 
 def needs(limit=60):
     """De quem falta foto, por prioridade: 1) jogadores dos torneios Premier a decorrer (foto DESSE torneio);
-    2) top 100 (homens e mulheres) sem foto nenhuma; 3) fotos a 3 semanas de acabar a licença."""
+    2) top 100 (homens e mulheres) sem foto nenhuma; 3) fotos a 3 semanas de acabar a licença;
+    4) top 100 sem foto a solo recente (para o site: why "site", uma foto só desse jogador)."""
     from padel import cards
     D = "padel/data"
     tours = _load(f"{D}/tournaments.json", {})
@@ -185,6 +209,11 @@ def needs(limit=60):
         if VALID_DAYS - _age(e) <= 21:
             for n in (e.get("persons") or [])[:1]:
                 add({"id": "rbcp-" + pid, "name": n}, "renovar")
+    solo_ok = {str(k) for k in site_photos([p for rs in rows for p in rs])}
+    for i in range(100):
+        for rs in rows:
+            if i < len(rs) and str(rs[i]["id"]) not in solo_ok:
+                add(rs[i], "site")
     os.makedirs(ROOT, exist_ok=True)
     json.dump(out[:limit], open(NEEDS, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"RBCP: {len(out)} pedidos de foto ({sum(1 for x in out if x['why'] == 'torneio')} do torneio a decorrer); {min(len(out), limit)} na lista.")
