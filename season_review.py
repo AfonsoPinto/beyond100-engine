@@ -76,6 +76,18 @@ def data():
     return d
 
 
+NICK = {"French Open": "Roland Garros", "Wimbledon Championships": "Wimbledon", "Australian Open": "Australian Open", "US Open": "US Open",
+        "BNP Paribas Open": "Indian Wells", "Mutua Madrid Open": "Madrid", "Italian Open": "Rome", "Monte-Carlo Masters": "Monte-Carlo",
+        "Rolex Paris Masters": "Paris", "Rolex Shanghai Masters": "Shanghai", "National Bank Open": "Canada", "Cincinnati Open": "Cincinnati",
+        "Miami Open": "Miami", "Qatar TotalEnergies Open": "Doha", "Qatar ExxonMobil Open": "Doha", "Dubai Tennis Championships": "Dubai",
+        "Porsche Tennis Grand Prix": "Stuttgart", "Upper Austria Ladies Linz": "Linz", "Erste Bank Open": "Vienna", "Japan Open Tennis Championships": "Tokyo"}
+
+
+def short_event(e):
+    """Nome curto do torneio, sem patrocinadores ("BNP Paribas Open" -> "Indian Wells")."""
+    return NICK.get(e) or re.sub(r"\s+(International|Championships|Open|Tennis|Grand Prix|Ladies)\b.*$", "", e).strip() or e
+
+
 # ------------------------------------------------------------------ desenho "Wrapped" (moderno)
 BG, MID, ACC, CREAM, SOFT = (6, 24, 19), (14, 58, 45), (217, 242, 61), (247, 242, 230), (150, 178, 165)
 
@@ -166,7 +178,7 @@ def titles_card(out):
             nm = f"{name}  {ctry}" if ctry else name
             if i == 0 and evs:
                 d.text((bx + 28, y + (h - 12) / 2 - 15), name, font=mc._fit(d, name, "xb", 38, bw - 50), fill=fg, anchor="lm")
-                ev = " · ".join(e.replace(" Championships", "").replace(" Open", "") for e in evs[:3])
+                ev = " · ".join(short_event(e) for e in evs[:3])
                 d.text((bx + 28, y + (h - 12) / 2 + 22), ev, font=mc._fit(d, ev, "semi", 22, bw - 50, 14), fill=(BG + (200,)) if lead else SOFT, anchor="lm")
             else:
                 d.text((bx + 26, y + (h - 12) / 2), name, font=mc._fit(d, name, "bold", 30, bw - 46), fill=fg, anchor="lm")
