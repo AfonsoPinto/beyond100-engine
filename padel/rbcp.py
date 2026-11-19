@@ -137,7 +137,10 @@ def fetch():
     meta, items, left, got = _load(META, {}), _load(INBOX, []), [], 0
     for it in items:
         pid = re.sub(r"[^A-Za-z0-9-]", "", it.get("productId") or "")
+        it["url"] = it.get("url") or it.get("downloadURL")           # a tarefa do browser às vezes grava "downloadURL"
+        it.pop("downloadURL", None)
         if not pid or not it.get("url"):
+            print(f"RBCP {pid or '?'}: pedido sem link, ignorado")
             continue
         fn = os.path.join(LIB, pid + ".jpg")
         try:

@@ -197,12 +197,15 @@ def make():
     items = rm_load_inbox()
     if not items:
         return
+    if not rm.ffmpeg_ok():                                          # corre antes do reels.make: instala o ffmpeg se faltar
+        print("RBCP vídeo: ffmpeg indisponível, fica para a próxima."); return
     st = rm.load()
     os.makedirs(rm.DIR, exist_ok=True)
     left = []
     for it in items:
         pid = re.sub(r"[^A-Za-z0-9-]", "", it.get("productId") or "")
         rid = f"rbcp-{pid}"
+        it["url"] = it.get("url") or it.get("downloadURL")
         if not pid or not it.get("url") or rid in st["done"]:
             continue
         F = finals_of(it.get("event") or "")
@@ -220,7 +223,7 @@ def make():
             dst = os.path.join(rm.DIR, rid + ".mp4")
             T = render(src, dst)
         except Exception as e:
-            print(f"RBCP vídeo {pid}: falhou ({type(e).__name__})")
+            print(f"RBCP vídeo {pid}: falhou ({type(e).__name__}: {str(e)[:120] if 'http' not in str(e) else ''})")
             if (it.get("tries") or 0) < 3:
                 it["tries"] = (it.get("tries") or 0) + 1; left.append(it)
             continue
