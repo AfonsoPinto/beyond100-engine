@@ -130,40 +130,54 @@ def _avatar(name, size):
 def titles_card(out):
     d0 = data()
     img = _canvas()
-    d = ImageDraw.Draw(img, "RGBA")
+    d = ImageDraw.Draw(img)
     x = _pill(d, 64, 64, "BEYOND100", CREAM, BG)
     _pill(d, x + 12, 64, "2026 IN REVIEW", ACC, BG)
     mc._paste_sq(img, "MOST", "black", 190, CREAM, 60, 140, 900, sx=0.74)
     mc._paste_sq(img, "TITLES", "black", 190, ACC, 60, 300, 900, sx=0.74)
+    d = ImageDraw.Draw(img)
     d.text((66, 480), "Tour-level singles titles this season", font=mc.F("semi", 32), fill=SOFT)
     credits = []
-    y = 560
+    y = 548
     for lg in ("atp", "wta"):
         rows = d0.get(lg) or []
         if not rows:
             continue
         top = rows[0][2]
         d.text((64, y), lg.upper(), font=mc.F("black", 30), fill=ACC)
-        d.line([(140, y + 18), (W - 64, y + 18)], fill=(247, 242, 230, 40), width=2)
-        y += 52
+        d.line([(140, y + 18), (W - 64, y + 18)], fill=(70, 110, 92), width=2)
+        y += 50
         for i, (name, ctry, n, evs) in enumerate(rows[:3]):
-            h = 92 if i == 0 else 70
-            av, cr = _avatar(name, h - 10)
+            lead = n == top
+            h = 96 if i == 0 else 74
+            av, cr = _avatar(name, h - 12)
             if cr:
                 credits.append(cr)
-            bw = int((W - 64 - 64 - h - 120) * n / top)
-            bx = 64 + h + 6
-            col = ACC + (255,) if i == 0 else (247, 242, 230, 34)
-            d.rounded_rectangle([bx, y, bx + max(bw, 160), y + h - 10], radius=(h - 10) // 2, fill=col)
+            bx = 64 + h + 4
+            maxw = W - 64 - 110 - bx
+            bw = max(int(maxw * n / top), 300)
+            ov = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            ImageDraw.Draw(ov).rounded_rectangle([bx, y, bx + bw, y + h - 12], radius=(h - 12) // 2,
+                                                 fill=(ACC + (255,)) if lead else (247, 242, 230, 30))
+            img.alpha_composite(ov)
             img.alpha_composite(av, (64, y))
-            fg = BG if i == 0 else CREAM
-            d.text((bx + 26, y + (h - 10) / 2), name, font=mc._fit(d, name, "xb" if i == 0 else "bold", 38 if i == 0 else 30, max(bw, 160) - 40), fill=fg, anchor="lm")
-            d.text((W - 64, y + (h - 10) / 2), str(n), font=mc.F("black", 72 if i == 0 else 52), fill=ACC if i else CREAM, anchor="rm")
-            y += h + 8
-        y += 30
-    d.text((64, H - 70), "@beyond100.tennis", font=mc.F("bold", 30), fill=CREAM, anchor="lm")
-    cr = SRC + ((" · Photos: " + " · ".join(dict.fromkeys(" ".join(str(c).split()) for c in credits if c))) if credits else "")
-    d.text((W - 64, H - 70), cr, font=mc._fit(d, cr, "med", 18, 640, 11), fill=SOFT, anchor="rm")
+            d = ImageDraw.Draw(img)
+            fg = BG if lead else CREAM
+            nm = f"{name}  {ctry}" if ctry else name
+            if i == 0 and evs:
+                d.text((bx + 28, y + (h - 12) / 2 - 15), name, font=mc._fit(d, name, "xb", 38, bw - 50), fill=fg, anchor="lm")
+                ev = " · ".join(e.replace(" Championships", "").replace(" Open", "") for e in evs[:3])
+                d.text((bx + 28, y + (h - 12) / 2 + 22), ev, font=mc._fit(d, ev, "semi", 22, bw - 50, 14), fill=(BG + (200,)) if lead else SOFT, anchor="lm")
+            else:
+                d.text((bx + 26, y + (h - 12) / 2), name, font=mc._fit(d, name, "bold", 30, bw - 46), fill=fg, anchor="lm")
+            d.text((W - 64, y + (h - 12) / 2), str(n), font=mc.F("black", 76 if i == 0 else 56), fill=CREAM if lead else ACC, anchor="rm")
+            y += h + 6
+        y += 26
+    d.text((64, H - 92), "@beyond100.tennis", font=mc.F("bold", 30), fill=CREAM, anchor="lm")
+    d.text((64, H - 52), SRC, font=mc.F("med", 18), fill=SOFT, anchor="lm")
+    if credits:
+        cr = "Photos: " + " · ".join(dict.fromkeys(" ".join(str(c).split()) for c in credits if c))
+        d.text((W - 64, H - 92), cr, font=mc._fit(d, cr, "med", 16, 560, 10), fill=SOFT, anchor="rm")
     img.convert("RGB").save(out, quality=92)
     return out
 
