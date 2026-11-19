@@ -1799,6 +1799,8 @@ def build_site(out_dir="site", player=None):
     os.makedirs(out_dir, exist_ok=True)
     _names = [p_["name"] for r in results for p_ in (r["p1"], r["p2"])]
     _names += [v.get("name") for v in _load_json(RANKS_FILE, {}).values()]
+    _er = _load_json("espn_rank.json", {})                   # 19/11/2026: o top 150 oficial (página de rankings) também usa as fotos que já temos (ex.: Sinner)
+    _names += [x.get("n") for lg in ("atp", "wta") for x in (_er.get(lg) or [])]
     for _m in _load_json(extras.LIVE_FILE, {}).get("matches", []):
         _names += [_m["p1"]["name"], _m["p2"]["name"]]
     _people = []
