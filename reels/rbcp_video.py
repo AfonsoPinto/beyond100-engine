@@ -154,14 +154,16 @@ def render(src, dst):
     return T
 
 
-def finals_of(event):
-    """As finais (homens primeiro) do torneio Premier deste evento do RBCP, ou None se ainda não acabaram."""
+def finals_of(event, day=None):
+    """As finais (homens primeiro) do torneio Premier deste evento do RBCP, ou None se ainda não acabaram.
+    Se houver dois torneios na mesma cidade, fica o que acabou mais perto (antes) do dia do pedido."""
     from padel import rbcp
     D = "padel/data"
     tours = rbcp._load(f"{D}/tournaments.json", {})
-    for tid, t in tours.items():
-        if not rbcp.same_event({"event": event}, t.get("name")):
-            continue
+    day = day or dt.date.today().isoformat()
+    cands = [(tid, t) for tid, t in tours.items() if rbcp.same_event({"event": event}, t.get("name"))
+             and (t.get("start_date") or "") <= day and set(re.findall(r"20\d\d", event)) <= set(re.findall(r"20\d\d", (t.get("name") or "") + (t.get("end_date") or "")))]
+    for tid, t in sorted(cands, key=lambda x: x[1].get("end_date") or "", reverse=True):
         ms = rbcp._load(f"{D}/matches/{tid}.json", [])
         fins = []
         for m in sorted([m for m in ms if m.get("round") == 1 and (m.get("draw") or "main") == "main" and m.get("winner") in ("team_1", "team_2")],
@@ -192,40 +194,60 @@ def caption(F):
 
 
 def make():
+    """Faz os Reels dos vídeos pedidos (rbcp/video_inbox.json, que o motor nunca reescreve; o tratado fica em rbcp/done.json)."""
     import requests
+    from padel import rbcp
     from reels import make as rm
     items = rm_load_inbox()
     if not items:
         return
-    if not rm.ffmpeg_ok():                                          # corre antes do reels.make: instala o ffmpeg se faltar
-        print("RBCP vídeo: ffmpeg indisponível, fica para a próxima."); return
     st = rm.load()
-    os.makedirs(rm.DIR, exist_ok=True)
-    left = []
+    done = rbcp.done_load()
+    todo = []
     for it in items:
         pid = re.sub(r"[^A-Za-z0-9-]", "", it.get("productId") or "")
-        rid = f"rbcp-{pid}"
-        it["url"] = it.get("url") or it.get("downloadURL")
-        if not pid or not it.get("url") or rid in st["done"]:
+        k = "V:" + pid
+        if pid and f"rbcp-{pid}" not in st["done"] and not (done.get(k) or {}).get("ok") and (done.get(k) or {}).get("tries", 0) < 3:
+            todo.append((pid, it))
+    if not todo:
+        return
+    if not rm.ffmpeg_ok():                                          # corre antes do reels.make: instala o ffmpeg se faltar
+        print("RBCP vídeo: ffmpeg indisponível, fica para a próxima."); return
+    os.makedirs(rm.DIR, exist_ok=True)
+    os.makedirs("_reel", exist_ok=True)
+    for pid, it in todo:
+        k, rid = "V:" + pid, f"rbcp-{pid}"
+        url = rbcp.link(it)
+        F = finals_of(it.get("event") or "", it.get("downloaded"))
+        if F is None and url:
+            try:
+                old = (dt.date.today() - dt.date.fromisoformat(it.get("downloaded") or "")).days > 10
+            except ValueError:
+                old = True
+            if old:                                                    # o link já caducou (7 dias): desiste
+                done[k] = {"tries": 3, "why": "sem finais"}; continue
+        if not url or not F:
+            print(f"RBCP vídeo {pid}: {'sem link' if not url else 'finais do evento ainda não encontradas'}, fica para depois.")
+            if not url:
+                done[k] = {"tries": 3, "why": "sem link"}
             continue
-        F = finals_of(it.get("event") or "")
-        if not F:
-            print(f"RBCP vídeo {pid}: finais do evento ainda não encontradas, fica para depois.")
-            left.append(it); continue
         FINALS.clear(); FINALS.update(F)
         src = os.path.join("_reel", "src.mp4")
-        os.makedirs("_reel", exist_ok=True)
+        dst = os.path.join(rm.DIR, rid + ".mp4")
         try:
-            r = requests.get(it["url"], timeout=120)
+            r = requests.get(url, timeout=180)
             if r.status_code != 200 or not r.headers.get("content-type", "").startswith("video"):
-                print(f"RBCP vídeo {pid}: ainda não ({r.status_code})"); left.append(it); continue
+                raise ValueError(f"HTTP {r.status_code}")
             open(src, "wb").write(r.content)
-            dst = os.path.join(rm.DIR, rid + ".mp4")
             T = render(src, dst)
+            if os.path.getsize(dst) > 24e6:                             # o site (Cloudflare Pages) não serve ficheiros > 25 MB
+                os.replace(dst, src)
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                                "-maxrate", "4M", "-bufsize", "8M", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", dst], check=True)
         except Exception as e:
-            print(f"RBCP vídeo {pid}: falhou ({type(e).__name__}: {str(e)[:120] if 'http' not in str(e) else ''})")
-            if (it.get("tries") or 0) < 3:
-                it["tries"] = (it.get("tries") or 0) + 1; left.append(it)
+            n = (done.get(k) or {}).get("tries", 0) + 1
+            done[k] = {"tries": n, "why": type(e).__name__}
+            print(f"RBCP vídeo {pid}: falhou ({type(e).__name__}: {str(e)[:100] if 'http' not in str(e) else ''}), tentativa {n}/3")
             continue
         finally:
             try: os.remove(src)
@@ -234,9 +256,10 @@ def make():
                                 file=os.path.basename(dst), due=rm.iso(rm.now()), made=rm.iso(rm.now()), caption=caption(F), posted=None,
                                 v=rm.VERSION, rbcp=pid))
         st["done"].append(rid)
+        done[k] = {"ok": it.get("downloaded") or dt.date.today().isoformat()}
         print(f"RBCP vídeo {pid}: Reel feito ({F['name']}, {T:.0f}s, {os.path.getsize(dst) / 1e6:.1f} MB).")
     json.dump(st, open(rm.STATE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    json.dump(left, open(INBOX, "w", encoding="utf-8"), ensure_ascii=False)
+    rbcp.done_save(done)
 
 
 def rm_load_inbox():

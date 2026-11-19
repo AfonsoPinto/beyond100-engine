@@ -24,7 +24,11 @@ LIB = os.path.join(ROOT, "photos")
 META = os.path.join(ROOT, "photos.json")
 INBOX = os.path.join(ROOT, "inbox.json")
 NEEDS = os.path.join(ROOT, "needs.json")
-VNEEDS = os.path.join(ROOT, "video_needs.json")                  # torneios Premier acabados há pouco: pedir o "Social Newscut Clean"
+VNEEDS = os.path.join(ROOT, "video_needs.json")
+DONE = os.path.join(ROOT, "done.json")                          # pedidos já tratados {productId: {"ok": dia} ou {"tries": n}}
+# 19/11/2026: o motor NUNCA reescreve inbox.json / video_inbox.json (só a tarefa do browser escreve lá). Assim um pedido
+# gravado a meio de uma atualização não se perde quando essa atualização guarda o estado.
+MAX_SIDE = 1600                                                 # fotos guardadas com 1600 px no lado maior (cartões 1080, site 600)                  # torneios Premier acabados há pouco: pedir o "Social Newscut Clean"
 VALID_DAYS = 182
 CREDIT = "Premier Padel / Red Bull Content Pool"
 TAGS = "@premierpadel @redbull"
@@ -128,45 +132,73 @@ def site_photos(players):
     return out
 
 
+def link(it):
+    """O link de download, seja qual for o nome do campo que a tarefa do browser usou."""
+    return it.get("url") or it.get("downloadURL") or it.get("downloadUrl") or it.get("download_url")
+
+
+def done_load():
+    return _load(DONE, {})
+
+
+def done_save(d):
+    os.makedirs(ROOT, exist_ok=True)
+    json.dump(d, open(DONE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+
 def fetch():
-    """Busca as fotos pedidas no browser (links em rbcp/inbox.json). Sem IA: só descarrega e confirma que é uma imagem.
-    Nunca escreve os links nos registos (são privados). Apaga as fotos fora da licença."""
+    """Busca as fotos pedidas no browser (links em rbcp/inbox.json). Sem IA: só descarrega, confirma que é uma imagem
+    e reduz para 1600 px. Nunca escreve os links nos registos. Apaga as fotos fora da licença."""
     import requests
     from PIL import Image
     os.makedirs(LIB, exist_ok=True)
-    meta, items, left, got = _load(META, {}), _load(INBOX, []), [], 0
+    meta, items, done, got, wait = _load(META, {}), _load(INBOX, []), done_load(), 0, 0
     for it in items:
-        pid = re.sub(r"[^A-Za-z0-9-]", "", it.get("productId") or "")
-        it["url"] = it.get("url") or it.get("downloadURL")           # a tarefa do browser às vezes grava "downloadURL"
-        it.pop("downloadURL", None)
-        if not pid or not it.get("url"):
-            print(f"RBCP {pid or '?'}: pedido sem link, ignorado")
+        pid = re.sub(r"[^A-Za-z0-9-]", "", it.get("productId") or it.get("productID") or "")
+        st = done.get(pid) or {}
+        if not pid or pid in meta or st.get("ok") or (st.get("tries") or 0) >= 3:
             continue
+        url = link(it)
+        if not url:
+            print(f"RBCP {pid}: pedido sem link, ignorado"); done[pid] = {"tries": 3, "why": "sem link"}; continue
         fn = os.path.join(LIB, pid + ".jpg")
         try:
-            r = requests.get(it["url"], timeout=60)
+            r = requests.get(url, timeout=60)
             if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-                print(f"RBCP {pid}: ainda não ({r.status_code})"); left.append(it); continue
-            with open(fn, "wb") as f:
+                raise ValueError(f"HTTP {r.status_code}")
+            with open(fn + ".part", "wb") as f:
                 f.write(r.content)
-            with Image.open(fn) as im:
-                im.verify()
+            with Image.open(fn + ".part") as im:
+                im.load()
+                im = im.convert("RGB")
+                if max(im.size) > MAX_SIDE:
+                    im.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
+                im.save(fn, quality=88, optimize=True)
+            os.remove(fn + ".part")
             meta[pid] = {k: it.get(k) for k in ("assetId", "persons", "title", "event", "credit", "usage", "downloaded")}
+            done[pid] = {"ok": it.get("downloaded") or dt.date.today().isoformat()}
             got += 1
         except Exception as e:
-            print(f"RBCP {pid}: falhou ({type(e).__name__})")
-            if (it.get("tries") or 0) < 3:
-                it["tries"] = (it.get("tries") or 0) + 1; left.append(it)
+            n = (st.get("tries") or 0) + 1
+            done[pid] = {"tries": n, "why": type(e).__name__ if "http" not in str(e) else "erro"}
+            print(f"RBCP {pid}: falhou ({type(e).__name__}), tentativa {n}/3")
+            wait += 1
+            for x in (fn + ".part",):
+                try: os.remove(x)
+                except OSError: pass
     gone = 0
     for pid in list(meta):                                       # fim da licença: deixa de existir
         if _age(meta[pid]) >= VALID_DAYS:
             try: os.remove(os.path.join(LIB, pid + ".jpg"))
             except OSError: pass
             meta.pop(pid); gone += 1
+    for f in os.listdir(LIB):                                     # ficheiros sem licença registada (ou já fora dela) saem
+        if f.endswith(".jpg") and f[:-4] not in meta:
+            os.remove(os.path.join(LIB, f)); gone += 1
     os.makedirs(ROOT, exist_ok=True)
     json.dump(meta, open(META, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    json.dump(left, open(INBOX, "w", encoding="utf-8"), ensure_ascii=False)
-    print(f"RBCP: {got} fotos novas, {len(meta)} válidas, {gone} fora da licença, {len(left)} por buscar.")
+    done_save(done)
+    print(f"RBCP: {got} fotos novas, {len(meta)} válidas, {gone} fora da licença, {wait} a tentar de novo.")
 
 
 def needs(limit=60):
@@ -226,11 +258,13 @@ def needs(limit=60):
     print(f"RBCP: {len(out)} pedidos de foto ({sum(1 for x in out if x['why'] == 'torneio')} do torneio a decorrer); {min(len(out), limit)} na lista.")
 
 
-def video_needs(tours, days=8):
+def video_needs(tours, days=15):
     """Torneios Premier acabados nos últimos dias que ainda não têm Reel com o vídeo oficial."""
     today = dt.date.today()
     done = [set(norm(i.get("tournament") or "")) for i in _load("reels.json", {}).get("items", []) if i.get("kind") == "rbcp"]
-    pend = [x.get("event") for x in _load(os.path.join(ROOT, "video_inbox.json"), [])]
+    dn = done_load()
+    pend = [x.get("event") for x in _load(os.path.join(ROOT, "video_inbox.json"), [])
+            if (dn.get("V:" + (x.get("productId") or "")) or {}).get("tries", 0) < 3]
     out = []
     for tid, t in tours.items():
         if (t.get("level") or "").lower() not in {"major", "p1", "p2", "finals"}:

@@ -2,8 +2,16 @@
 # Guarda ficheiros de estado no main sem nunca deixar marcas de conflito (<<<<<<<) nos JSON.
 # Uso: bash save_state.sh "mensagem do commit" ficheiro1 ficheiro2 pasta1 ...
 # Copia os ficheiros desta execução à parte, alinha com o main mais recente e repõe-nos por cima (esta execução ganha).
+# Pasta com o prefixo "mirror:" (ex.: mirror:rbcp/photos) fica IGUAL à desta execução, incluindo ficheiros apagados
+# (19/11/2026: as fotos do Red Bull Content Pool fora da licença têm mesmo de sair do repositório).
 set -u
 msg="$1"; shift
+mirror=()
+args=()
+for p in "$@"; do
+  case "$p" in mirror:*) mirror+=("${p#mirror:}"); args+=("${p#mirror:}");; *) args+=("$p");; esac
+done
+set -- "${args[@]}"
 git config user.name "beyond100-bot"
 git config user.email "bot@users.noreply.github.com"
 keep=$(mktemp -d)
@@ -17,6 +25,7 @@ done
 for i in 1 2 3 4; do
   git fetch -q origin main || true
   git reset -q --hard origin/main
+  for m in "${mirror[@]+"${mirror[@]}"}"; do if [ -e "$keep/$m" ]; then rm -rf "$m"; fi; done
   cp -r "$keep"/. .
   for p in "$@"; do
     if [ -e "$p" ]; then git add -A -f "$p"; fi
