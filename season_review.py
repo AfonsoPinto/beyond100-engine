@@ -41,30 +41,31 @@ def _tables(t):
 
 
 def titles(lg):
-    """[(jogador, país, títulos de singulares)] da tabela "Titles won by player" (colunas S e D no fim)."""
+    """[(jogador, país, n.º de títulos de singulares, [torneios])] da tabela "Titles won by player":
+    cada título é uma ligação "2026 <torneio> – (Men's/Women's) singles"; contam-se essas ligações."""
     t = _get(PAGES[lg])
-    for hdr, rows in _tables(t):
-        if len(hdr) > 2 and hdr[1] == "Player" and "Grand Slam" in hdr:
-            out = []
-            for r in rows[1:]:
-                cells = re.findall(r"<t[dh]([^>]*)>(.*?)</t[dh]>", r, re.S)
-                link = re.search(r'<a [^>]*title="([^"]+)"[^>]*>([^<]+)</a>\s*$', r.split("</td>")[0] + "</td>", re.S)
-                name = None
-                for attrs, c in cells:
-                    a = re.findall(r'<a [^>]*href="/wiki/[^"]+"[^>]*>([^<]+)</a>', c)
-                    a = [x for x in a if len(x) > 3 and not x.isupper()]
-                    if a:
-                        name = html.unescape(a[-1]); break
-                ctry = re.search(r'flagicon[^>]*>.*?title="([^"]+)"', r, re.S)
-                nums = [_txt(c) for _, c in cells]
-                nums = [x for x in nums if re.fullmatch(r"\d+|–|-|", x)]
-                if not name or len(nums) < 2:
-                    continue
-                s = nums[-2]
-                if s.isdigit() and int(s) > 0:
-                    out.append((name, html.unescape(ctry.group(1)) if ctry else "", int(s)))
-            return sorted(out, key=lambda x: -x[2])
-    return []
+    k = t.find('id="Titles_won_by_player"')
+    if k < 0:
+        return []
+    tb = re.search(r"<table[^>]*>(.*?)</table>", t[k:], re.S).group(1)
+    out = []
+    for r in re.findall(r"<tr[^>]*>(.*?)</tr>", tb, re.S):
+        if "<td" not in r:
+            continue
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", r, re.S)
+        name = None
+        for c in cells[:3]:
+            a = re.findall(r'<a [^>]*href="/wiki/[^"]+"[^>]*title="([^"]+)"[^>]*>[^<●]+</a>', c)
+            if a:
+                name = html.unescape(a[0]); break
+        if not name:
+            continue
+        ctry = re.search(r'<abbr title="([^"]+)">([A-Z]{3})</abbr>', r)
+        evs = [html.unescape(x) for x in re.findall(r'title="(2026 [^"]+?) – (?:Men&#39;s |Women&#39;s )?[Ss]ingles"', r)]
+        evs = [re.sub(r"^2026 ", "", e) for e in evs]
+        if evs:
+            out.append((name, ctry.group(2) if ctry else "", len(evs), evs))
+    return sorted(out, key=lambda x: -x[2])
 
 
 def data():
@@ -145,7 +146,7 @@ def titles_card(out):
         d.text((64, y), lg.upper(), font=mc.F("black", 30), fill=ACC)
         d.line([(140, y + 18), (W - 64, y + 18)], fill=(247, 242, 230, 40), width=2)
         y += 52
-        for i, (name, ctry, n) in enumerate(rows[:3]):
+        for i, (name, ctry, n, evs) in enumerate(rows[:3]):
             h = 92 if i == 0 else 70
             av, cr = _avatar(name, h - 10)
             if cr:
@@ -161,7 +162,7 @@ def titles_card(out):
             y += h + 8
         y += 30
     d.text((64, H - 70), "@beyond100.tennis", font=mc.F("bold", 30), fill=CREAM, anchor="lm")
-    cr = SRC + ((" · Photos: " + " · ".join(dict.fromkeys(c for c in credits if c))) if credits else "")
+    cr = SRC + ((" · Photos: " + " · ".join(dict.fromkeys(" ".join(str(c).split()) for c in credits if c))) if credits else "")
     d.text((W - 64, H - 70), cr, font=mc._fit(d, cr, "med", 18, 640, 11), fill=SOFT, anchor="rm")
     img.convert("RGB").save(out, quality=92)
     return out
@@ -170,6 +171,7 @@ def titles_card(out):
 if __name__ == "__main__":
     if sys.argv[1] == "data":
         for lg, rows in data().items():
-            print(lg, rows[:8])
+            for r in rows[:6]:
+                print(lg, r)
     else:
         {"titles": titles_card}[sys.argv[1]](sys.argv[2])
