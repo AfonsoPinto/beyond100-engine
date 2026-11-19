@@ -299,10 +299,175 @@ def titles_card(out):
     return out
 
 
+def _head(img, l1, l2, sub, top=64):
+    d = ImageDraw.Draw(img)
+    x = _pill(d, 64, top, "BEYOND100", CREAM, BG)
+    _pill(d, x + 12, top, "2026 IN REVIEW", ACC, BG)
+    mc._paste_sq(img, l1, "black", 170, CREAM, 60, top + 76, 950, sx=0.74)
+    mc._paste_sq(img, l2, "black", 170, ACC, 60, top + 222, 950, sx=0.74)
+    d = ImageDraw.Draw(img)
+    d.text((66, top + 392), sub, font=mc._fit(d, sub, "semi", 30, W - 130), fill=SOFT)
+    return top + 450
+
+
+def _foot(img, credits):
+    d = ImageDraw.Draw(img)
+    d.text((64, H - 92), "@beyond100.tennis", font=mc.F("bold", 30), fill=CREAM, anchor="lm")
+    d.text((64, H - 52), SRC.replace(" (tour-level singles)", ""), font=mc.F("med", 18), fill=SOFT, anchor="lm")
+    if credits:
+        cr = "Photos: " + " · ".join(dict.fromkeys(" ".join(str(c).split()) for c in credits if c))
+        d.text((W - 64, H - 92), cr, font=mc._fit(d, cr, "med", 16, 560, 10), fill=SOFT, anchor="rm")
+
+
+def _glass(img, box, a=26, r=28, fill=None):
+    ov = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(ov).rounded_rectangle(box, radius=r, fill=fill or (247, 242, 230, a))
+    img.alpha_composite(ov)
+
+
+def first_card(out):
+    D = data()["first"]
+    img = _canvas()
+    n_all = sum(len(v) for v in D.values())
+    y = _head(img, "FIRST", "TITLES", f"{n_all} players won their first tour-level title in 2026")
+    credits = []
+    allp = [(p, lg) for lg in ("atp", "wta") for p in D.get(lg) or [] if p[2]]
+    young = min(allp, key=lambda x: x[0][2]) if allp else None
+    colw = (W - 128 - 24) // 2
+    for c, lg in enumerate(("atp", "wta")):
+        x0 = 64 + c * (colw + 24)
+        yy = y
+        d = ImageDraw.Draw(img)
+        d.text((x0, yy), lg.upper(), font=mc.F("black", 28), fill=ACC)
+        yy += 46
+        for (name, ctry, age, city) in (D.get(lg) or [])[:7]:
+            hot = young and young[0][0] == name
+            _glass(img, [x0, yy, x0 + colw, yy + 66], a=30, r=33, fill=(ACC + (255,)) if hot else None)
+            av, cr = _avatar(name, 54)
+            if cr:
+                credits.append(cr)
+            img.alpha_composite(av, (x0 + 6, yy + 6))
+            d = ImageDraw.Draw(img)
+            fg, sf = (BG, BG) if hot else (CREAM, SOFT)
+            d.text((x0 + 72, yy + 20), name, font=mc._fit(d, name, "bold", 24, colw - 90, 14), fill=fg, anchor="lm")
+            sub = (f"{age} · " if age else "") + city + ("  · YOUNGEST" if hot else "")
+            d.text((x0 + 72, yy + 46), sub, font=mc._fit(d, sub, "semi", 19, colw - 90, 12), fill=sf, anchor="lm")
+            yy += 74
+    _foot(img, credits)
+    img.convert("RGB").save(out, quality=92)
+    return out
+
+
+def newtop20_card(out):
+    T, T0 = data()["top20"], data()["top20_2025"]
+    img = _canvas()
+    y = _head(img, "NEW IN", "THE TOP 20", "Inside the top 20 now, outside it at the end of 2025")
+    credits = []
+    colw = (W - 128 - 24) // 2
+    for c, lg in enumerate(("atp", "wta")):
+        before = {n for _, n in T0.get(lg) or []}
+        new = [(r, n) for r, n in T.get(lg) or [] if n not in before][:6]
+        x0 = 64 + c * (colw + 24)
+        yy = y
+        d = ImageDraw.Draw(img)
+        d.text((x0, yy), lg.upper(), font=mc.F("black", 28), fill=ACC)
+        yy += 46
+        for i, (r, name) in enumerate(new):
+            h = 100 if i == 0 else 78
+            _glass(img, [x0, yy, x0 + colw, yy + h - 8], a=30, r=(h - 8) // 2, fill=(ACC + (255,)) if i == 0 else None)
+            av, cr = _avatar(name, h - 20)
+            if cr:
+                credits.append(cr)
+            img.alpha_composite(av, (x0 + 6, yy + 6))
+            d = ImageDraw.Draw(img)
+            fg = BG if i == 0 else CREAM
+            d.text((x0 + h + 2, yy + (h - 8) / 2), name, font=mc._fit(d, name, "bold", 26 if i == 0 else 23, colw - h - 110, 13), fill=fg, anchor="lm")
+            d.text((x0 + colw - 20, yy + (h - 8) / 2), f"#{r}", font=mc.F("black", 48 if i == 0 else 38), fill=BG if i == 0 else ACC, anchor="rm")
+            yy += h + 4
+    _foot(img, credits)
+    img.convert("RGB").save(out, quality=92)
+    return out
+
+
+def nations_card(out):
+    T = data()["titles"]
+    tally = {}
+    for lg in ("atp", "wta"):
+        for name, ctry, n, evs in T.get(lg) or []:
+            if ctry:
+                a = tally.setdefault(ctry, [0, 0]); a[0 if lg == "atp" else 1] += n
+    rows = sorted(tally.items(), key=lambda x: -(x[1][0] + x[1][1]))[:8]
+    img = _canvas()
+    y = _head(img, "NATIONS", "OF THE YEAR", "Tour-level singles titles by country, men and women")
+    d = ImageDraw.Draw(img)
+    top = sum(rows[0][1]) if rows else 1
+    for i, (c, (m, w)) in enumerate(rows):
+        h = 66
+        bx, maxw = 64 + 96, W - 64 - 110 - 160
+        wm, ww = int(maxw * m / top), int(maxw * w / top)
+        _glass(img, [64, y, 64 + 80, y + h - 10], r=(h - 10) // 2, fill=(ACC + (255,)) if i == 0 else (247, 242, 230, 30))
+        if wm:
+            _glass(img, [bx, y, bx + wm, y + h - 10], r=12, fill=ACC + (255,))
+        if ww:
+            _glass(img, [bx + wm + (4 if wm else 0), y, bx + wm + 4 + ww, y + h - 10], r=12, fill=(247, 242, 230, 200))
+        d = ImageDraw.Draw(img)
+        d.text((104, y + (h - 10) / 2), c, font=mc.F("black", 24), fill=BG if i == 0 else CREAM, anchor="mm")
+        d.text((W - 64, y + (h - 10) / 2), str(m + w), font=mc.F("black", 52 if i == 0 else 40), fill=CREAM if i == 0 else ACC, anchor="rm")
+        y += h
+    d.rounded_rectangle([64, y + 14, 88, y + 38], radius=6, fill=ACC)
+    d.text((98, y + 26), "ATP", font=mc.F("bold", 22), fill=SOFT, anchor="lm")
+    d.rounded_rectangle([170, y + 14, 194, y + 38], radius=6, fill=(247, 242, 230))
+    d.text((204, y + 26), "WTA", font=mc.F("bold", 22), fill=SOFT, anchor="lm")
+    _foot(img, [])
+    img.convert("RGB").save(out, quality=92)
+    return out
+
+
+def numbers_card(out):
+    D = data()
+    T, F, P, R = D["titles"], D["first"], D["prize"], D["top20"]
+    allf = [(p, lg) for lg in ("atp", "wta") for p in F.get(lg) or [] if p[2]]
+    young = min(allf, key=lambda x: x[0][2])[0] if allf else None
+    tiles = []
+    for lg in ("atp", "wta"):
+        rows = T.get(lg) or []
+        if rows:
+            lead = [r for r in rows if r[2] == rows[0][2]]
+            tiles.append((str(rows[0][2]), f"most {lg.upper()} titles", " & ".join(r[0].split()[-1] for r in lead[:2])))
+    tiles.append((str(sum(len(v) for v in F.values())), "first-time champions", "men and women"))
+    if young:
+        tiles.append((str(young[2]), "youngest first-time champion", f"{young[0]} · {young[3]}"))
+    for lg in ("atp", "wta"):
+        if P.get(lg):
+            name, money = P[lg][0]
+            v = int(re.sub(r"\D", "", money) or 0)
+            tiles.append((f"${v / 1e6:.1f}M", f"{lg.upper()} prize money leader", name))
+    for lg in ("atp", "wta"):
+        if R.get(lg):
+            tiles.append(("No.1", f"{lg.upper()} ranking leader", R[lg][0][1]))
+    img = _canvas()
+    y = _head(img, "2026 IN", "NUMBERS", "The season at a glance")
+    gw = (W - 128 - 24) // 2
+    for i, (big, lab, who) in enumerate(tiles[:8]):
+        c, r = i % 2, i // 2
+        x0, y0 = 64 + c * (gw + 24), y + r * 168
+        hot = i == 0
+        _glass(img, [x0, y0, x0 + gw, y0 + 152], a=28, r=28, fill=(ACC + (255,)) if hot else None)
+        d = ImageDraw.Draw(img)
+        fg, sf = (BG, BG) if hot else (CREAM, SOFT)
+        mc._paste_sq(img, big, "black", 70, ACC if not hot else BG, x0 + 26, y0 + 18, gw - 52, sx=0.8)
+        d = ImageDraw.Draw(img)
+        d.text((x0 + 28, y0 + 104), lab.upper(), font=mc._fit(d, lab.upper(), "xb", 19, gw - 56, 12), fill=sf, anchor="lm")
+        d.text((x0 + 28, y0 + 130), who, font=mc._fit(d, who, "bold", 22, gw - 56, 12), fill=fg, anchor="lm")
+    _foot(img, [])
+    img.convert("RGB").save(out, quality=92)
+    return out
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "data":
         for k, v in data().items():
             for lg, rows in v.items():
                 print(k, lg, len(rows), rows[:6])
     else:
-        {"titles": titles_card}[sys.argv[1]](sys.argv[2])
+        {"titles": titles_card, "first": first_card, "top20": newtop20_card, "nations": nations_card, "numbers": numbers_card}[sys.argv[1]](sys.argv[2])
