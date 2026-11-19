@@ -290,11 +290,7 @@ def titles_card(out):
             d.text((W - 64, y + (h - 12) / 2), str(n), font=mc.F("black", 76 if i == 0 else 56), fill=CREAM if lead else ACC, anchor="rm")
             y += h + 6
         y += 26
-    d.text((64, H - 92), "@beyond100.tennis", font=mc.F("bold", 30), fill=CREAM, anchor="lm")
-    d.text((64, H - 52), SRC, font=mc.F("med", 18), fill=SOFT, anchor="lm")
-    if credits:
-        cr = "Photos: " + " · ".join(dict.fromkeys(" ".join(str(c).split()) for c in credits if c))
-        d.text((W - 64, H - 92), cr, font=mc._fit(d, cr, "med", 16, 560, 10), fill=SOFT, anchor="rm")
+    _foot(img, credits)
     img.convert("RGB").save(out, quality=92)
     return out
 
@@ -314,9 +310,18 @@ def _foot(img, credits):
     d = ImageDraw.Draw(img)
     d.text((64, H - 92), "@beyond100.tennis", font=mc.F("bold", 30), fill=CREAM, anchor="lm")
     d.text((64, H - 52), SRC.replace(" (tour-level singles)", ""), font=mc.F("med", 18), fill=SOFT, anchor="lm")
-    if credits:
+    if credits:                                                      # créditos das fotos numa faixa própria (não tapam a marca)
         cr = "Photos: " + " · ".join(dict.fromkeys(" ".join(str(c).split()) for c in credits if c))
-        d.text((W - 64, H - 92), cr, font=mc._fit(d, cr, "med", 16, 560, 10), fill=SOFT, anchor="rm")
+        f = mc.F("med", 14)
+        words, lines, cur = cr.split(" "), [], ""
+        for w in words:
+            if d.textlength(cur + " " + w, font=f) > W - 128 and cur:
+                lines.append(cur); cur = w
+            else:
+                cur = (cur + " " + w).strip()
+        lines.append(cur)
+        for i, ln in enumerate(lines[-3:]):
+            d.text((64, H - 150 + i * 18 - 18 * (min(len(lines), 3) - 1)), ln, font=f, fill=SOFT, anchor="lm")
 
 
 def _glass(img, box, a=26, r=28, fill=None):
