@@ -5,7 +5,10 @@ de câmara, como um medidor de volume —
   1) cortes de câmara (ffmpeg, mudança de cena);
   2) pancadas na bola = picos curtos de energia nos agudos (2–6 kHz);
   3) reação do público = volume alto e prolongado logo a seguir.
-Um bom ponto = vários golpes seguidos dentro do mesmo plano + grande reação no fim. Ficam os 3 melhores, de ~8 s cada.
+  4) campo à vista = proporção da imagem com a cor do campo (a cor saturada mais comum do vídeo inteiro; nas
+     entrevistas e nos planos fechados quase não aparece) — 19/11/2026: o 1.º exemplo apanhava entrevistas.
+Um bom ponto = vários golpes seguidos dentro do MESMO plano, com o campo à vista, + grande reação no fim.
+O corte nunca passa para o plano seguinte. Ficam os 3 melhores, de ~8 s cada.
 Formato: vídeo horizontal ao centro, a mesma imagem desfocada em cima e em baixo; título, contador #3→#1, marca e
 "© Red Bull Media House" dentro da zona segura do Instagram. Licença dos vídeos: "NEWS Use", 7 dias.
 
@@ -37,6 +40,28 @@ def scene_cuts(src):
     return [0.0] + ts
 
 
+def court_track(src, fps=4):
+    """Proporção de cada imagem (4 por segundo) com a cor do campo. Devolve (tempos, proporções)."""
+    w, h = 160, 90
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-an", "-vf", f"fps={fps},scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True).stdout
+    n = len(raw) // (w * h * 3)
+    if not n:
+        return np.array([0.0]), np.array([1.0])
+    a = np.frombuffer(raw[:n * w * h * 3], dtype=np.uint8).reshape(n, h, w, 3).astype(np.float32) / 255.0
+    mx, mn = a.max(axis=3), a.min(axis=3)
+    sat = (mx - mn) / (mx + 1e-6)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    hue = np.where(mx == r, ((g - b) / (mx - mn + 1e-6)) % 6, np.where(mx == g, (b - r) / (mx - mn + 1e-6) + 2, (r - g) / (mx - mn + 1e-6) + 4)) * 60
+    strong = (sat > 0.35) & (mx > 0.25)
+    bins = (hue // 10).astype(int) % 36
+    hist = np.bincount(bins[strong].ravel(), minlength=36)
+    c = int(hist.argmax())                                          # a cor do campo (azul, verde...) é a mais comum
+    near = (np.abs(((bins - c + 18) % 36) - 18) <= 1) & (sat > 0.3) & (mx > 0.2)
+    frac = near.reshape(n, -1).mean(axis=1)
+    return np.arange(n) / fps, frac
+
+
 def audio(src):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-vn", "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"],
                          capture_output=True).stdout
@@ -60,39 +85,54 @@ def smooth(v, k):
     return np.convolve(v, np.ones(k) / k, mode="same")
 
 
-def pick(src, n=3, clip=7.0, tail=1.6):
+def pick(src, n=3, clip=7.0, tail=1.6, min_court=0.22):
     """Os n melhores momentos (início, fim, nota), por ordem de nota crescente (#3 primeiro)."""
     cuts = scene_cuts(src)
     rms, onset = features(audio(src))
+    ct, cf = court_track(src)
     dur = len(rms) * HOP
     loud = 20 * np.log10(smooth(rms, 1.5 / HOP) + 1e-9)            # volume em dB, janela de 1,5 s
+    inst = 20 * np.log10(rms + 1e-9)
     med = np.median(onset)
     thr = max(np.percentile(onset, 90), med + 6 * np.median(np.abs(onset - med)))
-    hits = np.where((onset > thr) & (onset == np.maximum.reduce([np.roll(onset, k) for k in range(-3, 4)])))[0] * HOP
+    peak = (onset > thr) & (onset == np.maximum.reduce([np.roll(onset, k) for k in range(-3, 4)]))
+    decay = inst - np.roll(inst, -2)                               # pancada = som curto (cai depressa); a voz não
+    hits = np.where(peak & (decay > 4))[0] * HOP
     base = np.median(loud)
+
+    def court(a, b):
+        m = (ct >= a) & (ct <= b)
+        return float(np.min(cf[m])) if m.any() else 0.0, float(np.median(cf[m])) if m.any() else 0.0
+
     cands = []
     for i in range(int(4 / HOP), len(loud) - int(1 / HOP)):
         if loud[i] < base + 4 or loud[i] != loud[max(0, i - int(1.5 / HOP)): i + int(1.5 / HOP)].max():
             continue
         t = i * HOP                                                # pico da reação do público
-        before = [c for c in cuts if c < t - 1.0]
-        shot0 = before[-1] if before else 0.0                      # início do plano onde acaba o ponto
-        start = max(shot0, t - clip)
-        end = min(dur, t + tail)
-        if end - start < 4.5:
+        before = [c for c in cuts if c <= t]
+        after = [c for c in cuts if c > t]
+        shot0 = before[-1] if before else 0.0
+        shot1 = after[0] if after else dur
+        start = max(shot0 + 0.1, t - clip)
+        end = min(shot1 - 0.1, t + tail)                           # nunca entra no plano seguinte (entrevistas)
+        if end - start < 4.5 or t - start < 3.0:
+            continue
+        lo, md = court(start, t)
+        if md < min_court or lo < min_court * 0.6:                 # sem campo à vista: entrevista / plano fechado
             continue
         h = [x for x in hits if start <= x <= t]
         gaps = np.diff(h) if len(h) > 1 else np.array([])
         rally = int(((gaps > 0.45) & (gaps < 2.2)).sum())          # golpes com ritmo de troca de bolas
         if rally < 3:
             continue
-        cands.append((float((loud[i] - base) * min(rally, 10)), start, end))
+        cands.append((float((loud[i] - base) * min(rally, 10) * (0.5 + md)), start, end))
     chosen = []
     for score, s, e in sorted(cands, reverse=True):
         if all(e < cs - 0.5 or s > ce + 0.5 for _, cs, ce in chosen):
             chosen.append((score, s, e))
         if len(chosen) == n:
             break
+    print(f"Top 3: {len(cuts)} planos, {len(hits)} pancadas, {len(cands)} candidatos, cor do campo em {np.median(cf):.0%} das imagens (mediana).")
     return [(s, e, sc) for sc, s, e in sorted(chosen)]
 
 
