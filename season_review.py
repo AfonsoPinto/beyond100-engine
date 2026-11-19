@@ -95,7 +95,7 @@ def first_titles(lg):
     out = []
     for li in re.findall(r"<li>(.*?)</li>", seg, re.S):
         a = re.search(r'<a [^>]*title="([^"]+)"[^>]*>[^<]+</a>', re.sub(r'<span class="flagicon">.*?</span>', "", li, flags=re.S))
-        age = re.search(r"\((?:\s|&#160;)*(\d+)(?:&#160;|\s)years", li)
+        age = re.search(r"\(\s*(\d+)\s*years", _txt(li))
         ctry = re.search(r'<img alt="([^"]+)"', li) or re.search(r'flagicon[^>]*>.*?title="([^"]+)"', li, re.S)
         txt = _txt(li)
         city = re.search(r"\)\s*[–-]\s*([^()]+?)\s*\(", txt)
@@ -106,33 +106,46 @@ def first_titles(lg):
 
 
 def nations(lg):
-    """[(país, títulos de singulares)] da tabela "Titles won by nation"."""
+    """[(país, títulos de singulares)] da tabela "Titles won by nation". A coluna certa é a que soma o total de títulos
+    de singulares da tabela dos jogadores (assim não dependemos da ordem das colunas)."""
     t = page(lg)
     k = t.find('id="Titles_won_by_nation"')
     if k < 0:
         return []
     tb = re.search(r"<table[^>]*>(.*?)</table>", t[k:], re.S).group(1)
-    out = []
+    rows = []
     for r in re.findall(r"<tr[^>]*>(.*?)</tr>", tb, re.S):
         if "<td" not in r:
             continue
         nat = re.search(r'<a [^>]*href="/wiki/[^"]+"[^>]*>([^<●]{3,})</a>', re.sub(r'<span class="flagicon">.*?</span>', "", r, flags=re.S))
-        n = len(re.findall(r'title="2026 [^"]+? – (?:Men&#39;s |Women&#39;s )?[Ss]ingles"', r))
-        if nat and n:
-            out.append((html.unescape(nat.group(1)), n))
-    return sorted(out, key=lambda x: -x[1])
+        cells = [_txt(c) for c in re.findall(r"<td[^>]*>(.*?)</td>", r, re.S)]
+        nums = [int(c) for c in cells if c.isdigit()]
+        if nat and nums:
+            rows.append((html.unescape(nat.group(1)), nums))
+    total = sum(x[2] for x in titles(lg))
+    for back in (2, 3, 1, 4):
+        col = [(n, nums[-back]) for n, nums in rows if len(nums) >= back]
+        if col and sum(v for _, v in col) == total:
+            return sorted([x for x in col if x[1] > 0], key=lambda x: -x[1])
+    print(f"Nações {lg}: nenhuma coluna soma {total} títulos; não uso.")
+    return []
 
 
 def _rank_table(t, title_start):
-    """Linhas (posição, nome, pontos) da primeira tabela cujo cabeçalho começa por title_start."""
+    """Linhas (posição, nome, células) da primeira tabela cujo cabeçalho começa por title_start
+    (ou, com title_start=None, a primeira tabela de ranking de singulares que não seja a Race)."""
     for m in re.finditer(r"<table[^>]*>(.*?)</table>", t, re.S):
         body = m.group(1)
-        if not _txt(body[:600]).startswith(title_start):
+        head = _txt(body[:600]).lower()
+        if title_start and not head.startswith(title_start.lower()):
+            continue
+        if not title_start and not ("ranking" in head and "singles" in head and "race" not in head and "double" not in head.split("player")[0]):
             continue
         rows = []
         for r in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S):
             cells = [_txt(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", r, re.S)]
-            a = re.findall(r'<a [^>]*href="/wiki/[^"]+"[^>]*title="([^"]+)"[^>]*>[^<]+</a>', re.sub(r'<span class="flagicon">.*?</span>', "", r, flags=re.S))
+            a = [x for x in re.findall(r'<a [^>]*href="/wiki/[^"]+"[^>]*title="([^"]+)"[^>]*>[^<]+</a>', re.sub(r'<span class="flagicon">.*?</span>', "", r, flags=re.S))
+                 if not x.startswith("List of") and not x.startswith("Help:")]
             if cells and cells[0].isdigit() and a:
                 rows.append((int(cells[0]), html.unescape(a[0]), cells))
         if rows:
@@ -142,9 +155,9 @@ def _rank_table(t, title_start):
 
 def top20(lg, year=2026):
     t = page(lg) if year == 2026 else _get(f"{year}_{lg.upper()}_Tour")
-    for title in ("WTA Singles Year-End Rankings", "ATP rankings (singles)", "ATP Singles Year-End", "WTA rankings (singles)", "Final Singles Race"):
+    for title in ("WTA Singles Year-End Rankings", "ATP rankings (singles)", "ATP Singles Year-End", "WTA rankings (singles)", None):
         rows = _rank_table(t, title)
-        if rows and not title.startswith("Final"):
+        if rows:
             return [(n, name) for n, name, _ in rows][:20]
     return []
 
