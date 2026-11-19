@@ -43,7 +43,7 @@ def _tables(t):
 def titles(lg):
     """[(jogador, país, n.º de títulos de singulares, [torneios])] da tabela "Titles won by player":
     cada título é uma ligação "2026 <torneio> – (Men's/Women's) singles"; contam-se essas ligações."""
-    t = _get(PAGES[lg])
+    t = page(lg)
     k = t.find('id="Titles_won_by_player"')
     if k < 0:
         return []
@@ -68,10 +68,102 @@ def titles(lg):
     return sorted(out, key=lambda x: -x[2])
 
 
+_PAGE = {}
+
+
+def page(lg):
+    if lg not in _PAGE:
+        _PAGE[lg] = _get(PAGES[lg])
+    return _PAGE[lg]
+
+
+def _anchor_seg(t, anchor, stop=None, n=60000):
+    k = t.find(f'id="{anchor}"')
+    if k < 0:
+        return ""
+    seg = t[k:k + n]
+    if stop:
+        e = seg.find(stop, 50)
+        if e > 0:
+            seg = seg[:e]
+    return seg
+
+
+def first_titles(lg):
+    """Primeiros títulos da carreira em singulares em 2026: [(nome, país, idade, torneio)] (secção "Titles information")."""
+    seg = _anchor_seg(page(lg), "Titles_information", stop="Doubles")
+    out = []
+    for li in re.findall(r"<li>(.*?)</li>", seg, re.S):
+        a = re.search(r'<a [^>]*title="([^"]+)"[^>]*>[^<]+</a>', re.sub(r'<span class="flagicon">.*?</span>', "", li, flags=re.S))
+        age = re.search(r"\((?:\s|&#160;)*(\d+)(?:&#160;|\s)years", li)
+        ctry = re.search(r'<img alt="([^"]+)"', li) or re.search(r'flagicon[^>]*>.*?title="([^"]+)"', li, re.S)
+        txt = _txt(li)
+        city = re.search(r"\)\s*[–-]\s*([^()]+?)\s*\(", txt)
+        if a:
+            out.append((html.unescape(a.group(1)), html.unescape(ctry.group(1)) if ctry else "", int(age.group(1)) if age else None,
+                        city.group(1).strip() if city else ""))
+    return out
+
+
+def nations(lg):
+    """[(país, títulos de singulares)] da tabela "Titles won by nation"."""
+    t = page(lg)
+    k = t.find('id="Titles_won_by_nation"')
+    if k < 0:
+        return []
+    tb = re.search(r"<table[^>]*>(.*?)</table>", t[k:], re.S).group(1)
+    out = []
+    for r in re.findall(r"<tr[^>]*>(.*?)</tr>", tb, re.S):
+        if "<td" not in r:
+            continue
+        nat = re.search(r'<a [^>]*href="/wiki/[^"]+"[^>]*>([^<●]{3,})</a>', re.sub(r'<span class="flagicon">.*?</span>', "", r, flags=re.S))
+        n = len(re.findall(r'title="2026 [^"]+? – (?:Men&#39;s |Women&#39;s )?[Ss]ingles"', r))
+        if nat and n:
+            out.append((html.unescape(nat.group(1)), n))
+    return sorted(out, key=lambda x: -x[1])
+
+
+def _rank_table(t, title_start):
+    """Linhas (posição, nome, pontos) da primeira tabela cujo cabeçalho começa por title_start."""
+    for m in re.finditer(r"<table[^>]*>(.*?)</table>", t, re.S):
+        body = m.group(1)
+        if not _txt(body[:600]).startswith(title_start):
+            continue
+        rows = []
+        for r in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S):
+            cells = [_txt(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", r, re.S)]
+            a = re.findall(r'<a [^>]*href="/wiki/[^"]+"[^>]*title="([^"]+)"[^>]*>[^<]+</a>', re.sub(r'<span class="flagicon">.*?</span>', "", r, flags=re.S))
+            if cells and cells[0].isdigit() and a:
+                rows.append((int(cells[0]), html.unescape(a[0]), cells))
+        if rows:
+            return rows
+    return []
+
+
+def top20(lg, year=2026):
+    t = page(lg) if year == 2026 else _get(f"{year}_{lg.upper()}_Tour")
+    for title in ("WTA Singles Year-End Rankings", "ATP rankings (singles)", "ATP Singles Year-End", "WTA rankings (singles)", "Final Singles Race"):
+        rows = _rank_table(t, title)
+        if rows and not title.startswith("Final"):
+            return [(n, name) for n, name, _ in rows][:20]
+    return []
+
+
+def prize(lg):
+    rows = _rank_table(page(lg), "Prize money")
+    out = []
+    for n, name, cells in rows[:3]:
+        money = next((c for c in reversed(cells) if c.startswith("$") or re.fullmatch(r"[\d,]{6,}", c.replace("$", ""))), "")
+        out.append((name, money))
+    return out
+
+
 def data():
     if os.path.exists(CACHE):
         return json.load(open(CACHE, encoding="utf-8"))
-    d = {lg: titles(lg) for lg in PAGES}
+    d = {"titles": {lg: titles(lg) for lg in PAGES}, "first": {lg: first_titles(lg) for lg in PAGES},
+         "nations": {lg: nations(lg) for lg in PAGES}, "top20": {lg: top20(lg) for lg in PAGES},
+         "top20_2025": {lg: top20(lg, 2025) for lg in PAGES}, "prize": {lg: prize(lg) for lg in PAGES}}
     json.dump(d, open(CACHE, "w", encoding="utf-8"), ensure_ascii=False)
     return d
 
@@ -140,7 +232,7 @@ def _avatar(name, size):
 
 
 def titles_card(out):
-    d0 = data()
+    d0 = data()["titles"]
     img = _canvas()
     d = ImageDraw.Draw(img)
     x = _pill(d, 64, 64, "BEYOND100", CREAM, BG)
@@ -196,8 +288,8 @@ def titles_card(out):
 
 if __name__ == "__main__":
     if sys.argv[1] == "data":
-        for lg, rows in data().items():
-            for r in rows[:6]:
-                print(lg, r)
+        for k, v in data().items():
+            for lg, rows in v.items():
+                print(k, lg, len(rows), rows[:6])
     else:
         {"titles": titles_card}[sys.argv[1]](sys.argv[2])
