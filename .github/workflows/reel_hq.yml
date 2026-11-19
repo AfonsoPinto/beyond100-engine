@@ -118,6 +118,8 @@ jobs:
   compose:
     needs: [prep, render]
     runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.vid.outputs.ok }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -132,15 +134,20 @@ jobs:
         run: |
           if [ -n "$FREESOUND_API_KEY" ]; then python -m reels.sfx_fetch reels/sfx || echo "sons falharam, fica o som gerado"; fi
       - name: Vídeo
+        id: vid
         run: |
           N=$(python3 -c "import json; print(len(json.load(open('scene/frames.json'))['frames']))"); H=$(ls frames | wc -l)
-          echo "frames: $H de $N"; [ "$H" -ge "$N" ] || { echo "faltam frames: fica o vídeo normal"; exit 1; }
+          echo "frames: $H de $N"
+          # 19/11/2026 (Afonso: não marcar como erro o que não é erro): sem frames todos, fica o vídeo normal e a execução termina bem
+          if [ "$H" -lt "$N" ]; then echo "::notice::faltam frames: fica o vídeo normal (sem versão 3D)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           mkdir -p result && python -m reels.proto.compose scene/cfg.json frames result/video.mp4 full
+          echo "ok=true" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
+        if: steps.vid.outputs.ok == 'true'
         with: { name: video, path: result/video.mp4, retention-days: 3 }
   publish:
     needs: compose
-    if: ${{ !startsWith(github.event.inputs.id || 'test-', 'test-') }}
+    if: ${{ needs.compose.outputs.ok == 'true' && !startsWith(github.event.inputs.id || 'test-', 'test-') }}
     runs-on: ubuntu-latest
     concurrency: { group: update, cancel-in-progress: false }
     steps:
