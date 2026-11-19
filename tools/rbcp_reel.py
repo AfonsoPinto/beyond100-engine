@@ -63,29 +63,39 @@ def brand_layer():
     return im
 
 
-def result_layer():
-    """Primeiros segundos: as duas finais, no estilo dos cartões de resultado."""
-    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    y0 = 1080
-    shade(im, y0 - 220, y0, 0, 225)
+def score_layer(fin):
+    """Placar ao estilo de transmissão (diferente dos cartões dos posts): uma final de cada vez, a subir de baixo."""
+    im = Image.new("RGBA", (W, 420), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.rectangle([0, y0, W, H - 170], fill=DEEP + (225,))
-    d.polygon([(0, y0 + 6), (W, y0 - 34), (W, y0 - 22), (0, y0 + 18)], fill=VOLT)
-    y = y0 + 50
-    pill(d, 60, y, "CHAMPIONS", VOLT, NAVY, 28)
-    y += 90
-    for fin in FINALS["finals"]:
-        d.text((60, y), fin["label"], font=f("Inter-Bold.otf", 28), fill=SOFT)
-        y += 40
-        d.text((60, y), fin["w"], font=fit(d, fin["w"], "InterDisplay-Black.otf", 78, W - 120), fill=CREAM)
-        y += 96
-        x = 60
-        for i, s in enumerate(fin["sets"]):
-            ft = f("InterDisplay-Black.otf", 60)
-            d.text((x, y), s, font=ft, fill=VOLT if i == len(fin["sets"]) - 1 or True else SOFT)
-            x += d.textlength(s, font=ft) + 34
-        d.text((x + 6, y + 18), f"def. {fin['l']}", font=f("Inter-SemiBold.otf", 32), fill=SOFT)
-        y += 108
+    x0, x1 = 48, W - 48
+    d.rounded_rectangle([x0, 0, x0 + 330, 64], radius=18, fill=VOLT)
+    d.rectangle([x0, 40, x0 + 330, 64], fill=VOLT)
+    d.text((x0 + 24, 32), f"{fin['label']}'S FINAL", font=f("Inter-ExtraBold.otf", 30), fill=NAVY, anchor="lm")
+    d.rounded_rectangle([x0, 64, x1, 344], radius=22, fill=DEEP + (235,))
+    d.rectangle([x0, 64, x0 + 40, 100], fill=DEEP + (235,))
+    n = len(fin["sets"])
+    bw, gap = 96, 10
+    bx = x1 - 24 - n * bw - (n - 1) * gap
+    rows = [(fin["w"], [s.split("-")[0] for s in fin["sets"]], True), (fin["l"].upper(), [s.split("-")[1] for s in fin["sets"]], False)]
+    for r, (name, games, win) in enumerate(rows):
+        cy = 134 + r * 140
+        if r:
+            d.line([(x0 + 24, cy - 70), (x1 - 24, cy - 70)], fill=(36, 80, 122, 255), width=2)
+        if win:
+            d.polygon([(x0 + 26, cy - 14), (x0 + 26, cy + 14), (x0 + 46, cy)], fill=VOLT)
+        nf = fit(d, name, "InterDisplay-Black.otf" if win else "Inter-Bold.otf", 54 if win else 44, bx - x0 - 90)
+        d.text((x0 + 64, cy), name, font=nf, fill=CREAM if win else SOFT, anchor="lm")
+        for i, g in enumerate(games):
+            gx = bx + i * (bw + gap)
+            other = rows[1 - r][1][i]
+            won = int(g) > int(other)
+            d.rounded_rectangle([gx, cy - 46, gx + bw, cy + 46], radius=14, fill=VOLT if won else (36, 80, 122, 255))
+            d.text((gx + bw / 2, cy), g, font=f("InterDisplay-Black.otf", 56), fill=NAVY if won else CREAM, anchor="mm")
+    tx = f"{FINALS['tournament']} · {FINALS['date']}"
+    tf = f("Inter-Bold.otf", 26)
+    tw = d.textlength(tx, font=tf)
+    d.rounded_rectangle([x0 + 346, 12, x0 + 346 + tw + 36, 58], radius=23, fill=DEEP + (235,))
+    d.text((x0 + 364, 35), tx, font=tf, fill=CREAM, anchor="lm")
     return im
 
 
@@ -112,17 +122,23 @@ def main(src, dst):
         subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=1080x1920:r=25:d=30",
                         "-f", "lavfi", "-i", "sine=f=220:d=30", "-shortest", "-pix_fmt", "yuv420p", src], check=True)
     brand_layer().save("_reel/brand.png")
-    result_layer().save("_reel/result.png")
+    for i, fin in enumerate(FINALS["finals"]):
+        score_layer(fin).save(f"_reel/score{i}.png")
     end_layer().save("_reel/end.png")
     T = dur(src)
     e0 = max(0.0, T - 3.0)
+    y0, SH = 1300, 420                                             # placar: entra a subir, fica, sai a descer
+    def mv(a, b):
+        return (f"if(lt(t,{a}+0.35),{H}-(t-{a})/0.35*({H}-{y0}),if(gt(t,{b}-0.3),{y0}+(t-({b}-0.3))/0.3*({H}-{y0}),{y0}))")
     fc = (f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[v0];"
           f"[v0][1:v]overlay=0:0:enable='lt(t,{e0})'[v1];"
-          f"[2:v]format=rgba,fade=t=out:st=3.2:d=0.5:alpha=1[r];[v1][r]overlay=0:0:enable='between(t,0.3,3.7)'[v2];"
-          f"[3:v]format=rgba,fade=t=in:st={e0}:d=0.4:alpha=1[e];[v2][e]overlay=0:0:enable='gte(t,{e0})'[v]")
+          f"[v1][2:v]overlay=0:'{mv(0.4, 2.6)}':enable='between(t,0.4,2.6)'[v2];"
+          f"[v2][3:v]overlay=0:'{mv(2.7, 4.9)}':enable='between(t,2.7,4.9)'[v3];"
+          f"[4:v]format=rgba,fade=t=in:st={e0}:d=0.4:alpha=1[e];[v3][e]overlay=0:0:enable='gte(t,{e0})'[v]")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src,
                     "-loop", "1", "-t", str(T), "-i", "_reel/brand.png",
-                    "-loop", "1", "-t", str(T), "-i", "_reel/result.png",
+                    "-loop", "1", "-t", str(T), "-i", "_reel/score0.png",
+                    "-loop", "1", "-t", str(T), "-i", "_reel/score1.png",
                     "-loop", "1", "-t", str(T), "-i", "_reel/end.png",
                     "-filter_complex", fc, "-map", "[v]", "-map", "0:a?",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", "6M", "-bufsize", "12M",
