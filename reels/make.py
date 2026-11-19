@@ -214,7 +214,9 @@ def plan(finals, st):
         pts = fs if fs[0]["sport"] == "tennis" else [max(fs, key=lambda f: (drama(f["sets"]), f["gender"] == "women"))]
         for f in pts:
             day = dt.date.fromisoformat(f["date"])
-            jobs.append(("point", f, f"{f['tour_key'] if f['sport'] == 'padel' else f['key']}-point", at_lisbon(day + dt.timedelta(days=1), 12, 30)))
+            # 19/11/2026: no padel o ponto 3D passa para 2 dias depois (o vídeo oficial do RBCP chega à segunda) e só sai se não houver vídeo
+            jobs.append(("point", f, f"{f['tour_key'] if f['sport'] == 'padel' else f['key']}-point",
+                         at_lisbon(day + dt.timedelta(days=2 if f["sport"] == "padel" else 1), 12, 30)))
     return [j for j in jobs if j[2] not in st["done"]]
 
 
@@ -265,6 +267,15 @@ def _posts_today(sport):
     return n
 
 
+def _has_official(st, i):
+    """Há Reel com o vídeo oficial (RBCP) deste torneio de padel?"""
+    try:
+        from padel import rbcp
+        return any(x.get("kind") == "rbcp" and rbcp.same_event({"event": x.get("tournament")}, i.get("tournament")) for x in st["items"])
+    except Exception:
+        return False
+
+
 def publish():
     """Publica no máximo 1 Reel por execução, à hora marcada, dentro do horário e do máximo de posts do dia (o Reel conta)."""
     import requests
@@ -282,6 +293,8 @@ def publish():
     order = lambda x: (x["kind"] != "rbcp", x["kind"] != "bracket", x["due"], x["gender"] != "men")   # vídeo oficial (RBCP) primeiro; depois o quadro antes do ponto; masculino primeiro
     for i in sorted(st["items"], key=order):
         if i.get("posted") or i.get("skipped") or i["id"] in manual: continue
+        if i["sport"] == "padel" and i["kind"] == "point" and _has_official(st, i):
+            i["skipped"] = "vídeo oficial"; changed = True; print(f"reels: {i['id']} não sai (há o vídeo oficial do torneio)"); continue
         due = dt.datetime.strptime(i["due"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
         if due > now(): continue
         if (now() - due).total_seconds() > 30 * 3600:
