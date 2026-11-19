@@ -192,6 +192,32 @@ def finals_of(event, day=None):
     return None
 
 
+def caption_top3(F):
+    return "\n".join([f"Top 3 points from {F['name']} 🔥", "Which one was the best? 1, 2 or 3?",
+                      f"🎥 © Red Bull Media House · {TAGS}", "Follow @beyond100.padel for every draw, not just the finals.", "",
+                      "#padel #BeyondPadel #PremierPadel"])
+
+
+def expire():
+    """Licença "NEWS Use" de 7 dias: depois disso o vídeo sai do repositório e do site (o Reel publicado fica no Instagram)."""
+    from reels import make as rm
+    st = rm.load()
+    today = dt.date.today().isoformat()
+    n = 0
+    for i in st["items"]:
+        if i.get("kind") in ("rbcp", "rbcp_top3") and (i.get("licence_until") or (i.get("made") or "")[:10]) and not i.get("expired"):
+            until = i.get("licence_until") or (dt.date.fromisoformat(i["made"][:10]) + dt.timedelta(days=7)).isoformat()
+            if today > until:
+                try: os.remove(os.path.join(rm.DIR, i["file"]))
+                except OSError: pass
+                i["expired"] = True; n += 1
+                if not i.get("posted"):
+                    i["skipped"] = i.get("skipped") or "licença de 7 dias acabou"
+    if n:
+        json.dump(st, open(rm.STATE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        print(f"RBCP vídeo: {n} vídeo(s) apagados (licença de 7 dias).")
+
+
 def caption(F):
     lines = [f"{F['name']} champions 🏆"]
     for x in F["finals"]:
@@ -206,6 +232,7 @@ def make():
     import requests
     from padel import rbcp
     from reels import make as rm
+    expire()
     items = rm_load_inbox()
     if not items:
         return
@@ -242,12 +269,18 @@ def make():
         FINALS.clear(); FINALS.update(F)
         src = os.path.join("_reel", "src.mp4")
         dst = os.path.join(rm.DIR, rid + ".mp4")
+        top3 = "newscut" in (it.get("title") or "").lower().replace(" ", "") and "social" not in (it.get("title") or "").lower()
         try:
-            r = requests.get(url, timeout=180)
+            r = requests.get(url, timeout=300)
             if r.status_code != 200 or not r.headers.get("content-type", "").startswith("video"):
                 raise ValueError(f"HTTP {r.status_code}")
             open(src, "wb").write(r.content)
-            T = render(src, dst)
+            if top3:
+                from reels import rbcp_top3
+                rbcp_top3.make(src, dst, F["tournament"])
+                T = dur(dst)
+            else:
+                T = render(src, dst)
             if os.path.getsize(dst) > 24e6:                             # o site (Cloudflare Pages) não serve ficheiros > 25 MB
                 os.replace(dst, src)
                 subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
@@ -260,9 +293,15 @@ def make():
         finally:
             try: os.remove(src)
             except OSError: pass
-        st["items"].append(dict(id=rid, kind="rbcp", sport="padel", gender="men", tournament=F["name"], champ=F["finals"][0]["w"],
-                                file=os.path.basename(dst), due=rm.iso(rm.now()), made=rm.iso(rm.now()), caption=caption(F), posted=None,
-                                v=rm.VERSION, rbcp=pid))
+        item = dict(id=rid, kind="rbcp_top3" if top3 else "rbcp", sport="padel", gender="men", tournament=F["name"],
+                    champ=F["finals"][0]["w"], file=os.path.basename(dst), due=rm.iso(rm.now()), made=rm.iso(rm.now()),
+                    caption=caption_top3(F) if top3 else caption(F), posted=None, v=rm.VERSION, rbcp=pid,
+                    licence_until=(dt.date.fromisoformat(it.get("downloaded") or dt.date.today().isoformat()) + dt.timedelta(days=7)).isoformat())
+        if top3:                                                       # quinta 12:30 e só com a tua aprovação no admin (primeiras semanas)
+            d0 = dt.date.today()
+            thu = d0 + dt.timedelta(days=(3 - d0.weekday()) % 7 or 7) if d0.weekday() != 3 else d0
+            item["due"] = rm.iso(rm.at_lisbon(thu, 12, 30)); item["approval"] = "pending"
+        st["items"].append(item)
         st["done"].append(rid)
         done[k] = {"ok": it.get("downloaded") or dt.date.today().isoformat()}
         print(f"RBCP vídeo {pid}: Reel feito ({F['name']}, {T:.0f}s, {os.path.getsize(dst) / 1e6:.1f} MB).")

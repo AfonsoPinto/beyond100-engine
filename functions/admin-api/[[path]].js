@@ -15,6 +15,7 @@ const EDIT_FILES = {            // ficheiros que o admin pode ler e gravar
   "categorias_manual.json": "cats",
   "archived_posts.json": "pids",   // posts arquivados no Instagram (não contam para o máximo do dia)
   "reel_posted_ids.json": "pids",  // Reels que já publicaste à mão
+  "reel_approved_ids.json": "pids",  // Reels "Top 3 points" que aprovaste (só saem depois disso)
   "photos/aliases.json": "names",
   "padel/photos/aliases.json": "names",
   "photos/photographers.json": "names",

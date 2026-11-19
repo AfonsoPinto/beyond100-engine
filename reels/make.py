@@ -206,9 +206,11 @@ def plan(finals, st):
         if fs[0]["sport"] == "padel" and not both:
             # no padel há sempre as duas finais: espera pela segunda (ou pelo fim do dia da primeira)
             if now() < at_lisbon(dt.date.fromisoformat(fs[0]["date"]), 23, 30): continue
-        for f in fs:
+        # 19/11/2026 (Afonso): no padel só UM quadro por torneio (o da final mais disputada); no ténis, um por final
+        brs = fs if fs[0]["sport"] == "tennis" else [max(fs, key=lambda f: (drama(f["sets"]), f["gender"] == "men"))]
+        for f in brs:
             day = dt.date.fromisoformat(f["date"])
-            due = max(now(), at_lisbon(day + dt.timedelta(days=1), 9, 30)) if (both and f["gender"] == "women") else now()
+            due = max(now(), at_lisbon(day + dt.timedelta(days=1), 9, 30)) if (both and f["gender"] == "women" and f["sport"] == "tennis") else now()
             jobs.append(("bracket", f, f"{f['key']}-bracket", due))
         # ponto de campeonato: ténis um por final; padel um por torneio (a final mais disputada)
         pts = fs if fs[0]["sport"] == "tennis" else [max(fs, key=lambda f: (drama(f["sets"]), f["gender"] == "women"))]
@@ -285,14 +287,18 @@ def publish():
     st = load()
     try: manual = set(json.load(open("reel_posted_ids.json", encoding="utf-8")))
     except (OSError, ValueError): manual = set()
+    try: approved = set(map(str, json.load(open("reel_approved_ids.json", encoding="utf-8"))))
+    except (OSError, ValueError): approved = set()
     E = lambda k, d: (os.environ.get(k) or d).strip()
     cfg = {"tennis": dict(on=E("PUBLISH_AUTO", "0").lower() in ("1", "true", "yes", "on"), a=int(E("SEND_FROM", "8")), b=int(E("SEND_TO", "23")), cap=int(E("DAY_MAX_POSTS", "3"))),
            "padel": dict(on=E("PADEL_PUBLISH", "0") == "1", a=int(E("PADEL_SEND_FROM", "9")), b=int(E("PADEL_SEND_TO", "23")), cap=int(E("PADEL_MAX_POSTS_PER_DAY", "3")))}
     h = now().astimezone(LIS).hour
     changed = False
-    order = lambda x: (x["kind"] != "rbcp", x["kind"] != "bracket", x["due"], x["gender"] != "men")   # vídeo oficial (RBCP) primeiro; depois o quadro antes do ponto; masculino primeiro
+    order = lambda x: (x["kind"] not in ("rbcp", "rbcp_top3"), x["kind"] != "bracket", x["due"], x["gender"] != "men")   # vídeo oficial (RBCP) primeiro; depois o quadro antes do ponto; masculino primeiro
     for i in sorted(st["items"], key=order):
         if i.get("posted") or i.get("skipped") or i["id"] in manual: continue
+        if i.get("approval") == "pending" and i["id"] not in approved:
+            continue                                   # Top 3 points: só sai depois de aprovado no admin
         if i["sport"] == "padel" and i["kind"] == "point" and _has_official(st, i):
             i["skipped"] = "vídeo oficial"; changed = True; print(f"reels: {i['id']} não sai (há o vídeo oficial do torneio)"); continue
         due = dt.datetime.strptime(i["due"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)

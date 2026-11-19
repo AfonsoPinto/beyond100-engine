@@ -152,7 +152,7 @@ jobs:
           python -m padel.rbcp needs || echo "RBCP: lista falhou (ignorado)"
       - name: Save state (public display data only)
         run: |
-          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json reels.json weeks posts photos reel_files reels_hq mirror:rbcp/photos rbcp/photos.json rbcp/done.json rbcp/needs.json rbcp/video_needs.json newsletter_img padel/data
+          bash _engine/save_state.sh "Update state" requeue.json tracked.json tracked_prio.json tracked_meta.json espn.json espn_rank.json espn_players.json reach.json popular.json upcoming.json live.json stats.json history.json results.json archive.json ranks.json posts.json carousels.json stories.json spend.json news_log.json usage.json api_calls.json fixtures.json tennis_videos.json player_stats.json newsletter_state.json reels.json weeks posts photos mirror:reel_files reels_hq mirror:rbcp/photos rbcp/photos.json rbcp/done.json rbcp/needs.json rbcp/video_needs.json newsletter_img padel/data
       - name: "Reels 3D (Blender): pedido ao workflow próprio, depois de o cenário estar guardado"
         env:
           GH_DISPATCH_TOKEN: ${{ github.token }}

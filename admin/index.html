@@ -88,24 +88,29 @@ function pubCard(name,handle,on,how,site){return `<div class="card"><h3>Publica�
 
 // ---------- Reels (feitos sozinhos quando acaba a final de um torneio grande; publicas tu, com música)
 async function reelsCard(sp){
-  const [f,pf]=await Promise.all([readFile("reels.json").catch(()=>({data:null})),readFile("reel_posted_ids.json").catch(()=>({data:[]}))]);
-  const done=new Set((pf.data||[]).map(String)),now=Date.now();
+  const [f,pf,af]=await Promise.all([readFile("reels.json").catch(()=>({data:null})),readFile("reel_posted_ids.json").catch(()=>({data:[]})),readFile("reel_approved_ids.json").catch(()=>({data:[]}))]);
+  const done=new Set((pf.data||[]).map(String)),okd=new Set((af.data||[]).map(String)),now=Date.now();
   const it=(((f.data||{}).items)||[]).filter(r=>r.sport===sp).slice().reverse().slice(0,10);
   const which=sp==="padel"?"P1, P2, Majors e Finals":"Grand Slams, 1000 e 500";
   if(!it.length)return `<div class="card"><h3>Reels</h3><p class="mut">Ainda não há Reels. São feitos sozinhos quando acaba a final de um torneio grande (${which}): o quadro do torneio na noite da final e o ponto de campeonato no dia seguinte às 12h30.</p></div>`;
-  const K={bracket:"Quadro do torneio",point:"Ponto de campeonato"};
+  const K={bracket:"Quadro do torneio",point:"Ponto de campeonato",rbcp:"Vídeo oficial (Red Bull)",rbcp_top3:"Top 3 points (Red Bull)"};
   const rows=it.map(r=>{const due=new Date(r.due).getTime(),pub=done.has(r.id)||!!r.posted,ready=due<=now;
-    const st=r.posted?`<span class="tag ok">publicado sozinho ${fmtTs(r.posted)}</span>`:pub?'<span class="tag ok">publicado</span>':r.skipped?`<span class="tag">não saiu (${esc(r.skipped)})</span>`:ready?'<span class="tag" style="background:var(--v);color:#0e3a2d">publica agora</span>':`<span class="tag">publica ${fmtTs(r.due)}</span>`;
+    const wait=r.approval==="pending"&&!okd.has(r.id)&&!r.posted&&!r.skipped;const st=wait?'<span class="tag" style="background:#f5c542;color:#0e3a2d">à espera da tua aprovação</span>':r.posted?`<span class="tag ok">publicado sozinho ${fmtTs(r.posted)}</span>`:pub?'<span class="tag ok">publicado</span>':r.skipped?`<span class="tag">não saiu (${esc(r.skipped)})</span>`:ready?'<span class="tag" style="background:var(--v);color:#0e3a2d">publica agora</span>':`<span class="tag">publica ${fmtTs(r.due)}</span>`;
     return `<tr><td><video src="/reels/${esc(r.file)}" controls playsinline preload="metadata" width="96" style="border-radius:8px;background:#000"></video></td>
       <td><b>${esc(K[r.kind]||r.kind)}</b> · ${esc(r.tournament)}<br><span class="mut">${esc(r.champ||"")}</span><br>${st}
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><a href="/reels/${esc(r.file)}" download style="font-size:12px;padding:4px 9px;border:1px solid currentColor;border-radius:8px;text-decoration:none;display:inline-block">Descarregar</a>
       <button class="rcap" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">Copiar legenda</button>
+      ${r.approval==="pending"&&!r.posted&&!r.skipped?`<button class="rok" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">${okd.has(r.id)?"Aprovado ✓ (desfazer)":"Aprovar"}</button>`:""}
       <button class="rpub" data-id="${esc(r.id)}" style="font-size:12px;padding:4px 9px">${pub?"Publicado ✓ (desfazer)":"Já publiquei"}</button></div></td></tr>`}).join("");
   reelsCard.items=it;
   return `<div class="card" style="border:2px solid var(--v)"><h3>Reels</h3><p class="mut">Saem sozinhos à hora marcada (com som próprio), dentro do horário e do máximo de 3 posts por dia: o Reel conta. Se preferires publicar um à mão com música do Instagram, descarrega-o, copia a legenda e marca "Já publiquei" antes da hora.</p><table>${rows}</table></div>`}
 function reelsWire(sp,again){
   $("#main").querySelectorAll("button.rcap").forEach(b=>b.onclick=async()=>{const r=(reelsCard.items||[]).find(x=>x.id===b.dataset.id);
     try{await navigator.clipboard.writeText(r.caption||"");toast("Legenda copiada.")}catch(e){prompt("Copia a legenda:",r.caption||"")}});
+  $("#main").querySelectorAll("button.rok").forEach(b=>b.onclick=async()=>{b.disabled=true;
+    try{const f=await readFile("reel_approved_ids.json").catch(()=>({data:[],sha:null}));const L=(f.data||[]).map(String),id=b.dataset.id,on=L.includes(id);
+      await saveFile("reel_approved_ids.json",on?L.filter(x=>x!==id):[...L,id].slice(-500),f.sha);toast(on?"Aprovação desfeita.":"Aprovado: sai à hora marcada.");again()}
+    catch(e){toast(e.message,true);b.disabled=false}});
   $("#main").querySelectorAll("button.rpub").forEach(b=>b.onclick=async()=>{b.disabled=true;
     try{const f=await readFile("reel_posted_ids.json").catch(()=>({data:[],sha:null}));const L=(f.data||[]).map(String),id=b.dataset.id,on=L.includes(id);
       await saveFile("reel_posted_ids.json",on?L.filter(x=>x!==id):[...L,id].slice(-500),f.sha);toast(on?"Desfeito.":"Marcado como publicado.");again()}
