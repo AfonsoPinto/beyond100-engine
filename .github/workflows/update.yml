@@ -122,6 +122,7 @@ jobs:
           python rising.py out || echo "rising falhou (ignorado)"
           true  # "This week in <ano>" desligado a 5/11/2026 (pedido do Afonso): python thisweek.py out
           python features.py out || echo "road/power falharam (ignorado)"
+          python season_review.py post out || echo "2026 in review falhou (ignorado)"
           python requeue.py || echo "requeue falhou (ignorado)"
           python stories.py out
           python news_scan.py out || echo "news_scan falhou (ignorado)"
