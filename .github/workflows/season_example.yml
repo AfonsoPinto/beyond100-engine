@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -q -r requirements.txt; for i in 1 2 3; do sudo apt-get install -y -qq fonts-dejavu-core fonts-liberation fonts-inter >/dev/null && break || sleep 10; done
-      - run: python season_review.py titles season-titles.png
+      - run: python season_review.py data && python season_review.py titles season-titles.png
       - name: Guardar no repositório privado (ramo reel-exemplo)
         run: |
           git clone -q --depth 1 -b reel-exemplo "https://x-access-token:${{ secrets.DATA_TOKEN }}@github.com/AfonsoPinto/beyond100.git" out
