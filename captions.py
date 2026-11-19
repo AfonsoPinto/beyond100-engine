@@ -120,19 +120,71 @@ def _name(p):
     return (p or {}).get("name", "")
 
 
+def _flag_emoji(code):
+    """Bandeira em emoji a partir do código do país (3 letras). Russos e bielorrussos sem bandeira (como no site)."""
+    try:
+        import site_more
+        c = (code or "").upper()
+        iso = site_more.ISO2.get(c) or (c.lower() if len(c) == 2 else None)
+        if not iso or c in ("RUS", "BLR", "RU", "BY"):
+            return ""
+        return "".join(chr(0x1F1E6 + ord(ch) - 97) for ch in iso.lower()) + " "
+    except Exception:
+        return ""
+
+
+def _rk(p):
+    r = (p or {}).get("rank")
+    return f" (#{r})" if isinstance(r, int) and r > 0 else ""
+
+
+def _final_text(facts, w, tag):
+    """Legenda sem IA (19/11/2026, saldo da Anthropic em pausa): só factos que já temos — ranking, ronda, idade, caminho
+    no torneio, forma e jogos anteriores entre os dois (dos jogos que acompanhamos). Nada inventado."""
+    win, los = facts["p%d" % w], facts["p%d" % (3 - w)]
+    g = facts.get("games") or [[], []]
+    score = " ".join(f"{a}-{b}" for a, b in zip(g[w - 1], g[2 - w]))
+    why = facts.get("reasons") or []
+    rnd = (facts.get("round") or "").strip()
+    stage = {"final": "to win the title", "semifinal": "to reach the final", "quarterfinal": "to reach the semifinals"}
+    where = next((stage[r] for r in why if r in stage), "")
+    if not where and rnd and not facts.get("q"):
+        where = f"in the {rnd.lower()}" if not rnd.lower().startswith("round") else f"in {rnd.lower()}"
+    lead = "🚨 Upset alert. " if "upset" in why else ("🏆 " if "final" in why else "")
+    head = f"{lead}{_flag_emoji(win.get('country'))}{_name(win)}{_rk(win)} beats {_flag_emoji(los.get('country'))}{_name(los)}{_rk(los)} {score} {where}".strip()
+    extra = []
+    if "comeback" in why:
+        extra.append("Came back from a set down.")
+    age = facts.get("winner_age")
+    if isinstance(age, int) and age <= 20:
+        extra.append(f"At just {age}.")
+    meet = facts.get("earlier_meetings_tracked") or []
+    if meet:
+        if all(x.startswith("winner lost") for x in meet):
+            extra.append(f"Revenge: {_name(los)} had won their last meeting{'s' if len(meet) > 1 else ''} ({meet[-1].split(' ', 2)[-1]}).")
+        else:
+            wn = sum(1 for x in meet if x.startswith("winner won"))
+            extra.append(f"Now {wn + 1}-{len(meet) - wn} in their meetings we tracked.")
+    path = facts.get("earlier_rounds_winner") or []
+    if path and len(extra) < 2:
+        beat = [x.split("beat ", 1)[1].rsplit(" ", 2)[0] for x in path if "beat " in x]
+        if len(beat) >= 2:
+            extra.append("On the way: beat " + ", ".join(beat[-3:]) + ".")
+    form = facts.get("recent_form_winner")
+    if form and len(extra) < 2 and form.split()[0].isdigit() and int(form.split()[0]) >= 4:
+        extra.append("Form: " + form + ".")
+    q = ("Who wins the title?" if "semifinal" in why else "Did you see this coming?" if "upset" in why else
+         "What a week. Who's next to break through?" if "final" in why else "Who impressed you most today?")
+    lines = [head + ".", facts.get("tournament", "")] + extra[:2] + [q, tag + (" #upset" if "upset" in why else "")]
+    return "\n".join(x for x in lines if x).replace("  ", " ").replace(" .", ".").strip()
+
+
 def fallback(kind, facts):
     tag = "#tennis #challengertennis #beyond100"
     if kind == "final":
         w = facts.get("winner")
         if w in (1, 2):
-            win, los = facts["p%d" % w], facts["p%d" % (3 - w)]
-            score = "  ".join(f"{a}-{b}" for a, b in zip(facts["games"][w - 1], facts["games"][2 - w]))
-            why = facts.get("reasons") or []
-            extra = ("Upset alert. " if "upset" in why else "") + ("A comeback win. " if "comeback" in why else "")
-            stage = {"final": "in the final", "semifinal": "in the semifinals", "quarterfinal": "in the quarterfinals"}
-            where = next((stage[r] for r in why if r in stage), "")
-            return (f"{extra}{_name(win)} beats {_name(los)} {score} {where}.\n{facts.get('tournament', '')}\n"
-                    f"Who impressed you most today?\n{tag}").replace("  ", " ").replace(" .", ".").strip()
+            return _final_text(facts, w, tag)
     if kind == "upset":
         return (f"{facts.get('headline', 'Upset alert.')}\n{facts.get('context', '')}\n"
                 f"Did you see this coming?\n{tag} #upset").strip()
