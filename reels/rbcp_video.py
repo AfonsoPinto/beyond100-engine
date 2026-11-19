@@ -297,10 +297,10 @@ def make():
                     champ=F["finals"][0]["w"], file=os.path.basename(dst), due=rm.iso(rm.now()), made=rm.iso(rm.now()),
                     caption=caption_top3(F) if top3 else caption(F), posted=None, v=rm.VERSION, rbcp=pid,
                     licence_until=(dt.date.fromisoformat(it.get("downloaded") or dt.date.today().isoformat()) + dt.timedelta(days=7)).isoformat())
-        if top3:                                                       # quinta 12:30 e só com a tua aprovação no admin (primeiras semanas)
+        if top3:                                                       # quinta 12:30, sai sozinho (19/11/2026: sem aprovação, a pedido do Afonso)
             d0 = dt.date.today()
             thu = d0 + dt.timedelta(days=(3 - d0.weekday()) % 7 or 7) if d0.weekday() != 3 else d0
-            item["due"] = rm.iso(rm.at_lisbon(thu, 12, 30)); item["approval"] = "pending"
+            item["due"] = rm.iso(rm.at_lisbon(thu, 12, 30))
         st["items"].append(item)
         st["done"].append(rid)
         done[k] = {"ok": it.get("downloaded") or dt.date.today().isoformat()}
