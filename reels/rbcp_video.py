@@ -63,8 +63,8 @@ def brand_layer():
     d = ImageDraw.Draw(im)
     TY = 262                                                       # abaixo do nome da conta e do "Áudio original" do Instagram
     x = pill(d, 60, TY, "BEYOND PADEL", CREAM, NAVY, 30)
-    pill(d, x + 14, TY, f"{FINALS['tournament']} · FINALS", (0, 0, 0, 0), CREAM, 30)
-    d.rounded_rectangle([x + 14, TY, x + 14 + d.textlength(f"{FINALS['tournament']} · FINALS", font=f("Inter-ExtraBold.otf", 30)) + 40, TY + 56],
+    pill(d, x + 14, TY, f"{FINALS['tournament']} · {FINALS.get('tag', 'FINALS')}", (0, 0, 0, 0), CREAM, 30)
+    d.rounded_rectangle([x + 14, TY, x + 14 + d.textlength(f"{FINALS['tournament']} · {FINALS.get('tag', 'FINALS')}", font=f("Inter-ExtraBold.otf", 30)) + 40, TY + 56],
                         radius=28, outline=CREAM, width=3)
     BY = H - 440                                                   # acima da legenda e dos botões do Instagram
     d.text((W - 160, BY), CREDIT, font=f("Inter-SemiBold.otf", 28), fill=SOFT, anchor="rm")
