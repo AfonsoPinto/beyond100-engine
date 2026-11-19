@@ -58,15 +58,17 @@ def shade(img, y0, y1, a0, a1):
 def brand_layer():
     """Sempre visível: marca em cima, crédito em baixo (termos 4.6 a: crédito junto ao conteúdo)."""
     im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    shade(im, 0, 260, 150, 0)
-    shade(im, H - 170, H, 0, 150)
+    shade(im, 180, 420, 150, 0)
+    shade(im, H - 560, H - 380, 0, 150)
     d = ImageDraw.Draw(im)
-    x = pill(d, 60, 92, "BEYOND PADEL", CREAM, NAVY, 30)
-    pill(d, x + 14, 92, f"{FINALS['tournament']} · FINALS", (0, 0, 0, 0), CREAM, 30)
-    d.rounded_rectangle([x + 14, 92, x + 14 + d.textlength(f"{FINALS['tournament']} · FINALS", font=f("Inter-ExtraBold.otf", 30)) + 40, 148],
+    TY = 262                                                       # abaixo do nome da conta e do "Áudio original" do Instagram
+    x = pill(d, 60, TY, "BEYOND PADEL", CREAM, NAVY, 30)
+    pill(d, x + 14, TY, f"{FINALS['tournament']} · FINALS", (0, 0, 0, 0), CREAM, 30)
+    d.rounded_rectangle([x + 14, TY, x + 14 + d.textlength(f"{FINALS['tournament']} · FINALS", font=f("Inter-ExtraBold.otf", 30)) + 40, TY + 56],
                         radius=28, outline=CREAM, width=3)
-    d.text((W - 60, H - 70), CREDIT, font=f("Inter-SemiBold.otf", 28), fill=SOFT, anchor="rm")
-    d.text((60, H - 70), "@beyond100.padel", font=f("Inter-Bold.otf", 30), fill=CREAM, anchor="lm")
+    BY = H - 440                                                   # acima da legenda e dos botões do Instagram
+    d.text((W - 160, BY), CREDIT, font=f("Inter-SemiBold.otf", 28), fill=SOFT, anchor="rm")
+    d.text((60, BY), "@beyond100.padel", font=f("Inter-Bold.otf", 30), fill=CREAM, anchor="lm")
     return im
 
 
@@ -74,7 +76,7 @@ def score_layer(fin):
     """Placar ao estilo de transmissão (diferente dos cartões dos posts): uma final de cada vez, a subir de baixo."""
     im = Image.new("RGBA", (W, 420), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    x0, x1 = 48, W - 48
+    x0, x1 = 48, W - 150                                           # não passa por baixo dos botões do Instagram (direita)
     d.rounded_rectangle([x0, 0, x0 + 330, 64], radius=18, fill=VOLT)
     d.rectangle([x0, 40, x0 + 330, 64], fill=VOLT)
     d.text((x0 + 24, 32), f"{fin['label']}'S FINAL", font=f("Inter-ExtraBold.otf", 30), fill=NAVY, anchor="lm")
@@ -132,7 +134,7 @@ def render(src, dst):
     end_layer().save("_reel/end.png")
     T = dur(src)
     e0 = max(0.0, T - 3.0)
-    y0 = 1300                                                      # placar: entra a subir, fica, sai a descer
+    y0 = 1000                                                      # placar: entra a subir, fica, sai a descer (acima da zona da legenda)
     def mv(a, b):
         return (f"if(lt(t,{a}+0.35),{H}-(t-{a})/0.35*({H}-{y0}),if(gt(t,{b}-0.3),{y0}+(t-({b}-0.3))/0.3*({H}-{y0}),{y0}))")
     fc = (f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[v0];"
