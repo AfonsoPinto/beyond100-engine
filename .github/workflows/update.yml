@@ -222,8 +222,9 @@ jobs:
         run: |
           python credit_alert.py && echo "CREDIT_ALERT=0" >> "$GITHUB_ENV" || echo "CREDIT_ALERT=1" >> "$GITHUB_ENV"
           bash _engine/save_state.sh "Credit check" spend.json
+      # 19/11/2026 (Afonso): sem saldo por agora, aviso desligado. Para voltar a receber o email: variável CREDIT_ALERT_EMAIL = 1.
       - name: Fail on purpose to send the low-credit email
-        if: env.CREDIT_ALERT == '1'
+        if: env.CREDIT_ALERT == '1' && vars.CREDIT_ALERT_EMAIL == '1'
         run: |
           echo "::error::Saldo da Anthropic a acabar. Carrega fundos em https://console.anthropic.com/settings/billing"
           exit 1
