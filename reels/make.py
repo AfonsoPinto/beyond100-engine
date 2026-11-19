@@ -279,7 +279,7 @@ def publish():
            "padel": dict(on=E("PADEL_PUBLISH", "0") == "1", a=int(E("PADEL_SEND_FROM", "9")), b=int(E("PADEL_SEND_TO", "23")), cap=int(E("PADEL_MAX_POSTS_PER_DAY", "3")))}
     h = now().astimezone(LIS).hour
     changed = False
-    order = lambda x: (x["kind"] != "bracket", x["due"], x["gender"] != "men")   # o quadro antes do ponto; masculino primeiro
+    order = lambda x: (x["kind"] != "rbcp", x["kind"] != "bracket", x["due"], x["gender"] != "men")   # vídeo oficial (RBCP) primeiro; depois o quadro antes do ponto; masculino primeiro
     for i in sorted(st["items"], key=order):
         if i.get("posted") or i.get("skipped") or i["id"] in manual: continue
         due = dt.datetime.strptime(i["due"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)

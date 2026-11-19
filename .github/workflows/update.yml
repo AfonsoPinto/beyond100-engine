@@ -135,6 +135,7 @@ jobs:
           if [ "$FAST" != "1" ]; then python -m padel.fetch || echo "padel: sincronização falhou (ignorado)"; fi
           python -m padel.site site || echo "padel: site falhou (ignorado)"
           python -m padel.posts make || echo "padel: posts falharam (ignorado)"
+          if [ "$FAST" != "1" ]; then python -m reels.rbcp_video || echo "reels RBCP: falharam (ignorado)"; fi
           if [ "$FAST" != "1" ]; then python -m reels.make site || echo "reels: falharam (ignorado)"; else python -m reels.make site --no-render || true; fi
           if [ "$FAST" != "1" ]; then python newsletter.py || echo "newsletter: falhou (ignorado)"; fi
           python clean_links.py site || echo "links: falhou (ignorado)"

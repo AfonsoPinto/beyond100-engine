@@ -24,6 +24,7 @@ LIB = os.path.join(ROOT, "photos")
 META = os.path.join(ROOT, "photos.json")
 INBOX = os.path.join(ROOT, "inbox.json")
 NEEDS = os.path.join(ROOT, "needs.json")
+VNEEDS = os.path.join(ROOT, "video_needs.json")                  # torneios Premier acabados há pouco: pedir o "Social Newscut Clean"
 VALID_DAYS = 182
 CREDIT = "Premier Padel / Red Bull Content Pool"
 TAGS = "@premierpadel @redbull"
@@ -216,7 +217,32 @@ def needs(limit=60):
                 add(rs[i], "site")
     os.makedirs(ROOT, exist_ok=True)
     json.dump(out[:limit], open(NEEDS, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    vids = video_needs(tours)
+    json.dump(vids, open(VNEEDS, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print(f"RBCP: {len(vids)} vídeo(s) de torneio a pedir.")
     print(f"RBCP: {len(out)} pedidos de foto ({sum(1 for x in out if x['why'] == 'torneio')} do torneio a decorrer); {min(len(out), limit)} na lista.")
+
+
+def video_needs(tours, days=8):
+    """Torneios Premier acabados nos últimos dias que ainda não têm Reel com o vídeo oficial."""
+    today = dt.date.today()
+    done = [set(norm(i.get("tournament") or "")) for i in _load("reels.json", {}).get("items", []) if i.get("kind") == "rbcp"]
+    pend = [x.get("event") for x in _load(os.path.join(ROOT, "video_inbox.json"), [])]
+    out = []
+    for tid, t in tours.items():
+        if (t.get("level") or "").lower() not in {"major", "p1", "p2", "finals"}:
+            continue
+        try:
+            end = dt.date.fromisoformat(t.get("end_date") or "")
+        except ValueError:
+            continue
+        if not (0 <= (today - end).days <= days):
+            continue
+        key = set(norm(t.get("name"))) - _SKIP
+        if not key or any(key <= set(norm(e or "")) for e in pend) or any(key <= d for d in done):
+            continue
+        out.append({"tournament": t.get("name"), "city": t.get("location"), "end": t.get("end_date"), "level": t.get("level")})
+    return out
 
 
 if __name__ == "__main__":
