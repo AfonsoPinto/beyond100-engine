@@ -143,15 +143,21 @@ def render(src, dst):
           f"[v2][3:v]overlay=0:'{mv(2.7, 4.9)}':enable='between(t,2.7,4.9)'[v3];"
           f"[4:v]format=rgba,fade=t=in:st={e0}:d=0.4:alpha=1[e];[v3][e]overlay=0:0:enable='gte(t,{e0})'[v]")
     tmp = dst + ".part.mp4"
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src,
-                    "-loop", "1", "-t", str(T), "-i", "_reel/brand.png",
-                    "-loop", "1", "-t", str(T), "-i", "_reel/score0.png",
-                    "-loop", "1", "-t", str(T), "-i", "_reel/score1.png",
-                    "-loop", "1", "-t", str(T), "-i", "_reel/end.png",
-                    "-filter_complex", fc, "-map", "[v]", "-map", "0:a?",
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-maxrate", "6M", "-bufsize", "12M",
-                    "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "128k", "-af", "loudnorm=I=-15:TP=-1.5",
-                    "-movflags", "+faststart", "-t", str(T), tmp], check=True)
+    # 19/11/2026: qualidade medida (SSIM contra o original): 2 passagens "slow" a ~6 Mb/s = 0,991 vs 0,987 antes,
+    # mantendo os 25 fps do original (passar a 30 fps repetia fotogramas) e cabendo nos 25 MB do site.
+    kbps = int(min(6500, max(2500, 22e6 * 8 / max(T, 1) / 1000 - 192)))
+    common = ["-filter_complex", fc, "-map", "[v]", "-c:v", "libx264", "-preset", "slow", "-profile:v", "high", "-pix_fmt", "yuv420p",
+              "-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.5)}k", "-bufsize", f"{kbps * 2}k", "-g", "50", "-t", str(T)]
+    inputs = ["-i", src,
+              "-loop", "1", "-t", str(T), "-i", "_reel/brand.png",
+              "-loop", "1", "-t", str(T), "-i", "_reel/score0.png",
+              "-loop", "1", "-t", str(T), "-i", "_reel/score1.png",
+              "-loop", "1", "-t", str(T), "-i", "_reel/end.png"]
+    log = os.path.join("_reel", "x264")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", *inputs, *common, "-pass", "1", "-passlogfile", log, "-an", "-f", "null", os.devnull], check=True)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", *inputs, *common, "-pass", "2", "-passlogfile", log,
+                    "-map", "0:a?", "-c:a", "aac", "-b:a", "192k", "-af", "loudnorm=I=-15:TP=-1.5",
+                    "-movflags", "+faststart", tmp], check=True)
     os.replace(tmp, dst)
     return T
 
