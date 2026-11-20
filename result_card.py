@@ -1976,6 +1976,7 @@ def build_site(out_dir="site", player=None):
     os.makedirs(mdir, exist_ok=True)
     cut = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 45 * 86400))
     _og_cut = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 3 * 86400))
+    _ni_cut = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 7 * 86400))   # 20/11/2026: jogos com mais de 7 dias ficam fora do Google (0 cliques em 28 dias)
     for r in results:
         if r.get("id") is None or r.get("date", "") < cut or webapp.classify(r)[1] != "singles" or r.get("winner") not in (1, 2):
             continue
@@ -1993,6 +1994,9 @@ def build_site(out_dir="site", player=None):
                 "description": f"{_pw['name']} beat {_pl['name']} {_sc}" + (f" ({r.get('round')})" if r.get("round") else "") + "."},
                _crumbs([("Results", "results.html"), (_tn, f"t/{webapp.slugify(_tn)}.html"), (f"{_pw['name']} vs {_pl['name']}", f"m/{r['id']}.html")])]
         LASTMOD[f"m/{r['id']}.html"] = r.get("date", "")
+        _old_m = r.get("date", "") < _ni_cut
+        if _old_m:
+            NOINDEX.add(f"m/{r['id']}.html")
         _rk = lambda p: f" (#{p['rank']})" if isinstance(p.get("rank"), int) else ""
         _img = "og/default.png"
         if r.get("date", "") >= _og_cut:              # imagem de partilha própria para os jogos dos últimos dias
@@ -2008,7 +2012,7 @@ def build_site(out_dir="site", player=None):
                            tx, root="../", path=f"m/{r['id']}.html",
                            desc=f"{_pw['name']}{_rk(_pw)} beat {_pl['name']}{_rk(_pl)} {_sc} at {_tn}" +
                                 (f", {r.get('round')}" if r.get("round") else "") + f" on {r.get('date', '')}. Full score, rankings and head-to-head.",
-                           ld=_ml, image=_img))
+                           ld=_ml, image=_img, noindex=_old_m))
         paths.append(path)
     # uma página por jogo a decorrer (/live/<id>.html); os que já acabaram reencaminham para /m/<id>.html
     ldir = os.path.join(out_dir, "live")
