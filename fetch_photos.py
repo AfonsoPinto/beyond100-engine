@@ -359,7 +359,7 @@ def _save_info(photo_dir, key, info):
     _save(os.path.join(photo_dir, "sources.json"), sources)
 
 
-REFRESH_DAYS = 30
+REFRESH_DAYS = 14                                    # 20/11/2026: de 30 para 14 dias (fotos mais atuais)
 
 
 def refresh_photo(name, birthday=None, photo_dir=None):
@@ -389,7 +389,9 @@ def refresh_photo(name, birthday=None, photo_dir=None):
                 pass
     try:
         info, _ = _candidate(name, birthday)
-        if not taken or not info or not (info.get("taken") or "") > taken:    # sem data da foto atual não arrisca trocar
+        new = info.get("taken") or "" if info else ""
+        # foto atual sem data: troca só por uma com data dos últimos 2 anos (20/11/2026)
+        if not info or not new or (new <= taken if taken else new < f"{time.gmtime().tm_year - 2}-01-01"):
             return False
         if info["page"] == cur.get("commons_page"):
             return False

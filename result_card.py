@@ -1811,6 +1811,9 @@ def build_site(out_dir="site", player=None):
         for i_ in ((_w, 3 - _w) if _w in (1, 2) else (1, 2)):
             _people.append((r["p%d" % i_]["name"], r["p%d" % i_].get("bd")))
     _people += [(v.get("name"), None) for v in sorted(_load_json(RANKS_FILE, {}).values(), key=lambda v: v.get("rank", 9999))[:40]]
+    _top = [(x.get("r") or 999, x.get("n")) for lg in ("atp", "wta") for x in (_er.get(lg) or [])]   # 20/11/2026: top 150 oficial, do nº 1 para baixo (fotos novas e mais recentes)
+    _people[:0] = [(n_, None) for _, n_ in sorted(_top, key=lambda t: t[0])[:60]]
+    _people += [(n_, None) for _, n_ in sorted(_top, key=lambda t: t[0])[60:]]
     webapp.CUR_RANKS.update({v.get("name"): v.get("rank") for v in _load_json(RANKS_FILE, {}).values() if v.get("name")})
     extras.RANKS.update({webapp.slugify(v.get("name")): v for v in _load_json(RANKS_FILE, {}).values() if v.get("name")})
     _ps = _load_json(PSTATS_FILE, {})
