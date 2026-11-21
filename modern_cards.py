@@ -98,6 +98,7 @@ def _meta(ps):
 
 def _footer(img, d, P, credit):
     d.text((MX, H - 46), P["follow"], font=F("semi", 24), fill=P["cream"], anchor="ls")
+    credit = " ".join((credit or "").split())         # 21/11/2026: créditos da Commons podem trazer quebras de linha
     if credit:
         d.text((W - MX, H - 46), credit, font=_fit(d, credit, "med", 18, 560, 12), fill=P["soft"], anchor="rs")
 

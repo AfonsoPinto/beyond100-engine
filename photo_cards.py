@@ -490,7 +490,7 @@ def render_match_photo_v2(d, out_path):
     dr.text((50, 1300), "BEYOND100", font=font(SERIF_B, 26), fill=CREAM, anchor="lm")
     dr.text((W - 50, 1300), BRAND, font=font(SANS_B, 24), fill=CREAM, anchor="rm")
     if win.get("credit"):
-        dr.text((W - 50, 1334), win["credit"][:90], font=font(SANS_B, 17), fill=SOFT, anchor="rm")
+        dr.text((W - 50, 1334), " ".join(win["credit"].split())[:90], font=font(SANS_B, 17), fill=SOFT, anchor="rm")
     img.save(out_path, quality=95)
     return out_path
 
@@ -567,7 +567,7 @@ def render_match_photo_v3(d, out_path):
     dr = ImageDraw.Draw(img)
     dr.text((W - 40, H - 50), BRAND, font=font(SANS_B, 24), fill=CREAM, anchor="rm")
     if win.get("credit"):
-        dr.text((W - 40, H - 18), win["credit"][:90], font=font(SANS_B, 17), fill=SOFT, anchor="rm")
+        dr.text((W - 40, H - 18), " ".join(win["credit"].split())[:90], font=font(SANS_B, 17), fill=SOFT, anchor="rm")
     img.save(out_path, quality=95)
     return out_path
 

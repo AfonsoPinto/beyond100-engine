@@ -297,6 +297,12 @@ def audit_photos(photo_dir=None):
     photo_dir = photo_dir or PHOTO_DIR
     sp = os.path.join(photo_dir, "sources.json")
     sources = _load(sp, {})
+    cp = os.path.join(photo_dir, "credits.json")          # 21/11/2026: créditos antigos com quebras de linha passam a uma linha
+    cr = _load(cp, {})
+    fixed = {k: " ".join(v.split()) for k, v in cr.items() if isinstance(v, str) and v != " ".join(v.split())}
+    if fixed:
+        cr.update(fixed)
+        _save(cp, cr)
     bad = []
     for fn, v in sources.items():
         m = re.search(r"/wiki/(File:[^?#]+)", (v or {}).get("commons_page", ""))
@@ -351,6 +357,7 @@ def _candidate(name, birthday=None):
 
 def _save_info(photo_dir, key, info):
     credits = _load(os.path.join(photo_dir, "credits.json"), {})
+    info = dict(info, artist=" ".join((info.get("artist") or "").split()))      # sem quebras de linha (21/11/2026)
     credits[key + ".jpg"] = f"Photo: {info['artist']} / {info['license']}"
     _save(os.path.join(photo_dir, "credits.json"), credits)
     sources = _load(os.path.join(photo_dir, "sources.json"), {})
