@@ -250,6 +250,72 @@ def numbers(wd):
     return img, []
 
 
+def rankings(wd):
+    """25/11/2026: as listas semanais (Climbers e Road) passam a viver dentro do carrossel, num só slide.
+    Ranking oficial da semana (espn_rank.json). None se não houver ranking recente."""
+    import features
+    cl, rd = features.climbers(3), features.road_official()
+    er = features._load("espn_rank.json", {})
+    if not rd or not (cl.get("atp") or cl.get("wta")):
+        return None
+    img, d = base(rng_of(wd))
+    d.text((60, 200), "Rankings", font=f("black", 96), fill=CREAM, anchor="ls")
+    d.text((W - 60, 200), "OFFICIAL · THIS WEEK", font=f("semi", 24), fill=SOFT, anchor="rs")
+    credits = []
+    # 1) a maior subida em cada circuito: foto grande
+    for k, lg in enumerate(("atp", "wta")):
+        x0 = 60 + k * 490
+        box = [x0, 240, x0 + 470, 860]
+        tile(d, box, DEEP)
+        xs = cl.get(lg) or []
+        if not xs:
+            continue
+        x = xs[0]
+        ph = photo(x["n"])
+        if ph:
+            paste_round(img, ph, box)
+            credits.append(credit_of(x["n"]))
+            ov = Image.new("RGBA", (470, 300), (0, 0, 0, 0))
+            for yy in range(300):
+                ImageDraw.Draw(ov).line([(0, yy), (470, yy)], fill=(10, 34, 26, int(235 * yy / 300)))
+            img.paste(ov, (x0, 560), ov)
+            d = ImageDraw.Draw(img)
+        d.rounded_rectangle([x0 + 24, 264, x0 + 24 + 150, 314], radius=25, fill=VOLT)
+        d.text((x0 + 99, 289), f"{lg.upper()} ▲{x['prev'] - x['r']}", font=f("black", 26), fill=GREEN, anchor="mm")
+        d.text((x0 + 30, 790), x["n"], font=fit(d, x["n"], "black", 44, 410), fill=CREAM, anchor="ls")
+        d.text((x0 + 30, 834), f"No. {x['prev']} → No. {x['r']}", font=f("semi", 30), fill=VOLT, anchor="ls")
+    # 2) entrou no top 100 esta semana (se houver), senão a 2.ª maior subida
+    new100 = [x for lg in ("atp", "wta") for x in er.get(lg) or [] if isinstance(x.get("prev"), int) and x["r"] <= 100 < x["prev"]]
+    tile(d, [60, 880, W - 60, 1010], VOLT)
+    if new100:
+        x = max(new100, key=lambda x: x["prev"] - x["r"])
+        d.text((100, 935), "NEW IN THE TOP 100", font=f("bold", 24), fill=GREEN, anchor="ls")
+        d.text((100, 985), f"{x['n']}  ▲{x['prev'] - x['r']} to No. {x['r']}", font=fit(d, f"{x['n']}  ▲{x['prev'] - x['r']} to No. {x['r']}", "black", 42, W - 200), fill=GREEN, anchor="ls")
+    else:
+        rest = [(lg, x) for lg in ("atp", "wta") for x in (cl.get(lg) or [])[1:2]]
+        txt = "   ·   ".join(f"{x['n']} ▲{x['prev'] - x['r']}" for _, x in rest) or "Biggest climbers in the top 150"
+        d.text((100, 935), "ALSO CLIMBING", font=f("bold", 24), fill=GREEN, anchor="ls")
+        d.text((100, 985), txt, font=fit(d, txt, "black", 40, W - 200), fill=GREEN, anchor="ls")
+    # 3) à porta do top 100: o n.º 101 de cada circuito e quantos pontos lhe faltam
+    for k, g in enumerate(("men", "women")):
+        x0 = 60 + k * 490
+        tile(d, [x0, 1030, x0 + 470, 1230], GREEN)
+        r = (rd.get(g) or [None])[0]
+        if not r:
+            continue
+        ph = photo(r["name"])
+        if ph:
+            circle(img, ph, x0 + 80, 1130, 52, VOLT)
+            credits.append(credit_of(r["name"]))
+            d = ImageDraw.Draw(img)
+        tx = x0 + (150 if ph else 30)
+        d.text((tx, 1085), f"KNOCKING ON THE DOOR · {'ATP' if g == 'men' else 'WTA'}", font=fit(d, "KNOCKING ON THE DOOR · ATP", "bold", 19, 300), fill=SOFT, anchor="ls")
+        d.text((tx, 1140), r["name"], font=fit(d, r["name"], "black", 34, x0 + 450 - tx), fill=CREAM, anchor="ls")
+        gap = f" · {r['gap']} pts to No. 100" if isinstance(r.get("gap"), int) and r["gap"] > 0 else ""
+        d.text((tx, 1186), f"No. {r['rank']}{gap}", font=fit(d, f"No. {r['rank']}{gap}", "semi", 26, x0 + 450 - tx), fill=VOLT, anchor="ls")
+    return img, credits
+
+
 def cta(wd):
     img, d = base(rng_of(wd))
     tile(d, [60, 120, W - 60, 760], GREEN)
@@ -266,8 +332,13 @@ def cta(wd):
 
 def build(wd):
     """Sempre 5 slides (a Make precisa de um número fixo): capa, 2 de conteúdo, números, apelo."""
+    try:
+        rk = rankings(wd)
+    except Exception as e:
+        print("Slide de rankings falhou:", type(e).__name__, e)
+        rk = None
     parts = [cover(wd), champions(wd) if wd["finals"] else tournaments(wd),
-             closest(wd) if wd["closest"] else dominant(wd), numbers(wd), cta(wd)]
+             closest(wd) if wd["closest"] else dominant(wd), rk or numbers(wd), cta(wd)]
     out = []
     for i, (img, credits) in enumerate(parts):
         dots(img, i, len(parts))
