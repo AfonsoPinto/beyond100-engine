@@ -21,7 +21,7 @@ const EDIT_FILES = {            // ficheiros que o admin pode ler e gravar
   "photos/photographers.json": "names",
   "padel/photos/photographers.json": "names",
 };
-const READ_FILES = ["results.json", "categorias_faltam.json", "categorias_torneios.json", "posts.json", "carousels.json", "stats.json", "spend.json", "news_log.json", "usage.json", "api_calls.json", "padel/data/posts.json", "padel/data/state.json", "padel/photos/scan_log.json", "photos/inbox_log.json", "padel/photos/inbox_log.json", "gsc.json", "popular.json", "reach.json", "photos/handles_cache.json", "espn_rank.json", "newsletter_state.json", "reels.json"];
+const READ_FILES = ["results.json", "categorias_faltam.json", "categorias_torneios.json", "posts.json", "carousels.json", "stats.json", "spend.json", "news_log.json", "usage.json", "api_calls.json", "padel/data/posts.json", "padel/data/state.json", "padel/photos/scan_log.json", "photos/inbox_log.json", "padel/photos/inbox_log.json", "gsc.json", "popular.json", "reach.json", "photos/handles_cache.json", "espn_rank.json", "newsletter_state.json", "reels.json", "ig_status.json"];
 const WORKFLOWS = {             // workflow -> inputs permitidos
   "update.yml": ["checks", "min_age"],
   "photo_inbox.yml": ["sport", "url_b64", "credit", "fallback", "dry", "replace"],
