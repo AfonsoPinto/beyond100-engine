@@ -50,6 +50,8 @@ jobs:
           PADEL_API_KEY: ${{ secrets.PADEL_API_KEY }}
           PADEL_MAX_REQ: ${{ vars.PADEL_MAX_REQ || '10' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           CAPTION_WEB_CONTEXT: ${{ vars.CAPTION_WEB_CONTEXT }}
           CAPTION_MODEL: ${{ vars.CAPTION_MODEL }}
           CAPTION_WEB_MIN_SCORE: ${{ vars.CAPTION_WEB_MIN_SCORE }}
@@ -171,6 +173,8 @@ jobs:
       - name: Send new posts to Instagram (only if PUBLISH_AUTO=1)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           CAPTION_WEB_CONTEXT: ${{ vars.CAPTION_WEB_CONTEXT }}
           CAPTION_MODEL: ${{ vars.CAPTION_MODEL }}
           CAPTION_WEB_MIN_SCORE: ${{ vars.CAPTION_WEB_MIN_SCORE }}

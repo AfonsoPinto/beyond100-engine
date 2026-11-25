@@ -927,13 +927,14 @@ def _caption(e):
     if e["kind"] == "intro":
         return INTRO[e["n"]]
     f = e.get("facts") or {}
-    key = os.environ.get("ANTHROPIC_API_KEY") if (e["kind"] not in NO_AI and not e.get("rbcp")) else None   # RBCP: sem IA (termos)      # notícias de dados: modelo de texto, custo zero
+    import llm
+    key = llm.key() if (e["kind"] not in NO_AI and not e.get("rbcp")) else None   # RBCP: sem IA (termos)      # notícias de dados: modelo de texto, custo zero
     if key:
         try:
             import requests
             import captions
             model = captions.FALLBACK_MODEL if e["kind"] != "result" or e.get("score", 0) < 9 else captions.MODEL
-            r = requests.post(captions.API_URL, timeout=40, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            r = llm.post(captions.API_URL, timeout=40, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                               json={"model": model, "max_tokens": 600, "system": SYSTEM,
                                     "messages": [{"role": "user", "content": json.dumps({"kind": e["kind"], "facts": f}, ensure_ascii=False)}]})
             r.raise_for_status()
