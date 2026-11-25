@@ -2,10 +2,64 @@
 senão a Anthropic como antes. Os módulos continuam a montar o pedido no formato da Anthropic; aqui é traduzido.
 Sem cartão associado ao projeto do Google, nunca há custos: se o limite gratuito acabar, o pedido falha e entra o texto sem IA.
 LLM_PROVIDER=anthropic força a Anthropic."""
+import datetime as dt
 import json
 import os
+import time
 
 import requests
+
+USAGE_FILE = "llm_usage.json"        # repositório de dados: pedidos do dia por modelo e por funcionalidade
+PRIORITY = "high"                    # "high": textos dos posts e verificação; "low": textos de fundo (bios, traduções, descrições)
+# Limite diário que nos impomos (pedidos por modelo). Os textos de fundo só usam até LOW_SHARE deste valor, para os posts
+# terem sempre margem. Se o Google responder 429 (limite gratuito esgotado), o modelo fica parado até à meia-noite do Pacífico.
+DAILY_CAP = int(os.environ.get("GEMINI_DAILY_CAP") or "200")
+LOW_SHARE = float(os.environ.get("GEMINI_LOW_SHARE") or "0.6")
+
+
+def _pt_day():
+    return (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=8)).strftime("%Y-%m-%d")     # os limites do Google reiniciam à meia-noite do Pacífico
+
+
+def _usage():
+    try:
+        u = json.load(open(USAGE_FILE, encoding="utf-8"))
+    except (OSError, ValueError):
+        u = {}
+    if u.get("day") != _pt_day():
+        hist = (u.get("history") or {})
+        if u.get("day"):
+            hist[u["day"]] = {"calls": u.get("calls") or {}, "by": u.get("by") or {}, "limited": u.get("limited") or {}}
+        u = {"day": _pt_day(), "calls": {}, "by": {}, "limited": {}, "history": dict(sorted(hist.items())[-30:])}
+    return u
+
+
+def _save(u):
+    try:
+        with open(USAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(u, f, indent=1)
+    except OSError:
+        pass
+
+
+def allow(model, priority=None):
+    """Há margem hoje para mais um pedido a este modelo, com esta prioridade?"""
+    u = _usage()
+    if u["limited"].get(model):
+        return False
+    n = u["calls"].get(model, 0)
+    cap = DAILY_CAP if (priority or PRIORITY) == "high" else int(DAILY_CAP * LOW_SHARE)
+    return n < cap
+
+
+def remaining(priority="low", model=None):
+    """Quantos pedidos ainda cabem hoje (para as tarefas de fundo decidirem quantos itens fazer)."""
+    model = model or (os.environ.get("GEMINI_MODEL") or "gemini-flash-latest")
+    u = _usage()
+    if u["limited"].get(model):
+        return 0
+    cap = DAILY_CAP if priority == "high" else int(DAILY_CAP * LOW_SHARE)
+    return max(0, cap - u["calls"].get(model, 0))
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -61,11 +115,26 @@ def _gemini(payload, timeout):
     web = any(isinstance(t, dict) and "web_search" in str(t.get("type", "")) for t in payload.get("tools") or [])
     if web:
         body["tools"] = [{"google_search": {}}]
+    import sys
+    feature = payload.get("_feature") or getattr(sys.modules.get("captions"), "FEATURE", None) or "other"
+    if not allow(model):
+        return _Resp(429, text=f"Gemini: limite diário que definimos atingido para {model} ({PRIORITY})")
+    u = _usage()
+    u["calls"][model] = u["calls"].get(model, 0) + 1
+    u["by"][feature] = u["by"].get(feature, 0) + 1
+    _save(u)
     try:
         r = requests.post(GEMINI_URL.format(model=model), headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"},
                           json=body, timeout=timeout)
     except requests.RequestException as e:
         return _Resp(599, text=f"Gemini: {type(e).__name__}")
+    if r.status_code == 429:                       # limite gratuito do Google esgotado: para este modelo até amanhã (hora do Pacífico)
+        txt = (r.text or "")
+        if "PerDay" in txt or "per day" in txt.lower() or "RESOURCE_EXHAUSTED" in txt:
+            u = _usage()
+            u["limited"][model] = time.strftime("%H:%M", time.gmtime())
+            _save(u)
+            print(f"Gemini: limite gratuito de {model} esgotado hoje; textos sem IA até amanhã.")
     if r.status_code >= 400:
         return _Resp(r.status_code, text="Gemini: " + (r.text or "")[:300])
     j = r.json()
