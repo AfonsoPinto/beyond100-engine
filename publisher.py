@@ -524,12 +524,19 @@ def send():
         print(f"Já saíram {day_count} posts hoje (máximo {day_max}, +1 só para 12+): {len(pending)} esperam ou caducam.")
         return
 
+    title_tag_bonus = float(env("TITLE_TAG_BONUS", "2"))
+
     def value(e):
         if is_prev(e):
             return prev_score
         if not is_res(e):
             return float(e.get("score") or other_score)
-        return float(e.get("score") or 0)
+        v = float(e.get("score") or 0)
+        # 25/11/2026 (Instagram: a campeã identificada que partilhou teve 3.982 visualizações, os resultados soltos ~20):
+        # títulos de quem tem Instagram identificado passam à frente
+        if "final" in (e.get("reasons") or []) and any("taggable" in str(r) for r in (e.get("reasons") or [])):
+            v += title_tag_bonus
+        return v
     # antevisões são antes do jogo: saem logo (dentro da janela), mas contam para o máximo do dia
     for d, e in [x for x in pending if is_prev(x[1])]:
         if in_window and day_count < day_max:
@@ -539,6 +546,17 @@ def send():
     pending = [x for x in pending if not is_prev(x[1])]
     if not pending:
         return
+    # 25/11/2026: no máximo RESULT_PLAIN_MAX (1) resultado "solto" por dia (sem ser final nem excecional 12+);
+    # finais, antevisões e listas continuam com as regras de sempre
+    plain = lambda e: is_res(e) and "final" not in (e.get("reasons") or []) and float(e.get("score") or 0) < now_score
+    plain_today = sum(1 for x in sent_today if plain(x))
+    if plain_today >= int(env("RESULT_PLAIN_MAX", "1")):
+        _n = len(pending)
+        pending = [x for x in pending if not plain(x[1])]
+        if len(pending) < _n:
+            print(f"Já saiu {plain_today} resultado solto hoje: {_n - len(pending)} na fila só saem se forem finais ou 12+.")
+        if not pending:
+            return
     order = sorted(pending, key=lambda x: (-value(x[1]), prio(x)[0], x[1].get("created") or 0))
     d, e = order[0]
     v = value(e)
