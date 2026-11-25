@@ -116,9 +116,9 @@ def _gemini(payload, timeout):
     r = None
     for k, model in enumerate(tries):
         r = _gemini_once(payload, timeout, model)
-        if r.status_code not in (500, 502, 503, 504, 599):
+        if r.status_code not in (429, 500, 502, 503, 504, 599):
             return r
-        time.sleep(4 + 4 * k)
+        time.sleep(4 + 4 * k if r.status_code != 429 else 20)    # 429 por minuto: espera um pouco e tenta (o Lite tem limites próprios)
     return r
 
 
@@ -146,7 +146,7 @@ def _gemini_once(payload, timeout, model):
         return _Resp(599, text=f"Gemini: {type(e).__name__}")
     if r.status_code == 429:                       # limite gratuito do Google esgotado: para este modelo até amanhã (hora do Pacífico)
         txt = (r.text or "")
-        if "PerDay" in txt or "per day" in txt.lower() or "RESOURCE_EXHAUSTED" in txt:
+        if "PerDay" in txt or "per day" in txt.lower():   # só o limite DIÁRIO pára o modelo até amanhã (o por minuto passa sozinho)
             u = _usage()
             u["limited"][model] = time.strftime("%H:%M", time.gmtime())
             _save(u)
