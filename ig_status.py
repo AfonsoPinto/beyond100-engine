@@ -12,8 +12,14 @@ def parse(resp):
     """(ok, mensagem): ok True/False quando a Make responde em JSON; None quando só diz 'Accepted'."""
     try:
         j = resp.json()
-    except Exception:
-        return None, (getattr(resp, "text", "") or "")[:120]
+    except Exception:                       # mensagem de erro com aspas pode partir o JSON da Make: lê à mão
+        import re
+        t = getattr(resp, "text", "") or ""
+        m = re.search(r'"ok"\s*:\s*(true|false)', t)
+        if not m:
+            return None, t[:120]
+        e = re.search(r'"(?:error|ig_id)"\s*:\s*"(.*)"\s*}?\s*$', t, re.S)
+        return m.group(1) == "true", (e.group(1) if e else "")[:300]
     if isinstance(j, dict) and "ok" in j:
         ok = j.get("ok") in (True, "true", "1", 1)
         return ok, str(j.get("error") or j.get("ig_id") or "")[:300]
