@@ -35,7 +35,7 @@ def _save(p, d):
 
 def _ask(system, data, feature, max_tokens=500, priority="low"):
     llm.PRIORITY = priority
-    r = llm.post("", json={"model": "gemini", "max_tokens": max_tokens, "system": system, "_feature": feature,
+    r = llm.post("", json={"model": "haiku" if priority == "low" else "gemini", "max_tokens": max_tokens, "system": system, "_feature": feature,
                            "messages": [{"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}, timeout=90)
     if r.status_code >= 400:
         print(f"IA ({feature}): indisponível ({r.status_code}).")
@@ -105,7 +105,7 @@ def bios(results):
     order = sorted(names, key=lambda s: (s not in searched, -(pop.get(s) or 0)))
     store, n, now = _load(BIOS, {}), 0, time.time()
     sysmsg = ("You write the short 'In 2026' paragraph of a tennis player's profile page. " + STYLE +
-              " 2 or 3 sentences, at most 70 words. Do not mention missing things (no 'no titles'). Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', "
+              " 2 or 3 sentences, at most 70 words, natural and varied (do not start with 'In 2026' or the ranking every time; do not repeat time phrases). Do not mention missing things (no 'no titles'). Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', "
               "never 'this season'), the current ranking, and the most notable "
               "recent result (a win over a higher-ranked player, a final, or a deep run). Reply with the paragraph only.")
     for sl in order:
