@@ -1956,6 +1956,17 @@ def build_site(out_dir="site", player=None):
         if _off != name:
             body = body.replace("</h1>", f'</h1><p class="mut2" style="margin:-4px 0 6px">{esc(_full)}</p>', 1)
         _tl[0]["name"] = _full
+        try:                                       # 25/11/2026: resumo escrito (quem ganhou, quando, maior surpresa) + perguntas para o Google
+            import tournament_story
+            _sg = [x for x in rs if webapp.classify(x)[1] == "singles"]
+            _st, _qa = tournament_story.story(_full, _sg, _tagt)
+            if _st:
+                body += _st
+                _fq = tournament_story.faq_ld(_qa)
+                if _fq:
+                    _tl.append(_fq)
+        except Exception as e:
+            print("Resumo do torneio falhou:", name, type(e).__name__, e)
         for u in sorted(_ups_t, key=lambda u: u["t"])[:20]:          # jogos marcados: o Google pode mostrar a hora na pesquisa
             _tl.append({"@context": "https://schema.org", "@type": "SportsEvent", "sport": "Tennis",
                         "name": f'{u["p1"]["name"]} vs {u["p2"]["name"]}, {_full}' + (f' ({u["round"]})' if u.get("round") else ""),
