@@ -318,7 +318,16 @@ def publish():
         try:
             if requests.head(vid, timeout=20).status_code != 200:
                 print(f"reels: {i['id']} ainda não está no site"); continue
-            requests.post(url, json={"video_url": vid, "caption": i["caption"], "id": i["id"], "account": i["sport"], "kind": "reel"}, timeout=60).raise_for_status()
+            _r = requests.post(url, json={"video_url": vid, "caption": i["caption"], "id": i["id"], "account": i["sport"], "kind": "reel"}, timeout=120)
+            _r.raise_for_status()
+            import ig_status
+            ok, msg = ig_status.parse(_r)
+            ig_status.record(i["sport"] + "-reels", i["id"], ok, msg)
+            if ok is False:
+                i["ig_tries"] = int(i.get("ig_tries") or 0) + 1; i["ig_error"] = msg; changed = True
+                if i["ig_tries"] >= 3:
+                    i["posted"], i["skipped"] = iso(now()), "instagram: " + msg[:80]
+                print(f"reels: o Instagram recusou {i['id']} ({msg[:120]}), tentativa {i['ig_tries']}/3"); break
         except Exception as e:
             print(f"reels: envio de {i['id']} falhou ({type(e).__name__})"); break
         i["posted"] = iso(now()); changed = True
