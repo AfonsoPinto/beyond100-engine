@@ -215,7 +215,7 @@ jobs:
           python -m padel.posts send || echo "padel: envio falhou (ignorado)"
       - name: Save sent flags
         run: |
-          bash _engine/save_state.sh "Update posts" posts.json carousels.json stories.json spend.json padel/data/posts.json reels.json
+          bash _engine/save_state.sh "Update posts" posts.json carousels.json stories.json spend.json ig_status.json padel/data/posts.json reels.json
       - name: Credit check (estimated Anthropic balance)
         env:
           ANTHROPIC_CREDIT_USD: ${{ vars.ANTHROPIC_CREDIT_USD }}

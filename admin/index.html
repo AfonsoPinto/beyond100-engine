@@ -36,6 +36,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 8px;b
 <body>
 <header><b>BEYOND100</b><span>Admin</span><span class="sport" id="sport"><button data-s="tenis">Ténis</button><button data-s="padel">Padel</button></span><small id="who">…</small></header>
 <nav id="nav"></nav>
+<div id="alerts"></div>
 <main id="main"></main>
 <div id="msg"></div>
 <script>
@@ -63,7 +64,18 @@ function nav(){ if(!TABS().some(([k])=>k===tab))tab=TABS()[0][0];
   $("#sport").querySelectorAll("button").forEach(b=>b.className=b.dataset.s===sport?"on":"");
   $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){tab=b.dataset.t;location.hash=sport+"/"+tab;show()}};
   $("#sport").onclick=e=>{const b=e.target.closest("button");if(b&&b.dataset.s!==sport){sport=b.dataset.s;tab=TABS()[0][0];location.hash=sport+"/"+tab;show()}}}
-async function show(){nav();$("#main").innerHTML='<p class="mut">A carregar…</p>';
+// 25/11/2026 (pedido do Afonso): avisos graves no topo de TODOS os separadores, ténis e padel
+let _alT=0;
+async function alerts(){if(Date.now()-_alT<60000)return;_alT=Date.now();
+  const out=[],hm=t=>fmtTs(t*1000);
+  try{const igs=(await readFile("ig_status.json")).data||{};
+    for(const [k,lab] of [["tennis","Instagram ténis"],["padel","Instagram padel"],["tennis-reels","Reels ténis"],["padel-reels","Reels padel"]]){const a=igs[k]||{};
+      if((a.fails_in_row||0)>0&&a.last_error)out.push(`⚠ <b>${lab}</b>: o Instagram recusou ${a.fails_in_row>1?a.fails_in_row+" publicações seguidas":"a última publicação"} (${hm(a.last_error.ts)}). ${esc(a.last_error.msg||"")} · Ver a Make (History).`)}}catch(e){}
+  try{const rs=await api("runs");const up=rs.filter(r=>r.name==="Update Beyond100"&&r.status==="completed");const ok=up.find(r=>r.conclusion==="success");
+    if(ok&&(Date.now()-new Date(ok.at).getTime())>3*3600e3)out.push(`⚠ <b>Site</b>: a última atualização com sucesso foi há ${Math.round((Date.now()-new Date(ok.at).getTime())/3600e3)} h.`);
+    const last4=up.slice(0,4);if(last4.length===4&&last4.every(r=>r.conclusion!=="success"))out.push('⚠ <b>Site</b>: as últimas 4 atualizações falharam.')}catch(e){}
+  $("#alerts").innerHTML=out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("")}
+async function show(){nav();alerts();$("#main").innerHTML='<p class="mut">A carregar…</p>';
   const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,newsletter,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
   try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
 
@@ -335,7 +347,11 @@ async function estado(){
     const head=(used!=null&&lim!=null)?`<p class="${bad?"bad":"ok"}"><b>${used} de ${lim} pedidos usados hoje</b>${rem!=null?` · restam ${rem}`:""}</p>`:(u.status&&u.status!==200?`<p class="bad">A API respondeu ${u.status}.</p>`:"");
     const raw=Object.keys(F).length?`<details><summary class="mut">Detalhes</summary><table>${Object.entries(F).map(([k,v])=>`<tr><td class="mut">${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join("")}</table></details>`:"";
     return `<div class="card"><h3>Quota da API de ténis (plano gratuito)</h3>${head}${bar}<p class="mut">Atualizado ${esc(when)} · consultar a quota não gasta pedidos.</p>${cnt}${raw}</div>`})();
-  $("#main").innerHTML=quotaCard+credCard+runsCard(runs)+`
+  const igs=(await readFile("ig_status.json").catch(()=>({data:null}))).data||{};   // 25/11/2026: estado do Instagram (resposta da Make)
+  const igRow=(k,lab)=>{const a=igs[k]||{},bad=(a.fails_in_row||0)>0,t=x=>x&&x.ts?fmtTs(x.ts*1000):"—";
+    return `<tr><td>${lab}</td><td>${bad?'<b class="err">⚠ a falhar ('+a.fails_in_row+'x)</b>':(a.last_ok?'<span class="ok">✓ ok</span>':'<span class="mut">sem confirmação</span>')}</td><td class="mut">último ok: ${t(a.last_ok)}</td><td class="mut">${a.last_error?'último erro '+t(a.last_error)+': '+esc(a.last_error.msg||""):""}</td></tr>`};
+  const igCard=`<div class="card"><h3>Instagram (publicação)</h3><table>${igRow("tennis","Ténis")}${igRow("padel","Padel")}${igRow("padel-reels","Reels padel")}</table><p class="mut">"Sem confirmação": a Make ainda não responde com o resultado (falta o módulo Webhook response).</p></div>`;
+  $("#main").innerHTML=igCard+quotaCard+credCard+runsCard(runs)+`
   <div class="card"><h3>Torneios sem categoria (últimos 14 dias)</h3>${m.length?`<p class="mut">Acrescenta-os no separador Categorias.</p>`+m.map(x=>`<div>${esc(x.tournament)} <span class="mut">${esc(x.date)}</span></div>`).join(""):'<p class="ok">Todos têm categoria.</p>'}</div>`}
 
 async function noticias(){

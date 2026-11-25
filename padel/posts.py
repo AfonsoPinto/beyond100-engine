@@ -1043,8 +1043,19 @@ def send():
             if requests.head(img, timeout=20).status_code != 200:
                 print(f"Padel {e['id']}: imagem ainda não está no site, fica para a próxima.")
                 continue
-            requests.post(url, json={"image_url": img, "caption": caption(e), "id": f"padel-{e['id']}", "account": "padel",
-                                     "tag_username": "", "tag_tournament": "", "user_tags": []}, timeout=30).raise_for_status()
+            _r = requests.post(url, json={"image_url": img, "caption": caption(e), "id": f"padel-{e['id']}", "account": "padel",
+                                          "tag_username": "", "tag_tournament": "", "user_tags": []}, timeout=90)
+            _r.raise_for_status()
+            import ig_status
+            ok, msg = ig_status.parse(_r)
+            ig_status.record("padel", e["id"], ok, msg)
+            if ok is False:                          # 25/11/2026: o Instagram recusou: tenta outra vez (máx. 3)
+                e["ig_tries"] = int(e.get("ig_tries") or 0) + 1
+                e["ig_error"] = msg
+                if e["ig_tries"] >= 3:
+                    e["sent"], e["skipped"], e["sent_ts"] = True, "instagram", time.time()
+                print(f"Padel {e['id']}: o Instagram recusou ({msg[:120]}), tentativa {e['ig_tries']}/3.")
+                break
         except Exception as ex:
             print(f"Padel {e['id']}: falhou ({type(ex).__name__}).")
             break

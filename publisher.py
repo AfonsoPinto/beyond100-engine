@@ -145,8 +145,9 @@ def _image_ready(url, wait_s=150):
 def _send_webhook(url, image_url, caption, pid, tag=("", "")):
     import requests
     body = {"image_url": image_url, "caption": caption, "id": pid, "tag_username": tag[0], "tag_tournament": tag[1], "user_tags": _user_tags(tag)}
-    r = requests.post(url, json=body, timeout=30)
+    r = requests.post(url, json=body, timeout=90)
     r.raise_for_status()
+    return r
 
 
 def _graph_host():
@@ -426,7 +427,17 @@ def send():
             if backend == "graph":
                 _send_graph(url, _caption(e), _tag(e))
             else:
-                _send_webhook(os.environ["MAKE_WEBHOOK_URL"], url, _caption(e), e.get("id"), _tag(e))
+                import ig_status
+                ok, msg = ig_status.parse(_send_webhook(os.environ["MAKE_WEBHOOK_URL"], url, _caption(e), e.get("id"), _tag(e)))
+                ig_status.record("tennis", e.get("id"), ok, msg)
+                if ok is False:                 # 25/11/2026: a Make diz que o Instagram recusou: tenta outra vez (máx. 3), depois desiste
+                    e["ig_tries"] = int(e.get("ig_tries") or 0) + 1
+                    e["ig_error"] = msg
+                    if e["ig_tries"] >= 3:
+                        e["sent"], e["skipped"] = True, "instagram: " + msg[:80]
+                    _save(posts)
+                    print(f"Post {e.get('id')}: o Instagram recusou ({msg[:120]}), tentativa {e['ig_tries']}/3.")
+                    return False
         except Exception as ex:                 # falhou: fica na fila para a próxima execução
             print(f"Post {e.get('id')}: falhou ({type(ex).__name__}), tenta de novo mais tarde.")
             return False
