@@ -1,7 +1,12 @@
 """Teste (25/11/2026): exemplos reais do Gemini para o Afonso ver antes de ativar. Só grava gemini_samples.json (repositório privado)."""
 import json, time
 import llm, ai_texts, captions
-import result_card as rc
+import result_card as rc, os
+import json as _j
+try:
+    os.remove(llm.USAGE_FILE)
+except OSError:
+    pass
 out = {"ts": time.time(), "provider": llm.provider()}
 R = rc.load_results()
 er = ai_texts._load("espn_rank.json", {})
