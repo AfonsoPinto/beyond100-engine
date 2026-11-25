@@ -74,7 +74,14 @@ async function alerts(){if(Date.now()-_alT<60000)return;_alT=Date.now();
   try{const rs=await api("runs");const up=rs.filter(r=>r.name==="Update Beyond100"&&r.status==="completed");const ok=up.find(r=>r.conclusion==="success");
     if(ok&&(Date.now()-new Date(ok.at).getTime())>3*3600e3)out.push(`⚠ <b>Site</b>: a última atualização com sucesso foi há ${Math.round((Date.now()-new Date(ok.at).getTime())/3600e3)} h.`);
     const last4=up.slice(0,4);if(last4.length===4&&last4.every(r=>r.conclusion!=="success"))out.push('⚠ <b>Site</b>: as últimas 4 atualizações falharam.')}catch(e){}
-  $("#alerts").innerHTML=out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("")}
+  // linha de estado sempre visível (verde quando está tudo bem)
+  let line=[];
+  try{const igs=(await readFile("ig_status.json").catch(()=>({data:{}}))).data||{};
+    for(const [k,lab] of [["tennis","Instagram ténis"],["padel","Instagram padel"]]){const a=igs[k]||{};
+      line.push((a.fails_in_row||0)>0?`<b style="color:#c0392b">✗ ${lab}</b>`:a.last_ok?`<span style="color:#1e7d4b">✓ ${lab}</span> <span class="mut">(${hm(a.last_ok.ts)})</span>`:`<span class="mut">… ${lab}: à espera do 1.º post confirmado</span>`)}}catch(e){}
+  try{const rs=await api("runs");const ok=rs.find(r=>r.name==="Update Beyond100"&&r.conclusion==="success");
+    if(ok){const m=Math.round((Date.now()-new Date(ok.at).getTime())/60000);line.push(m<=180?`<span style="color:#1e7d4b">✓ Site</span> <span class="mut">(atualizado há ${m<60?m+" min":Math.round(m/60)+" h"})</span>`:`<b style="color:#c0392b">✗ Site parado há ${Math.round(m/60)} h</b>`)}}catch(e){}
+  $("#alerts").innerHTML=(line.length?`<div style="margin:8px 0;font-size:14px">${line.join(" &nbsp;·&nbsp; ")}</div>`:"")+out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("")}
 async function show(){nav();alerts();$("#main").innerHTML='<p class="mut">A carregar…</p>';
   const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,newsletter,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
   try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
