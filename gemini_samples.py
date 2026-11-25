@@ -13,7 +13,7 @@ for r in sorted(R, key=lambda r: r.get("date", ""), reverse=True):
             names.append(n)
 bios = []
 sysmsg = ("You write the short 'In 2026' paragraph of a tennis player's profile page. " + ai_texts.STYLE +
-          " 2 or 3 sentences, at most 70 words. Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', never 'this season'), the current ranking, and the most notable recent result. Reply with the paragraph only.")
+          " 2 or 3 sentences, at most 70 words. Do not mention missing things (no 'no titles'). Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', never 'this season'), the current ranking, and the most notable recent result. Reply with the paragraph only.")
 for n in names[:15]:
     f = ai_texts._player_facts(n, R, er)
     if f:
