@@ -112,7 +112,7 @@ def split_name(name):
 
 def credit_join(*credits):
     """'Photos: A / CC BY-SA 4.0 · B / CC0' (um só 'Photo(s):', sem quebras de linha)."""
-    cs = [" ".join(re.sub(r"^Photo:\s*", "", c or "").split()) for c in credits if c]
+    cs = [" ".join(re.sub(r"^(Photo|Foto):\s*", "", c or "").split()) for c in credits if c]
     cs = list(dict.fromkeys(c for c in cs if c))
     if not cs:
         return None
