@@ -335,7 +335,11 @@ async function estado(){
     const head=(used!=null&&lim!=null)?`<p class="${bad?"bad":"ok"}"><b>${used} de ${lim} pedidos usados hoje</b>${rem!=null?` · restam ${rem}`:""}</p>`:(u.status&&u.status!==200?`<p class="bad">A API respondeu ${u.status}.</p>`:"");
     const raw=Object.keys(F).length?`<details><summary class="mut">Detalhes</summary><table>${Object.entries(F).map(([k,v])=>`<tr><td class="mut">${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join("")}</table></details>`:"";
     return `<div class="card"><h3>Quota da API de ténis (plano gratuito)</h3>${head}${bar}<p class="mut">Atualizado ${esc(when)} · consultar a quota não gasta pedidos.</p>${cnt}${raw}</div>`})();
-  $("#main").innerHTML=quotaCard+credCard+runsCard(runs)+`
+  const [wr,lu]=await Promise.all([readFile("weekly_report.json").catch(()=>({data:null})),readFile("llm_usage.json").catch(()=>({data:null}))]);
+  const W=wr.data, U=lu.data;   // 25/11/2026: relatório semanal e uso do Gemini (nível gratuito)
+  const repCard=W&&W.text?`<div class="card"><h3>Relatório semanal · ${esc(W.week||"")}</h3><div style="white-space:pre-wrap">${esc(W.text)}</div></div>`:"";
+  const aiCard=U?`<div class="card"><h3>IA (Gemini, gratuito) hoje</h3><p>${Object.entries(U.calls||{}).map(([m,n])=>esc(m)+": <b>"+n+"</b> pedidos").join(" · ")||"0 pedidos"}${Object.keys(U.limited||{}).length?' · <span class="err">limite gratuito esgotado: '+esc(Object.keys(U.limited).join(", "))+"</span>":""}</p><p class="mut">${Object.entries(U.by||{}).map(([f,n])=>esc(f)+" "+n).join(" · ")}</p></div>`:"";
+  $("#main").innerHTML=repCard+aiCard+quotaCard+credCard+runsCard(runs)+`
   <div class="card"><h3>Torneios sem categoria (últimos 14 dias)</h3>${m.length?`<p class="mut">Acrescenta-os no separador Categorias.</p>`+m.map(x=>`<div>${esc(x.tournament)} <span class="mut">${esc(x.date)}</span></div>`).join(""):'<p class="ok">Todos têm categoria.</p>'}</div>`}
 
 async function noticias(){
