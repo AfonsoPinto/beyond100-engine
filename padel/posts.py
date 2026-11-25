@@ -821,6 +821,9 @@ def make_weekly(q, matches, rk):
     done = {e["id"] for e in q["queue"]}
     plan = {0: "power", 1: "rising", 2: "road"}
     kind = plan.get(now.weekday())
+    # 25/11/2026 (estatísticas do Instagram: Rising 14 e Power 20 visualizações, Road 28): só o Road sai por omissão
+    if kind not in [k.strip() for k in (os.environ.get("PADEL_WEEKLY_KINDS") or "road").split(",")]:
+        return 0
     if not kind or now.hour < 11:
         return 0
     pid = f"w-{kind}-{wk}"
