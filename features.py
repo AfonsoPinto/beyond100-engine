@@ -549,7 +549,7 @@ def weekly_post(kind, out_dir="out", force=False):
     import captions
     import result_card as rc
     # 25/11/2026 (estatísticas do Instagram: Power e Climbers ~20 visualizações, Road 43): só o Road sai por omissão
-    if os.environ.get(f"{kind.upper()}_ENABLED", "1" if kind == "road" else "0").strip() in ("0", "no", "off", "false"):
+    if (os.environ.get(f"{kind.upper()}_ENABLED") or ("1" if kind == "road" else "0")).strip() in ("0", "no", "off", "false"):
         print(f"{kind}: desligado.")
         return None
     day = int(os.environ.get(f"{kind.upper()}_DAY") or {"road": "0", "power": "1", "climbers": "0"}[kind])
