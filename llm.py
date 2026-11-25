@@ -104,9 +104,25 @@ def _parts(content):
     return out or [{"text": ""}]
 
 
+LITE = lambda: os.environ.get("GEMINI_MODEL_LITE") or "gemini-flash-lite-latest"
+MAIN = lambda: os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
+
+
 def _gemini(payload, timeout):
+    """Tenta o modelo principal; se o Google estiver sobrecarregado (500/503) ou demorar demais, tenta de novo e depois o modelo Lite."""
     m = payload.get("model") or ""
-    model = (os.environ.get("GEMINI_MODEL_LITE") or "gemini-flash-lite-latest") if "haiku" in m else (os.environ.get("GEMINI_MODEL") or "gemini-flash-latest")
+    first = LITE() if "haiku" in m else MAIN()
+    tries = [first, first] + ([LITE()] if first != LITE() else [])
+    r = None
+    for k, model in enumerate(tries):
+        r = _gemini_once(payload, timeout, model)
+        if r.status_code not in (500, 502, 503, 504, 599):
+            return r
+        time.sleep(4 + 4 * k)
+    return r
+
+
+def _gemini_once(payload, timeout, model):
     body = {"contents": [{"role": "model" if x.get("role") == "assistant" else "user", "parts": _parts(x.get("content"))}
                          for x in payload.get("messages") or []],
             "generationConfig": {"maxOutputTokens": max(2048, int(payload.get("max_tokens") or 1000) * 3)}}

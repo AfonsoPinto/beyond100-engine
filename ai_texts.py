@@ -36,7 +36,7 @@ def _save(p, d):
 def _ask(system, data, feature, max_tokens=500, priority="low"):
     llm.PRIORITY = priority
     r = llm.post("", json={"model": "gemini", "max_tokens": max_tokens, "system": system, "_feature": feature,
-                           "messages": [{"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}, timeout=60)
+                           "messages": [{"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}, timeout=90)
     if r.status_code >= 400:
         print(f"IA ({feature}): indisponível ({r.status_code}).")
         return None
@@ -71,7 +71,8 @@ def _player_facts(name, results, er):
     for r in ms[-6:]:
         i = me(r)
         o = r["p%d" % (3 - i)]
-        last.append({"date": r.get("date"), "tournament": r.get("tournament"), "round": (r.get("round") or "").split(" - ")[-1],
+        import tournament_story
+        last.append({"date": r.get("date"), "tournament": r.get("tournament"), "round": tournament_story._rd(r),
                      "opponent": o["name"], "opponent_rank": o.get("rank"), "won": r["winner"] == i,
                      "score": ", ".join(f"{a}-{b}" for a, b in zip(r["games"][i - 1], r["games"][2 - i]))})
     titles = [r.get("tournament") for r in ms if (r.get("round") or "").split(" - ")[-1].lower() == "final"
@@ -104,7 +105,7 @@ def bios(results):
     order = sorted(names, key=lambda s: (s not in searched, -(pop.get(s) or 0)))
     store, n, now = _load(BIOS, {}), 0, time.time()
     sysmsg = ("You write the short 'In 2026' paragraph of a tennis player's profile page. " + STYLE +
-              " 2 or 3 sentences, at most 70 words. Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', "
+              " 2 or 3 sentences, at most 70 words. Do not mention missing things (no 'no titles'). Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', "
               "never 'this season'), the current ranking, and the most notable "
               "recent result (a win over a higher-ranked player, a final, or a deep run). Reply with the paragraph only.")
     for sl in order:
