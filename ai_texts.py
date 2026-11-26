@@ -14,6 +14,7 @@ import time
 import llm
 
 BIOS, PREVIEWS, REPORT = "bios.json", "previews_ai.json", "weekly_report.json"
+VERSION = 2                       # 26/11/2026: v2 sem contagem de vitórias/derrotas; textos de versões antigas são refeitos ou tirados
 BIO_DAYS = 14                     # cada bio é refeita no máximo de 2 em 2 semanas (ou quando o ranking muda muito)
 STYLE = ("Write in plain, neutral English, like a careful sports journalist. Use ONLY the facts in the JSON. "
          "Never invent results, injuries, coaches, quotes, personal details or adjectives about personality. "
@@ -47,10 +48,23 @@ def _ask(system, data, feature, max_tokens=500, priority="low"):
 BANNED = re.compile(r"\b(sensational|stunning|superstar|phenomenal|sizzling|legend|unstoppable|dominant force)\b", re.I)
 
 
-def _clean(t, max_words=110):
+ORD = {"first": 1, "second": 2, "third": 3}
+
+
+def _clean(t, max_words=110, facts=None):
+    """Rejeita textos com palavras proibidas, demasiado longos ou com NÚMEROS que não estão nos dados (rede de segurança contra invenções)."""
     t = re.sub(r"[*_#`]+", "", t or "").strip()
     if not t or BANNED.search(t) or len(t.split()) > max_words:
         return None
+    if facts is not None:
+        allowed = set(re.findall(r"\d+", json.dumps(facts, ensure_ascii=False))) | {"1", "2", "3", time.strftime("%Y")}
+        bad = [n for n in re.findall(r"\d+", t) if n not in allowed]
+        if bad:
+            print(f"IA: texto rejeitado (números que não estão nos dados: {bad[:5]}).")
+            return None
+        if re.search(r"\b(record|unbeaten|undefeated|won all)\b", t, re.I):
+            print("IA: texto rejeitado (fala de registo de vitórias, que não temos completo).")
+            return None
     return t
 
 
@@ -79,9 +93,10 @@ def _player_facts(name, results, er):
               and r["p%d" % r["winner"]]["name"] == name and r.get("date", "").startswith(yr)]
     p = ms[-1]["p%d" % me(ms[-1])]
     # atenção: só temos os jogos que acompanhámos (não a época inteira): o registo é "desde <data>", nunca "this season"
+    # 26/11/2026: sem contagem de vitórias/derrotas: não temos todos os jogos de todos os jogadores, por isso o registo podia estar errado
     return {"name": name, "country": (p.get("country") or "").upper(), "ranking": (rank or {}).get("r") or p.get("rank"),
-            "previous_week_ranking": (rank or {}).get("prev"), "record_since": ms[0].get("date"), "record": f"{w}-{l}",
-            "titles_since": titles, "last_matches": last}
+            "previous_week_ranking": (rank or {}).get("prev"), "since": ms[0].get("date"),
+            "titles_since": titles, "recent_matches": last}
 
 
 def bios(results):
@@ -105,9 +120,10 @@ def bios(results):
     order = sorted(names, key=lambda s: (s not in searched, -(pop.get(s) or 0)))
     store, n, now = _load(BIOS, {}), 0, time.time()
     sysmsg = ("You write the short 'In 2026' paragraph of a tennis player's profile page. " + STYLE +
-              " 2 or 3 sentences, at most 70 words, natural and varied (do not start with 'In 2026' or the ranking every time; do not repeat time phrases). Do not mention missing things (no 'no titles'). Mention the record and titles SINCE the date in record_since (say 'since <month>' or 'in recent weeks', "
-              "never 'this season'), the current ranking, and the most notable "
-              "recent result (a win over a higher-ranked player, a final, or a deep run). Reply with the paragraph only.")
+              " 2 or 3 sentences, at most 70 words, natural and varied (do not always start with the ranking). The list of matches is NOT complete: "
+              "never count wins or losses, never say 'record', 'unbeaten' or 'won all'. Do not mention missing things. Mention the current ranking, "
+              "any title in titles_since, and the most notable recent result (a win over a higher-ranked player, a final, or a deep run), "
+              "using 'recently' or 'in November' style time words, never 'this season'. Reply with the paragraph only.")
     for sl in order:
         if llm.remaining("low") <= 0 or n >= int(os.environ.get("BIOS_PER_RUN") or "8"):
             break
@@ -115,13 +131,15 @@ def bios(results):
         f = _player_facts(names[sl], results, er)
         if not f:
             continue
-        sig = f"{f['ranking']}|{f['record']}|{len(f['titles_since'])}"
-        if old.get("sig") == sig or (now - (old.get("ts") or 0) < BIO_DAYS * 86400 and old.get("sig", "").split("|")[0] == str(f["ranking"])):
+        sig = f"{f['ranking']}|{len(f['recent_matches'])}|{len(f['titles_since'])}|{f['recent_matches'][-1]['date'] if f['recent_matches'] else ''}"
+        if old.get("v") == VERSION and (old.get("sig") == sig or (now - (old.get("ts") or 0) < BIO_DAYS * 86400 and old.get("sig", "").split("|")[0] == str(f["ranking"]))):
             continue
-        t = _clean(_ask(sysmsg, f, "bio", 300), 80)
+        t = _clean(_ask(sysmsg, f, "bio", 300), 80, f)
         n += 1
         if t:
-            store[sl] = {"text": t, "ts": now, "sig": sig}
+            store[sl] = {"text": t, "ts": now, "sig": sig, "v": VERSION}
+        elif old.get("v") != VERSION:
+            store.pop(sl, None)                       # texto de uma versão antiga das regras: sai do site
     _save(BIOS, store)
     print(f"IA bios: {n} pedidos, {len(store)} bios guardadas.")
     return n
@@ -141,24 +159,27 @@ def previews():
             by.setdefault(t, []).append(u)
     n = 0
     sysmsg = ("You write a short preview of a tennis tournament for a website about players beyond the top 100. " + STYLE +
-              " 3 to 4 sentences, at most 90 words: the level and surface, the highest-ranked players in the draw, and one or two "
-              "first-round matches worth watching (close rankings or a young player). Reply with the paragraph only.")
+              " 3 to 4 sentences, at most 90 words: the level (use the given level exactly) and surface, the highest-ranked players in the draw, "
+              "and one or two upcoming matches worth watching (close rankings), naming their round as given. Reply with the paragraph only.")
     for t, ms in sorted(by.items(), key=lambda kv: -len(kv[1])):
         if n >= 3 or llm.remaining("high") <= 0:
             break
-        if (store.get(t) or {}).get("day", "")[:7] == today[:7]:      # uma antevisão por torneio e mês
+        if (store.get(t) or {}).get("day", "")[:7] == today[:7] and (store.get(t) or {}).get("v") == VERSION:      # uma antevisão por torneio e mês
             continue
         players = sorted({(u[k]["name"], u[k].get("rank")) for u in ms for k in ("p1", "p2") if isinstance(u[k].get("rank"), int)}, key=lambda x: x[1])[:8]
-        data = {"tournament": t, "level": ms[0].get("tour") or ms[0].get("tag"), "surface": ms[0].get("surface"),
+        import tournament_story
+        g0, tr0 = ms[0].get("gender"), (ms[0].get("tour") or "").lower()
+        lvl = ("WTA 125" if g0 == "women" else "ATP Challenger") if tr0 == "challenger" else ("ITF" if tr0 == "itf" else (ms[0].get("tag") or tr0.upper()))
+        data = {"tournament": t, "level": lvl, "gender": g0, "surface": ms[0].get("surface"),
                 "top_players": [{"name": a, "ranking": b} for a, b in players],
                 "matches": [{"p1": u["p1"]["name"], "r1": u["p1"].get("rank"), "p2": u["p2"]["name"], "r2": u["p2"].get("rank"),
-                             "round": (u.get("round") or "").split(" - ")[-1]} for u in ms[:12]]}
+                             "round": tournament_story._rd(u)} for u in ms[:12]]}
         if len(players) < 3:
             continue
-        txt = _clean(_ask(sysmsg, data, "preview", 400, priority="high"), 100)
+        txt = _clean(_ask(sysmsg, data, "preview", 400, priority="high"), 100, data)
         n += 1
         if txt:
-            store[t] = {"text": txt, "day": today}
+            store[t] = {"text": txt, "day": today, "v": VERSION}
     _save(PREVIEWS, dict(sorted(store.items(), key=lambda kv: kv[1].get("day", ""))[-120:]))
     print(f"IA antevisões: {n} pedidos.")
     return n
