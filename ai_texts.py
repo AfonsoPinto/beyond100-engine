@@ -232,6 +232,40 @@ def weekly_report(force=False):
     return 1
 
 
+def newsletter_intro(d):
+    """Abertura do editor da newsletter (2-3 frases), só com os dados da semana. Fica guardada por semana em previews_ai.json
+    (refeita se entretanto houver mais resultados). Sem IA ou sem margem devolve None e a newsletter sai sem ela."""
+    if not llm.key() or llm.provider() != "gemini":
+        return None
+    store = _load(PREVIEWS, {})
+    k = f"_nl_{d.get('date', '')[:4]}w{d.get('week')}"
+    old = store.get(k) or {}
+    if old.get("n") == d.get("n_results") and old.get("v") == VERSION and old.get("text"):
+        return old["text"]
+    if llm.remaining("low") < 1:
+        return None
+    facts = {"champions": [{"name": c["name"], "ranking": c.get("rank"), "tournament": c.get("t"), "beat_in_final": c.get("loser")}
+                           for c in (d.get("champs") or [])[:8]],
+             "champions_outside_top_100": [c["name"] for c in d.get("beyond") or []],
+             "upsets": [{"winner": u["w"], "winner_ranking": u["wr"], "loser": u["l"], "loser_ranking": u["lr"], "tournament": u.get("t")}
+                        for u in d.get("upsets") or []],
+             "ranking_climbers": [{"name": x.get("n") or x.get("name"), "tour": lg.upper(), "ranking": x.get("r"), "previous": x.get("prev")}
+                                  for lg, xs in (d.get("climb") or {}).items() for x in xs],
+             "padel_champions": [{"pair": c.get("pair"), "tournament": c.get("t"), "category": c.get("cat")} for c in d.get("pchamps") or []]}
+    if not facts["champions"] and not facts["padel_champions"]:
+        return None
+    sys_ = (STYLE + " You write the opening lines of Beyond100's weekly newsletter, which follows tennis players outside the top 100 "
+            "(Challengers, ITF, WTA 125) and pro padel. Write 2 or 3 short sentences, at most 60 words, that tell the reader the week's "
+            "main stories, starting with the most remarkable one (a champion ranked outside the top 100 beats everything else). "
+            "Do not greet the reader, do not sign off, do not list every champion.")
+    t = _clean(_ask(sys_, facts, "newsletter_intro", max_tokens=300) or "", max_words=70, facts=facts)
+    if not t:
+        return None
+    store[k] = {"text": t, "n": d.get("n_results"), "v": VERSION, "at": time.strftime("%Y-%m-%d %H:%M")}
+    _save(PREVIEWS, store)
+    return t
+
+
 def main():
     if not llm.key() or llm.provider() != "gemini":
         print("IA de fundo: sem GEMINI_API_KEY (os textos de fundo só usam o nível gratuito do Gemini).")
