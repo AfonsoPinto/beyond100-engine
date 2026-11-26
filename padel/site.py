@@ -2458,7 +2458,12 @@ def page_player_v2(db, pid, p):
     if done:
         bits.append(f"In the Premier Padel and FIP matches we tracked, {he} is {w}-{len(done) - w}" +
                     (f", with {titles} title{'s' if titles != 1 else ''} from {finals} final{'s' if finals != 1 else ''}" if finals else "") + ".")
-    for tid, run in runs:
+    try:                                                   # com parágrafo do Gemini, a frase "Most recently" sai (diz o mesmo)
+        _bio = (json.load(open("bios.json", encoding="utf-8")).get(f"padel:{pid}") or {})
+        _bio = _bio if (_bio.get("text") and _bio.get("v") == 4) else {}
+    except (OSError, ValueError):
+        _bio = {}
+    for tid, run in ([] if _bio else runs):
         lab_, _, _ = _p_outcome(run)
         t = db.tour(tid) or {}
         if lab_ and t:
@@ -2467,12 +2472,8 @@ def page_player_v2(db, pid, p):
             bits.append(f"Most recently, at <a href=\"{tpath(t)}\">{esc(t.get('location') or t.get('name') or '')}</a>, {he} {what}.")
             break
     about = pu.h2("about", f"About {esc(name)}") + "<p>" + " ".join(bits) + "</p>"
-    try:                                                   # 26/11/2026: parágrafo do Gemini (ai_texts.padel_bios), só com os nossos dados
-        _bio = (json.load(open("bios.json", encoding="utf-8")).get(f"padel:{pid}") or {})
-        if _bio.get("text") and _bio.get("v") == 4:
-            about += f"<p>{esc(_bio['text'])}</p>"
-    except (OSError, ValueError):
-        pass
+    if _bio:                                               # 26/11/2026: parágrafo do Gemini (ai_texts.padel_bios), só com os nossos dados
+        about += f"<p>{esc(_bio['text'])}</p>"
     opp = {}
     for m, tm in done:
         ot = "team_2" if tm == "team_1" else "team_1"
