@@ -615,6 +615,9 @@ def _ord_round(rd):
     return named.get(r, f"the {r}" if r else "")
 
 
+_BIOS = None
+
+
 def profile_block(e, ms, rank=None, women=False):
     """Resumo em texto corrido no topo da página do jogador (SEO, 7/11/2026). Escrito a partir dos dados que já temos
     (ranking, melhor ranking, carreira, último torneio), sem IA e sem inventar: o que faltar não entra."""
@@ -728,7 +731,17 @@ def profile_block(e, ms, rank=None, women=False):
         out.append(s + ".")
     if len(out) < 2:
         return ""
-    return f'<h2 class="dh">About {esc(name)}</h2><p class="about">' + " ".join(out) + "</p>"
+    ai = ""
+    try:                                              # 25/11/2026: parágrafo "In 2026" escrito pela IA a partir dos nossos dados (bios.json)
+        global _BIOS
+        if _BIOS is None:
+            _BIOS = _load("bios.json", {})
+        b = _BIOS.get(webapp.slugify(name)) or {}
+        if b.get("text"):
+            ai = f'<p class="about">{esc(b["text"])}</p>'
+    except Exception:
+        pass
+    return f'<h2 class="dh">About {esc(name)}</h2><p class="about">' + " ".join(out) + "</p>" + ai
 
 
 PIDX = {}           # slug -> entrada de players_index (preenchido por result_card.build_site), para as ligações entre jogadores

@@ -11,6 +11,8 @@ import re
 
 import requests
 
+import llm
+
 API_URL = "https://api.anthropic.com/v1/messages"
 MODEL = os.environ.get("CAPTION_MODEL") or "claude-sonnet-5-5"
 FALLBACK_MODEL = "claude-haiku-5-5"
@@ -57,7 +59,7 @@ SYSTEM = (
 
 SPEND_FILE = "spend.json"
 # preços estimados em USD por milhão de tokens (entrada, saída); a pesquisa web custa ~0,01 USD cada. É uma ESTIMATIVA: o valor real está na Console.
-PRICES = {"haiku": (1.0, 5.0), "sonnet": (3.0, 15.0), "opus": (5.0, 25.0)}
+PRICES = {"gemini": (0.0, 0.0), "haiku": (1.0, 5.0), "sonnet": (3.0, 15.0), "opus": (5.0, 25.0)}
 SEARCH_USD = 0.01
 
 
@@ -89,7 +91,7 @@ def _record(model, usage, feature=None):
         ip, op = next((v for k, v in PRICES.items() if k in (model or "")), PRICES["sonnet"])
         u = usage or {}
         searches = int(((u.get("server_tool_use") or {}).get("web_search_requests")) or 0)
-        usd = (u.get("input_tokens", 0) * ip + u.get("output_tokens", 0) * op) / 1e6 + searches * SEARCH_USD
+        usd = (u.get("input_tokens", 0) * ip + u.get("output_tokens", 0) * op) / 1e6 + (0 if "gemini" in (model or "") else searches * SEARCH_USD)
         d = _spend_load()
         day = d.setdefault("days", {}).setdefault(time.strftime("%Y-%m-%d", time.gmtime()), {"usd": 0.0, "calls": 0, "searches": 0})
         day["usd"] = round(day["usd"] + usd, 5)
@@ -268,7 +270,7 @@ def make_caption(kind, facts):
 def _ask(key, payload, extra="", model=None):
     model = model or MODEL
     def call(model):
-        return requests.post(
+        return llm.post(
             API_URL,
             headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
             json={"model": model, "max_tokens": 1500, "system": SYSTEM + extra,
@@ -309,7 +311,7 @@ def _research(key, facts):
         return []
     brief = {k: facts.get(k) for k in ("tournament", "round", "date", "surface", "p1", "p2", "games", "winner", "level", "tag") if facts.get(k) is not None}
     try:
-        r = requests.post(
+        r = llm.post(
             API_URL,
             headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
             json={"model": MODEL, "max_tokens": 1500, "system": RESEARCH_SYSTEM, "tools": [WEB_TOOL],
@@ -349,12 +351,12 @@ H2H_SYSTEM = (
 def head_to_head(p1, p2, gender=None):
     """Confronto direto OFICIAL (ATP/WTA/ITF) por pesquisa web. Devolve {p1_wins, p2_wins, source, source_name} ou None.
     O código confirma que a fonte é um site oficial; sem certeza, não há H2H."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = llm.key()
     if not key or os.environ.get("PREVIEW_H2H", "1").strip() in ("0", "no", "false", "off"):
         return None
     brief = {"player_1": p1, "player_2": p2, "gender": gender}
     try:
-        r = requests.post(API_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        r = llm.post(API_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                           json={"model": MODEL, "max_tokens": 800, "system": H2H_SYSTEM, "tools": [WEB_TOOL],
                                 "messages": [{"role": "user", "content": json.dumps(brief, ensure_ascii=False)}]}, timeout=90)
         _credit_check(r)
@@ -400,13 +402,13 @@ HEAD_BANNED = re.compile(r"crown|seiz|claim|storm|cruis|outsider|clinch|triumph|
 
 def card_headline(facts):
     """Título editorial curto para o cartão (CARD_STYLE=2). Devolve None se a IA falhar ou quebrar as regras (usa-se a frase fixa)."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = llm.key()
     if not key:
         return None
     f = {k: v for k, v in dict(facts).items() if not str(k).startswith("_")}
     payload = json.dumps(f, ensure_ascii=False)
     try:
-        r = requests.post(API_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        r = llm.post(API_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                           json={"model": FALLBACK_MODEL, "max_tokens": 400, "system": HEAD_SYSTEM,
                                 "messages": [{"role": "user", "content": payload}]}, timeout=30)
         _credit_check(r)
@@ -428,7 +430,7 @@ def card_headline(facts):
 
 
 def _make_caption(kind, facts):
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = llm.key()
     if not key:
         return fallback(kind, facts)
     want = None

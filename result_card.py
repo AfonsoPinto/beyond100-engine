@@ -1956,6 +1956,12 @@ def build_site(out_dir="site", player=None):
         if _off != name:
             body = body.replace("</h1>", f'</h1><p class="mut2" style="margin:-4px 0 6px">{esc(_full)}</p>', 1)
         _tl[0]["name"] = _full
+        try:                                       # 25/11/2026: antevisão escrita pela IA (previews_ai.json), só enquanto o torneio decorre
+            _pv = (_load_json("previews_ai.json", {}).get(name) or {})
+            if _pv.get("text") and not any((x.get("round") or "").split(" - ")[-1].lower() == "final" for x in rs):
+                body += f'<section class="tstory"><h2 class="dh">Preview</h2><p>{html.escape(_pv["text"])}</p></section>'
+        except Exception as e:
+            print("Antevisão do torneio falhou:", name, type(e).__name__, e)
         try:                                       # 25/11/2026: resumo escrito (quem ganhou, quando, maior surpresa) + perguntas para o Google
             import tournament_story
             _sg = [x for x in rs if webapp.classify(x)[1] == "singles"]

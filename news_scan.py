@@ -21,6 +21,8 @@ from urllib.parse import urlparse
 
 import requests
 
+import llm
+
 import captions
 from captions import API_URL, MODEL, _credit_check, _record
 
@@ -69,8 +71,8 @@ def load(path, default):
 
 def ask(system, user, searches, max_tokens=2500, model=None, feature="news"):
     model = model or MODEL
-    key = os.environ["ANTHROPIC_API_KEY"]
-    r = requests.post(API_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+    key = llm.key()
+    r = llm.post(API_URL, headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                       json={"model": model, "max_tokens": max_tokens, "system": system, "tools": [TOOL(searches)],
                             "messages": [{"role": "user", "content": user}]}, timeout=180)
     _credit_check(r)
@@ -174,8 +176,8 @@ def main():
     if os.environ.get("NEWS_ENABLED", "0").strip().lower() not in ("1", "true", "yes", "on") and not force:
         print("Notícias: desligadas (NEWS_ENABLED=1 para ligar).")
         return 0
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Notícias: sem ANTHROPIC_API_KEY.")
+    if not llm.key():
+        print("Notícias: sem chave de IA (GEMINI_API_KEY ou ANTHROPIC_API_KEY).")
         return 0
     log = load(LOG, {"items": []})
     today = datetime.date.today().isoformat()
