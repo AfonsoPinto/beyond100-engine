@@ -14,7 +14,7 @@ import time
 import llm
 
 BIOS, PREVIEWS, REPORT = "bios.json", "previews_ai.json", "weekly_report.json"
-VERSION = 3                       # 26/11/2026: v2 sem contagem de vitórias/derrotas; textos de versões antigas são refeitos ou tirados
+VERSION = 4                       # 26/11/2026: v2 sem contagem de vitórias/derrotas; textos de versões antigas são refeitos ou tirados
 BIO_DAYS = 14                     # cada bio é refeita no máximo de 2 em 2 semanas (ou quando o ranking muda muito)
 STYLE = ("Write in plain, neutral English, like a careful sports journalist. Use ONLY the facts in the JSON. "
          "Never invent results, injuries, coaches, quotes, personal details or adjectives about personality. "
@@ -134,7 +134,8 @@ def bios(results):
     store, n, now = _load(BIOS, {}), 0, time.time()
     sysmsg = ("You write the short 'In 2026' paragraph of a tennis player's profile page. " + STYLE +
               " 2 or 3 sentences, at most 70 words, natural and varied (do not always start with the ranking). The list of matches is NOT complete: "
-              "never count wins or losses, never say 'record', 'unbeaten' or 'won all'. Do not mention missing things. Mention the current ranking, "
+              "never count wins or losses, never say 'record', 'unbeaten' or 'won all'. Do not mention missing things. The ranking is the player's ranking NOW: "
+              "write it as 'is currently ranked No. X' (never tie it to a past month). Do not start with 'In 2026' or 'In November'. Mention the current ranking, "
               "any title in titles_since, and the most notable recent result (a win over a higher-ranked player, a final, or a deep run), "
               "using 'recently' or 'in November' style time words, never 'this season'. Reply with the paragraph only.")
     for sl in order:

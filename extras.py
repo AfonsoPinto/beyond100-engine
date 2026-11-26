@@ -737,7 +737,7 @@ def profile_block(e, ms, rank=None, women=False):
         if _BIOS is None:
             _BIOS = _load("bios.json", {})
         b = _BIOS.get(webapp.slugify(name)) or {}
-        if b.get("text") and b.get("v") == 3:
+        if b.get("text") and b.get("v") == 4:
             ai = f'<p class="about">{esc(b["text"])}</p>'
     except Exception:
         pass

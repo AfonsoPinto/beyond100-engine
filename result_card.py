@@ -1958,7 +1958,7 @@ def build_site(out_dir="site", player=None):
         _tl[0]["name"] = _full
         try:                                       # 25/11/2026: antevisão escrita pela IA (previews_ai.json), só enquanto o torneio decorre
             _pv = (_load_json("previews_ai.json", {}).get(name) or {})
-            if _pv.get("text") and _pv.get("v") == 3 and not any((x.get("round") or "").split(" - ")[-1].lower() == "final" for x in rs):
+            if _pv.get("text") and _pv.get("v") == 4 and not any((x.get("round") or "").split(" - ")[-1].lower() == "final" for x in rs):
                 body += f'<section class="tstory"><h2 class="dh">Preview</h2><p>{html.escape(_pv["text"])}</p></section>'
         except Exception as e:
             print("Antevisão do torneio falhou:", name, type(e).__name__, e)
