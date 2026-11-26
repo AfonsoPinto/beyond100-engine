@@ -14,7 +14,7 @@ import time
 import llm
 
 BIOS, PREVIEWS, REPORT = "bios.json", "previews_ai.json", "weekly_report.json"
-VERSION = 2                       # 26/11/2026: v2 sem contagem de vitórias/derrotas; textos de versões antigas são refeitos ou tirados
+VERSION = 3                       # 26/11/2026: v2 sem contagem de vitórias/derrotas; textos de versões antigas são refeitos ou tirados
 BIO_DAYS = 14                     # cada bio é refeita no máximo de 2 em 2 semanas (ou quando o ranking muda muito)
 STYLE = ("Write in plain, neutral English, like a careful sports journalist. Use ONLY the facts in the JSON. "
          "Never invent results, injuries, coaches, quotes, personal details or adjectives about personality. "
@@ -62,6 +62,19 @@ def _clean(t, max_words=110, facts=None):
         if bad:
             print(f"IA: texto rejeitado (números que não estão nos dados: {bad[:5]}).")
             return None
+        # vitórias e derrotas têm de bater certo com os jogos (26/11: a IA escreveu que o Shelton ganhou ao Zverev, mas perdeu)
+        for m in facts.get("recent_matches") or []:
+            sur = re.escape((m.get("opponent") or "").split()[-1]) if m.get("opponent") else None
+            if not sur:
+                continue
+            win_words = r"(beat|beating|defeat\w*|victory over|win over|wins over|won over|won against|upset\w*|ousted|knocked out|eliminat\w*)"
+            lose_words = r"(lost to|losing to|fell to|falling to|defeated by|beaten by|loss to|lose to)"
+            if not m.get("won") and re.search(win_words + r"\W+(?:[\w-]+\W+){0,5}" + sur + r"\b", t, re.I):
+                print(f"IA: texto rejeitado (diz que ganhou a {m.get('opponent')}, mas perdeu).")
+                return None
+            if m.get("won") and re.search(lose_words + r"\W+(?:[\w-]+\W+){0,5}" + sur + r"\b", t, re.I):
+                print(f"IA: texto rejeitado (diz que perdeu com {m.get('opponent')}, mas ganhou).")
+                return None
         if re.search(r"\b(record|unbeaten|undefeated|won all)\b", t, re.I):
             print("IA: texto rejeitado (fala de registo de vitórias, que não temos completo).")
             return None
