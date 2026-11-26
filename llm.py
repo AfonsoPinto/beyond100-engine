@@ -9,6 +9,8 @@ import time
 
 import requests
 
+LITE = lambda: os.environ.get("GEMINI_MODEL_LITE") or "gemini-flash-lite-latest"
+MAIN = lambda: os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
 USAGE_FILE = "llm_usage.json"        # repositório de dados: pedidos do dia por modelo e por funcionalidade
 PRIORITY = "high"                    # "high": textos dos posts e verificação; "low": textos de fundo (bios, traduções, descrições)
 # Limite diário que nos impomos (pedidos por modelo). Os textos de fundo só usam até LOW_SHARE deste valor, para os posts
@@ -54,7 +56,7 @@ def allow(model, priority=None):
 
 def remaining(priority="low", model=None):
     """Quantos pedidos ainda cabem hoje (para as tarefas de fundo decidirem quantos itens fazer)."""
-    model = model or (os.environ.get("GEMINI_MODEL") or "gemini-flash-latest")
+    model = model or (MAIN() if priority == "high" else LITE())
     u = _usage()
     if u["limited"].get(model):
         return 0
@@ -104,10 +106,6 @@ def _parts(content):
     return out or [{"text": ""}]
 
 
-LITE = lambda: os.environ.get("GEMINI_MODEL_LITE") or "gemini-flash-lite-latest"
-MAIN = lambda: os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
-
-
 def _gemini(payload, timeout):
     """Tenta o modelo principal; se o Google estiver sobrecarregado (500/503) ou demorar demais, tenta de novo e depois o modelo Lite."""
     m = payload.get("model") or ""
@@ -130,6 +128,10 @@ def _gemini_once(payload, timeout, model):
         body["systemInstruction"] = {"parts": [{"text": payload["system"]}]}
     web = any(isinstance(t, dict) and "web_search" in str(t.get("type", "")) for t in payload.get("tools") or [])
     if web:
+        # 26/11/2026 (teste real): a pesquisa Google não está incluída no nível gratuito (429 "exceeded your current quota").
+        # Sem pesquisa não há factos verificados: estes pedidos (contexto web, frente a frente, notícias) ficam sem IA.
+        if os.environ.get("GEMINI_SEARCH", "0") != "1":
+            return _Resp(501, text="Gemini: pesquisa web não incluída no nível gratuito")
         body["tools"] = [{"google_search": {}}]
     import sys
     feature = payload.get("_feature") or getattr(sys.modules.get("captions"), "FEATURE", None) or "other"
