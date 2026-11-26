@@ -159,6 +159,80 @@ def bios(results):
     return n
 
 
+# ------------------------------------------------------------------ bios de padel (26/11/2026)
+def _padel_facts(db, ps, pid, p):
+    ms = ps.player_matches(db, pid)
+    done = [(m, tm) for m, tm in ms if m.get("winner") in ("team_1", "team_2")]
+    if len(done) < 3:
+        return None
+    r = db.rank_of.get(str(pid)) or {}
+    other = lambda tm: "team_2" if tm == "team_1" else "team_1"
+    names = lambda m, tm: " / ".join(x.get("name") or "" for x in ps.team_players(m, tm) if str(x.get("id")) != str(pid))
+    events = []
+    for tid, run in ps._p_runs(ms)[:5]:
+        t = db.tour(tid) or {}
+        lab, _, _ = ps._p_outcome(run)
+        if not lab:                                      # torneio ainda a decorrer (sem resultado fechado): fica de fora
+            continue
+        m0, tm0 = run[0]
+        events.append({"tournament": t.get("name") or t.get("location"), "date": (m0.get("played_at") or "")[:10],
+                       "result": lab or "played", "partner": names(m0, tm0)})
+    recent = [{"date": (m.get("played_at") or "")[:10], "round": ps.ROUNDS.get(m.get("round"), "early round"),
+               "opponent": " / ".join(x.get("name") or "" for x in ps.team_players(m, other(tm))), "won": m["winner"] == tm}
+              for m, tm in done[:6]]
+    return {"name": p.get("name"), "tour": "women's padel" if p.get("category") == "women" else "men's padel",
+            "country": ps.country_name(p.get("nationality")) if p.get("nationality") else None,
+            "ranking": r.get("ranking") or p.get("ranking"),
+            "court_side": {"drive": "right (drive)", "backhand": "left (backhand)"}.get(p.get("side") or ""),
+            "recent_tournaments": events, "recent_matches": recent}
+
+
+def padel_bios():
+    """Parágrafo "Lately" nas páginas de jogadores de padel, como no ténis. Prioridade: as páginas que o Google já mostra, depois o top 30."""
+    if llm.remaining("low") <= 10:
+        return 0
+    from padel import site as ps
+    db = ps.DB()
+    seen, order = set(), []
+    for x in sorted((_load("gsc.json", {}).get("by_sport") or {}).get("padel", {}).get("pages") or [], key=lambda x: -(x.get("impressions") or 0)):
+        m = re.search(r"/padel/p/(\d+)-", x.get("page") or "")
+        if m:
+            order.append(m.group(1))
+    for x in sorted((_load("gsc.json", {}).get("pages") or []), key=lambda x: -(x.get("impressions") or 0)):
+        m = re.search(r"/padel/p/(\d+)-", x.get("page") or "")
+        if m:
+            order.append(m.group(1))
+    for cat in ("men", "women"):
+        order += [str(x.get("id")) for x in ((db.ranks.get(cat) or {}).get("rows") or [])[:30]]
+    order = [i for i in order if not (i in seen or seen.add(i))]
+    store, n, now = _load(BIOS, {}), 0, time.time()
+    sysmsg = ("You write the short 'Lately' paragraph of a professional padel player's profile page. " + STYLE +
+              " 2 or 3 sentences, at most 70 words. Padel is played in pairs: name the partner when relevant. The list of matches is NOT complete: "
+              "never count wins or losses, never say 'record', 'unbeaten' or 'won all', never say 'this season'. Write the ranking as 'is currently ranked No. X'. "
+              "Mention the most notable recent result (a title, a final, a deep run) and the tournament. Do not mention missing things. Reply with the paragraph only.")
+    for pid in order:
+        if llm.remaining("low") <= 10 or n >= int(os.environ.get("PADEL_BIOS_PER_RUN") or "4"):
+            break
+        p = db.players.get(pid)
+        if not p:
+            continue
+        k = f"padel:{pid}"
+        old = store.get(k) or {}
+        f = _padel_facts(db, ps, pid, p)
+        if not f:
+            continue
+        sig = f"{f['ranking']}|{f['recent_matches'][0]['date']}|{len(f['recent_matches'])}"
+        if old.get("v") == VERSION and (old.get("sig") == sig or now - (old.get("ts") or 0) < BIO_DAYS * 86400):
+            continue
+        t = _clean(_ask(sysmsg, f, "padel_bio", 300), 80, f)
+        n += 1
+        if t:
+            store[k] = {"text": t, "ts": now, "sig": sig, "v": VERSION}
+    _save(BIOS, store)
+    print(f"IA bios de padel: {n} pedidos.")
+    return n
+
+
 # ------------------------------------------------------------------ antevisões de torneios
 def previews():
     if llm.remaining("high") <= 0:
@@ -276,7 +350,7 @@ def main():
     except Exception as e:
         print("IA de fundo: sem resultados:", type(e).__name__)
         results = []
-    for fn in (weekly_report, previews, lambda: bios(results)):
+    for fn in (weekly_report, previews, lambda: bios(results), padel_bios):
         try:
             fn()
         except Exception as e:
