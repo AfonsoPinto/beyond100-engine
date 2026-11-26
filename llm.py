@@ -10,7 +10,8 @@ import time
 import requests
 
 LITE = lambda: os.environ.get("GEMINI_MODEL_LITE") or "gemini-flash-lite-latest"
-MAIN = lambda: os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
+# 26/11/2026 (teste real): o Flash principal só deixa ~20 pedidos grátis por dia; o Lite chega para tudo e escreve bem
+MAIN = lambda: os.environ.get("GEMINI_MODEL") or "gemini-flash-lite-latest"
 USAGE_FILE = "llm_usage.json"        # repositório de dados: pedidos do dia por modelo e por funcionalidade
 PRIORITY = "high"                    # "high": textos dos posts e verificação; "low": textos de fundo (bios, traduções, descrições)
 # Limite diário que nos impomos (pedidos por modelo). Os textos de fundo só usam até LOW_SHARE deste valor, para os posts
