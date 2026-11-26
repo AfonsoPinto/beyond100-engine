@@ -1,6 +1,8 @@
 name: Test newsletter intro (temporário)
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [ai/newsletter-intro]
+    paths: [".github/workflows/test_nl_intro.yml"]
 permissions:
   contents: read
 jobs:
