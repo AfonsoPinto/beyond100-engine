@@ -136,7 +136,7 @@ def previews():
     today = time.strftime("%Y-%m-%d", time.gmtime())
     by = {}
     for u in up:
-        t = (u.get("tournament") or "").split(" - ")[0]
+        t = (u.get("tp") or u.get("tournament") or "").split(" - ")[0]         # upcoming.json usa "tp"
         if t and " / " not in u["p1"]["name"]:
             by.setdefault(t, []).append(u)
     n = 0
