@@ -2467,6 +2467,12 @@ def page_player_v2(db, pid, p):
             bits.append(f"Most recently, at <a href=\"{tpath(t)}\">{esc(t.get('location') or t.get('name') or '')}</a>, {he} {what}.")
             break
     about = pu.h2("about", f"About {esc(name)}") + "<p>" + " ".join(bits) + "</p>"
+    try:                                                   # 26/11/2026: parágrafo do Gemini (ai_texts.padel_bios), só com os nossos dados
+        _bio = (json.load(open("bios.json", encoding="utf-8")).get(f"padel:{pid}") or {})
+        if _bio.get("text") and _bio.get("v") == 4:
+            about += f"<p>{esc(_bio['text'])}</p>"
+    except (OSError, ValueError):
+        pass
     opp = {}
     for m, tm in done:
         ot = "team_2" if tm == "team_1" else "team_1"

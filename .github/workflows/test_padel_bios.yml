@@ -1,0 +1,32 @@
+name: Test padel bios (temporário)
+on:
+  push:
+    branches: [ai/padel-bios]
+    paths: [".github/workflows/test_padel_bios.yml"]
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: AfonsoPinto/beyond100, ref: main, token: "${{ secrets.DATA_TOKEN }}" }
+      - uses: actions/checkout@v4
+        with: { path: _engine }
+      - run: rm -rf _engine/.git && tar -C _engine -cf - . | tar -xf - && echo "_engine/" >> .git/info/exclude
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: Exemplos (vão só para o repositório privado)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          PADEL_BIOS_PER_RUN: "6"
+        run: |
+          cp bios.json /tmp/bios_orig.json
+          python -c "import ai_texts; ai_texts.padel_bios()" | grep -E "^IA" || true
+          python -c "
+          import json; b=json.load(open('bios.json')); json.dump({k:v['text'] for k,v in b.items() if k.startswith('padel:')}, open('padel_bios_test.json','w'), ensure_ascii=False, indent=1)"
+          cp /tmp/bios_orig.json bios.json
+          git config user.name AfonsoPinto && git config user.email 26894011+AfonsoPinto@users.noreply.github.com
+          git add padel_bios_test.json && git commit -qm "teste: bios de padel (temporário)" && for i in 1 2 3; do git pull -q --rebase --autostash && git push -q && break; sleep 5; done
