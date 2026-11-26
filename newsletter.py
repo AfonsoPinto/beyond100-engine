@@ -325,7 +325,11 @@ def render(d, assets=None):
     A = assets or {"hero": "", "thumbs": {}}
     th = A["thumbs"]
     top = d.get("top")
-    rows = _bento(d)
+    rows = ""
+    intro = d.get("intro")
+    if intro:                                           # 26/11/2026: abertura escrita pelo Gemini a partir dos dados da semana
+        rows += _t(f'<p style="margin:0;font:500 16px/1.6 {FONT};color:{CREAM}">{esc(intro)}</p>', "8px 24px 16px")
+    rows += _bento(d)
     if top:
         rows += _h2("Champion of the week")
         if A["hero"]:
@@ -533,6 +537,11 @@ def main():
                    key=lambda x: os.path.getmtime(os.path.join(NL_DIR, x)))
     for x in weeks[:-KEEP_WEEKS]:
         shutil.rmtree(os.path.join(NL_DIR, x), ignore_errors=True)
+    try:
+        import ai_texts
+        d["intro"] = ai_texts.newsletter_intro(d)
+    except Exception as e:
+        print("Newsletter: abertura da IA falhou", type(e).__name__, str(e)[:120])
     out = render(d, assets)
     with open("newsletter.html", "w", encoding="utf-8") as f:
         f.write(out)
