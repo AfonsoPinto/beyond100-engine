@@ -6,7 +6,9 @@ const OWNER = "AfonsoPinto", REPO = "beyond100-engine", GAP_MIN = 12;
 // Horários (UTC) que antes eram "schedule" no GitHub: num repositório público o GitHub desliga-os após 60 dias sem commits,
 // por isso quem os dispara é o Worker (chama isto a cada 5 min). [dia da semana (0=domingo, -1=todos), hora, minuto, workflow]
 const SCHEDULE = [[1, 4, 15, "padel_photo_scan.yml"], [1, 5, 15, "categorias.yml"], [1, 5, 40, "gsc.yml"], [1, 6, 25, "ig_token.yml"],
-  [-1, 9, 45, "watchdog.yml"], [-1, 13, 45, "watchdog.yml"], [-1, 17, 45, "watchdog.yml"], [-1, 21, 45, "watchdog.yml"]];
+  [-1, 9, 45, "watchdog.yml"], [-1, 13, 45, "watchdog.yml"], [-1, 17, 45, "watchdog.yml"], [-1, 21, 45, "watchdog.yml"],
+  // 26/11/2026: a Guarda (repositório de dados) de hora a hora (hora -1 = todas): o horário do GitHub saltou 12 h seguidas; o dele fica de reserva
+  [-1, -1, 30, "guard.yml", "beyond100"]];
 const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 async function finished(lg, watch) {
@@ -23,13 +25,13 @@ async function finished(lg, watch) {
 async function scheduled(env) {
   // 1) atualização completa de hora a hora (minutos 5-9) e 2) tarefas semanais/diárias, sem duplicar se já houver uma recente
   const now = new Date(), m = now.getUTCMinutes(), h = now.getUTCHours(), d = now.getUTCDay(), out = [];
-  const gh = (path, opt = {}) => fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`, { ...opt,
+  const gh = (path, opt = {}, repo = REPO) => fetch(`https://api.github.com/repos/${OWNER}/${repo}${path}`, { ...opt,
     headers: { Authorization: `Bearer ${String(env.GITHUB_TOKEN || "").replace(/[^\x21-\x7E]/g, "")}`, Accept: "application/vnd.github+json", "User-Agent": "beyond100-kick", "content-type": "application/json" } });
-  const recent = async (wf, mins) => {
-    const runs = ((await (await gh(`/actions/workflows/${wf}/runs?per_page=3`)).json()).workflow_runs) || [];
+  const recent = async (wf, mins, repo) => {
+    const runs = ((await (await gh(`/actions/workflows/${wf}/runs?per_page=3`, {}, repo)).json()).workflow_runs) || [];
     return runs.some(r => r.status !== "completed" || Date.now() - Date.parse(r.created_at) < mins * 60e3);
   };
-  const go = async (wf, inputs) => (await gh(`/actions/workflows/${wf}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs: inputs || {} }) })).status;
+  const go = async (wf, inputs, repo) => (await gh(`/actions/workflows/${wf}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", inputs: inputs || {} }) }, repo)).status;
   if (!env.GITHUB_TOKEN) return out;
   // completa: entre os minutos 5 e 20 (3 chamadas do Worker), se não houver uma COMPLETA nos últimos 40 min nem nenhuma a correr
   // (as rápidas, "Fast update", não contam: antes uma rápida 15 min antes saltava a hora inteira)
@@ -39,8 +41,9 @@ async function scheduled(env) {
     const full = runs.some(r => (r.display_title || r.name) !== "Fast update" && Date.now() - Date.parse(r.created_at) < 40 * 60e3);
     if (!busy && !full) out.push(["update.yml", await go("update.yml")]);
   }
-  for (const [dw, hh, mm, wf] of SCHEDULE) {
-    if ((dw === -1 || dw === d) && h === hh && m >= mm && m < mm + 5 && !(await recent(wf, 30))) out.push([wf, await go(wf)]);
+  for (const [dw, hh, mm, wf, repo] of SCHEDULE) {
+    if ((dw === -1 || dw === d) && (hh === -1 || h === hh) && m >= mm && m < mm + 5 && !(await recent(wf, 30, repo || REPO)))
+      out.push([wf, await go(wf, undefined, repo || REPO)]);
   }
   return out;
 }
