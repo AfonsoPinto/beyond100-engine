@@ -2,7 +2,7 @@ name: Test newsletter intro (temporário)
 on:
   push:
     branches: [ai/newsletter-intro]
-    paths: [".github/workflows/test_nl_intro.yml"]  # 2
+    paths: [".github/workflows/test_nl_intro.yml"]  # 3
 permissions:
   contents: read
 jobs:
@@ -25,8 +25,9 @@ jobs:
           python - <<'PY'
           import json, datetime as dt, newsletter, ai_texts
           out = {}
-          for back in (0, 7):
-              d = newsletter._prep(newsletter.week_data(today=dt.date.today() - dt.timedelta(days=back)))
+          sun = dt.date.today() - dt.timedelta(days=dt.date.today().weekday() + 1)
+          for back in (0, 7, 14):
+              d = newsletter._prep(newsletter.week_data(today=sun - dt.timedelta(days=back)))
               out[f"w{d['week']}"] = ai_texts.newsletter_intro(d)
           json.dump(out, open("nl_intro_test.json", "w"), ensure_ascii=False, indent=1)
           PY
