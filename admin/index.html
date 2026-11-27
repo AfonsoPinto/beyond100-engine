@@ -31,6 +31,12 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 8px;b
 .sport{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}.sport button{border:0;border-radius:999px;padding:5px 14px;background:none}.sport button.on{background:var(--g);color:var(--bg)}
 @media(prefers-color-scheme:dark){.sport button.on{color:#0b1f18}}
 .tag{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:12px}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:10px 0}
+.st>div{background:var(--card);border:1px solid var(--stb,var(--line));border-radius:12px;padding:11px 14px;display:flex;gap:10px;align-items:flex-start}
+.st i{width:10px;height:10px;border-radius:50%;background:var(--stc,var(--mut));margin-top:6px;flex:none}
+.st small{display:block;font-size:12.5px;color:var(--mut)}.st b{display:block;font-size:15px;font-weight:600;color:var(--ink)}.st em{display:block;font-style:normal;font-size:12px;color:var(--stc,var(--mut))}
+.st .s-ok{--stc:var(--ok);--stb:#cfe6d7}.st .s-warn{--stc:#a8701a;--stb:#ecd9a6;background:#fdf6e3}.st .s-bad{--stc:var(--bad);--stb:#f1b8b3;background:#fdecea}
+@media(prefers-color-scheme:dark){.st .s-ok{--stb:#245a3d}.st .s-warn{--stc:#f2c46b;--stb:#6b5420;background:#2a2412}.st .s-bad{--stb:#7a2a25;background:#2e1614}}
 </style>
 </head>
 <body>
@@ -74,14 +80,22 @@ async function alerts(){if(Date.now()-_alT<60000)return;_alT=Date.now();
   try{const rs=await api("runs");const up=rs.filter(r=>r.name==="Update Beyond100"&&r.status==="completed");const ok=up.find(r=>r.conclusion==="success");
     if(ok&&(Date.now()-new Date(ok.at).getTime())>3*3600e3)out.push(`⚠ <b>Site</b>: a última atualização com sucesso foi há ${Math.round((Date.now()-new Date(ok.at).getTime())/3600e3)} h.`);
     const last4=up.slice(0,4);if(last4.length===4&&last4.every(r=>r.conclusion!=="success"))out.push('⚠ <b>Site</b>: as últimas 4 atualizações falharam.')}catch(e){}
-  // linha de estado sempre visível (verde quando está tudo bem)
+  // 27/11/2026: cartões de estado (verde = tudo bem; amarelo = sem posts há mais de 36 h, sem erro; vermelho = recusas ou site parado)
+  const when=t=>{const d=new Date(t),n=new Date(),y=new Date(n-864e5),hh=d.toLocaleTimeString("pt-PT",{timeZone:"Europe/Lisbon",hour:"2-digit",minute:"2-digit"}),
+    k=x=>x.toLocaleDateString("pt-PT",{timeZone:"Europe/Lisbon"});return k(d)===k(n)?`hoje, ${hh}`:k(d)===k(y)?`ontem, ${hh}`:`${d.toLocaleDateString("pt-PT",{timeZone:"Europe/Lisbon",day:"2-digit",month:"2-digit"})}, ${hh}`};
+  const tile=(cls,lab,main,sub)=>`<div class="s-${cls}"><i></i><div><small>${lab}</small><b>${main}</b><em>${sub}</em></div></div>`;
   let line=[];
   try{const igs=(await readFile("ig_status.json").catch(()=>({data:{}}))).data||{};
-    for(const [k,lab] of [["tennis","Instagram ténis"],["padel","Instagram padel"]]){const a=igs[k]||{};
-      line.push((a.fails_in_row||0)>0?`<b style="color:#c0392b">✗ ${lab}</b>`:a.last_ok?`<span style="color:#1e7d4b">✓ ${lab}</span> <span class="mut">(${hm(a.last_ok.ts)})</span>`:`<span class="mut">… ${lab}: à espera do 1.º post confirmado</span>`)}}catch(e){}
+    for(const [k,lab] of [["tennis","Instagram · ténis"],["padel","Instagram · padel"]]){const a=igs[k]||{},t=a.last_ok?a.last_ok.ts*1000:0;
+      line.push((a.fails_in_row||0)>0?tile("bad",lab,`Recusado ${a.fails_in_row>1?a.fails_in_row+" vezes":"1 vez"}`,"ver a Make → History")
+        :!t?tile("warn",lab,"À espera do 1.º post","ainda sem confirmação da Make")
+        :Date.now()-t>36*3600e3?tile("warn",lab,`Sem posts há ${Math.round((Date.now()-t)/864e5)||1} dia${Math.round((Date.now()-t)/864e5)>1?"s":""}`,`último: ${when(t)} · nada falhou`)
+        :tile("ok",lab,`Último post ${when(t)}`,"confirmado pela Make"))}}catch(e){}
   try{const rs=await api("runs");const ok=rs.find(r=>r.name==="Update Beyond100"&&r.conclusion==="success");
-    if(ok){const m=Math.round((Date.now()-new Date(ok.at).getTime())/60000);line.push(m<=180?`<span style="color:#1e7d4b">✓ Site</span> <span class="mut">(atualizado há ${m<60?m+" min":Math.round(m/60)+" h"})</span>`:`<b style="color:#c0392b">✗ Site parado há ${Math.round(m/60)} h</b>`)}}catch(e){}
-  $("#alerts").innerHTML=(line.length?`<div style="margin:8px 0;font-size:14px">${line.join(" &nbsp;·&nbsp; ")}</div>`:"")+out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("")}
+    if(ok){const m=Math.round((Date.now()-new Date(ok.at).getTime())/60000),ago=m<60?m+" min":Math.round(m/60)+" h",nx=new Date();nx.setMinutes(5,0,0);if(nx<=new Date())nx.setHours(nx.getHours()+1);
+      line.push(m<=180?tile("ok","Site",`Atualizado há ${ago}`,`próxima às ${nx.toLocaleTimeString("pt-PT",{timeZone:"Europe/Lisbon",hour:"2-digit",minute:"2-digit"})}`)
+        :tile("bad","Site",`Parado há ${Math.round(m/60)} h`,"a Guarda envia-te email"))}}catch(e){}
+  $("#alerts").innerHTML=(line.length?`<div class="st">${line.join("")}</div>`:"")+out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("")}
 async function show(){nav();alerts();$("#main").innerHTML='<p class="mut">A carregar…</p>';
   const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,newsletter,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
   try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
