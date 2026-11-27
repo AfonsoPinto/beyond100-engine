@@ -72,12 +72,14 @@ function nav(){ if(!TABS().some(([k])=>k===tab))tab=TABS()[0][0];
   $("#sport").onclick=e=>{const b=e.target.closest("button");if(b&&b.dataset.s!==sport){sport=b.dataset.s;tab=TABS()[0][0];location.hash=sport+"/"+tab;show()}}}
 // 25/11/2026 (pedido do Afonso): avisos graves no topo de TODOS os separadores, ténis e padel
 let _alT=0;
-async function alerts(){if(Date.now()-_alT<60000)return;_alT=Date.now();
+async function alerts(){try{const c=localStorage.getItem("b100_alerts");if(c&&!$("#alerts").innerHTML)$("#alerts").innerHTML=c}catch(e){}
+  if(Date.now()-_alT<60000)return;_alT=Date.now();
+  const [_ig,_rs]=await Promise.all([readFile("ig_status.json").catch(()=>({data:{}})),api("runs").catch(()=>[])]);
   const out=[],hm=t=>fmtTs(t*1000);
-  try{const igs=(await readFile("ig_status.json")).data||{};
+  try{const igs=_ig.data||{};
     for(const [k,lab] of [["tennis","Instagram ténis"],["padel","Instagram padel"],["tennis-reels","Reels ténis"],["padel-reels","Reels padel"]]){const a=igs[k]||{};
       if((a.fails_in_row||0)>0&&a.last_error)out.push(`⚠ <b>${lab}</b>: o Instagram recusou ${a.fails_in_row>1?a.fails_in_row+" publicações seguidas":"a última publicação"} (${hm(a.last_error.ts)}). ${esc(a.last_error.msg||"")} · Ver a Make (History).`)}}catch(e){}
-  try{const rs=await api("runs");const up=rs.filter(r=>r.name==="Update Beyond100"&&r.status==="completed");const ok=up.find(r=>r.conclusion==="success");
+  try{const rs=_rs;const up=rs.filter(r=>r.name==="Update Beyond100"&&r.status==="completed");const ok=up.find(r=>r.conclusion==="success");
     if(ok&&(Date.now()-new Date(ok.at).getTime())>3*3600e3)out.push(`⚠ <b>Site</b>: a última atualização com sucesso foi há ${Math.round((Date.now()-new Date(ok.at).getTime())/3600e3)} h.`);
     const last4=up.slice(0,4);if(last4.length===4&&last4.every(r=>r.conclusion!=="success"))out.push('⚠ <b>Site</b>: as últimas 4 atualizações falharam.')}catch(e){}
   // 27/11/2026: cartões de estado (verde = tudo bem; amarelo = sem posts há mais de 36 h, sem erro; vermelho = recusas ou site parado)
@@ -85,17 +87,18 @@ async function alerts(){if(Date.now()-_alT<60000)return;_alT=Date.now();
     k=x=>x.toLocaleDateString("pt-PT",{timeZone:"Europe/Lisbon"});return k(d)===k(n)?`hoje, ${hh}`:k(d)===k(y)?`ontem, ${hh}`:`${d.toLocaleDateString("pt-PT",{timeZone:"Europe/Lisbon",day:"2-digit",month:"2-digit"})}, ${hh}`};
   const tile=(cls,lab,main,sub)=>`<div class="s-${cls}"><i></i><div><small>${lab}</small><b>${main}</b><em>${sub}</em></div></div>`;
   let line=[];
-  try{const igs=(await readFile("ig_status.json").catch(()=>({data:{}}))).data||{};
+  try{const igs=_ig.data||{};
     for(const [k,lab] of [["tennis","Instagram · ténis"],["padel","Instagram · padel"]]){const a=igs[k]||{},t=a.last_ok?a.last_ok.ts*1000:0;
       line.push((a.fails_in_row||0)>0?tile("bad",lab,`Recusado ${a.fails_in_row>1?a.fails_in_row+" vezes":"1 vez"}`,"ver a Make → History")
         :!t?tile("warn",lab,"À espera do 1.º post","ainda sem confirmação da Make")
         :Date.now()-t>36*3600e3?tile("warn",lab,`Sem posts há ${Math.round((Date.now()-t)/864e5)||1} dia${Math.round((Date.now()-t)/864e5)>1?"s":""}`,`último: ${when(t)} · nada falhou`)
         :tile("ok",lab,`Último post ${when(t)}`,"confirmado pela Make"))}}catch(e){}
-  try{const rs=await api("runs");const ok=rs.find(r=>r.name==="Update Beyond100"&&r.conclusion==="success");
+  try{const rs=_rs;const ok=rs.find(r=>r.name==="Update Beyond100"&&r.conclusion==="success");
     if(ok){const m=Math.round((Date.now()-new Date(ok.at).getTime())/60000),ago=m<60?m+" min":Math.round(m/60)+" h",nx=new Date();nx.setMinutes(5,0,0);if(nx<=new Date())nx.setHours(nx.getHours()+1);
       line.push(m<=180?tile("ok","Site",`Atualizado há ${ago}`,`próxima às ${nx.toLocaleTimeString("pt-PT",{timeZone:"Europe/Lisbon",hour:"2-digit",minute:"2-digit"})}`)
         :tile("bad","Site",`Parado há ${Math.round(m/60)} h`,"a Guarda envia-te email"))}}catch(e){}
-  $("#alerts").innerHTML=(line.length?`<div class="st">${line.join("")}</div>`:"")+out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("")}
+  $("#alerts").innerHTML=(line.length?`<div class="st">${line.join("")}</div>`:"")+out.map(x=>`<div class="card bad" style="border:2px solid #c0392b;margin:10px 0">${x}</div>`).join("");
+  try{localStorage.setItem("b100_alerts",$("#alerts").innerHTML)}catch(e){}}
 async function show(){nav();alerts();$("#main").innerHTML='<p class="mut">A carregar…</p>';
   const F=sport==="padel"?{estado:padelEstado,posts:padelPosts,newsletter,fotos:padelFotos,visitas,google,defs}:{estado,posts:tenisPosts,newsletter,fotos:tenisFotos,noticias,visitas,google,jogos,handles,cats,acoes,defs};
   try{await (F[tab]||F.estado)()}catch(e){$("#main").innerHTML=`<div class="card bad">${esc(e.message)}</div>`}}
